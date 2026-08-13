@@ -8,7 +8,7 @@ const executable = process.env.CODEX_PATH || 'codex'
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-studio-contract-'))
 const reportPath = path.resolve(process.env.CODEX_SMOKE_REPORT || 'test-results/codex-contract-smoke.json')
 const compatibility = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'shared/codex-compatibility.json'), 'utf8'))
-const report = { ok: false, version: '', verifiedVersion: false, initialize: false, modelList: false, configRead: false, threadStart: false, turnStart: false, turnCompleted: false, agentResponse: false, interrupt: false, approvalsObserved: 0, approvalsDeclined: 0, notifications: 0 }
+const report = { ok: false, version: '', minimumSatisfied: false, knownVersion: false, initialize: false, modelList: false, configRead: false, threadStart: false, turnStart: false, turnCompleted: false, agentResponse: false, interrupt: false, approvalsObserved: 0, approvalsDeclined: 0, notifications: 0 }
 let child
 let nextId = 1
 const pending = new Map()
@@ -19,8 +19,9 @@ let responseText = ''
 try {
   report.version = execFileSync(executable, ['--version'], { encoding: 'utf8', timeout: 5_000 }).trim().slice(0, 100)
   const semanticVersion = report.version.match(/\d+\.\d+\.\d+/)?.[0]
-  report.verifiedVersion = Boolean(semanticVersion && compatibility.verified.includes(semanticVersion))
-  if (!report.verifiedVersion) throw new Error('A versão instalada não consta na matriz verificada.')
+  report.minimumSatisfied = Boolean(semanticVersion && compareSemver(semanticVersion, compatibility.minimum) >= 0)
+  report.knownVersion = Boolean(semanticVersion && compatibility.verified.includes(semanticVersion))
+  if (!report.minimumSatisfied) throw new Error(`A versão instalada está abaixo do mínimo suportado (${compatibility.minimum}).`)
   child = spawn(executable, ['app-server', '--stdio'], { stdio: ['pipe', 'pipe', 'pipe'], env: process.env })
   child.stderr.resume()
   const lines = readline.createInterface({ input: child.stdout })
@@ -152,4 +153,14 @@ function waitForItemStarted(threadId) {
     const timer = setTimeout(() => { itemWaiters.delete(threadId); reject(new Error('Tempo esgotado aguardando item/started para o cancelamento.')) }, 60_000)
     itemWaiters.set(threadId, { resolve, reject, timer })
   })
+}
+
+function compareSemver(left, right) {
+  const leftParts = left.split('.').map(Number)
+  const rightParts = right.split('.').map(Number)
+  for (let index = 0; index < 3; index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0)
+    if (difference !== 0) return difference
+  }
+  return 0
 }

@@ -53,16 +53,16 @@ describe('CodexAccountService', () => {
     expect(run).toHaveBeenCalledWith(['login'], 600_000)
   })
 
-  it('falha fechado para versão não homologada', async () => {
+  it('aceita versões futuras acima do mínimo e deixa o handshake validar o protocolo', async () => {
     const service = new CodexAccountService(async (args) => ({
       stdout: args[0] === '--version'
-        ? 'codex-cli 9.9.9'
+        ? 'codex-cli 0.147.0'
         : 'Logged in using ChatGPT',
       stderr: '',
     }))
-    await expect(service.login()).rejects.toThrow(/não foi homologada/)
-    await expect(service.status()).resolves.toMatchObject({
-      state: 'incompatible',
+    await expect(service.login()).resolves.toMatchObject({
+      state: 'ready',
+      compatible: true,
       minimumSatisfied: true,
       recommended: false,
     })

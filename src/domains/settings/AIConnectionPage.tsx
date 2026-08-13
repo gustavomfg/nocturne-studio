@@ -22,7 +22,6 @@ import type {
 import type { ModelDescriptor, ModelReference } from '../../../shared/ai/model'
 import type { CodexAccountStatus } from '../../../shared/types'
 import type { CodexModel } from '../../../shared/codexModels'
-import codexCompatibility from '../../../shared/codex-compatibility.json'
 import { errorMessage } from '../../shared/format'
 
 type Step = 'list' | 'service' | 'auth' | 'model' | 'codex-model'
@@ -43,8 +42,6 @@ const presets: ServicePreset[] = [
   { id: 'ollama', name: 'Ollama', icon: Laptop, baseUrl: 'http://127.0.0.1:11434/v1', authType: 'local' },
   { id: 'other', name: 'Outro', icon: Globe, baseUrl: '', authType: 'api-key' },
 ]
-const verifiedCodexVersions = codexCompatibility.verified.join(' ou ')
-
 interface AIConnectionPageProps {
   workspaceId: string
   onNotify(message: string): void
@@ -368,12 +365,11 @@ export function AIConnectionPage({
       }</p>
 
       {selectedPreset.authType === 'account' && codexAccount && !codexAccount.installed && (
-        <p className="ai-local-note">Instale uma versão homologada do Codex CLI ({verifiedCodexVersions}) para usar uma conta ChatGPT.</p>
+        <p className="ai-local-note">Instale o Codex CLI (mínimo {codexAccount.minimumVersion}; recomendado {codexAccount.recommendedVersion}) para usar uma conta ChatGPT.</p>
       )}
       {selectedPreset.authType === 'account' && codexAccount?.installed && !codexAccount.compatible && (
         <p className="ai-local-note">
-          Codex CLI {codexAccount.version || 'desconhecido'} não homologado.
-          {codexAccount.minimumSatisfied ? ` Use a versão recomendada ${codexAccount.recommendedVersion}.` : ` A versão mínima é ${codexAccount.minimumVersion}.`}
+          Codex CLI {codexAccount.version || 'desconhecido'} está abaixo do mínimo suportado ({codexAccount.minimumVersion}).
         </p>
       )}
       {selectedPreset.authType === 'account' && codexAccount?.state === 'internal-error' && (
@@ -435,7 +431,7 @@ export function AIConnectionPage({
 
       <button
         className="ai-connect-btn"
-        disabled={connecting || (selectedPreset.authType === 'account' && (!codexAccount?.installed || !codexAccount.compatible))}
+        disabled={connecting || (selectedPreset.authType === 'account' && (!codexAccount?.installed || !codexAccount.compatible || codexAccount.protocolCompatible === false))}
         onClick={() => void connect()}
       >
         {connecting
@@ -521,9 +517,7 @@ function CodexStatusSummary({ value }: { value: CodexAccountStatus }) {
   const message = {
     'not-installed': `Codex CLI não instalado. Instale ${value.recommendedVersion}.`,
     'not-authenticated': 'Codex CLI disponível, mas nenhuma conta ChatGPT está autenticada.',
-    incompatible: value.minimumSatisfied
-      ? `Codex CLI ${value.version ?? 'desconhecido'} não homologado. Recomendado: ${value.recommendedVersion}.`
-      : `Codex CLI desatualizado. Versão mínima: ${value.minimumVersion}.`,
+    incompatible: `Codex CLI ${value.version ?? 'desconhecido'} está abaixo do mínimo suportado (${value.minimumVersion}).`,
     'internal-error': value.error ?? 'O Codex CLI encontrou um erro interno.',
     ready: '',
   }[value.state]

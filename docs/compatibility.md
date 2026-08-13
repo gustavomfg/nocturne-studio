@@ -29,12 +29,15 @@ diagnóstico, use `npm run test:abi`.
 - Codex CLI mínimo `0.145.0`;
 - recomendado `0.146.0`;
 - verificados `0.145.0` e `0.146.0`;
+- versões mais novas são detectadas automaticamente quando atendem ao mínimo;
 - Providers OpenAI-compatible remotos por HTTPS;
 - Ollama, LM Studio e endpoints locais por loopback.
 
 Anthropic nativo, plugins, múltiplos agentes, nuvem e execução totalmente
 autônoma não fazem parte da compatibilidade da linha atual.
 
-O contrato do Codex App Server permanece experimental. Atualizar Codex,
-Electron, Node, npm ou uma dependência nativa exige validação explícita antes de
-alterar esta matriz.
+O contrato do Codex App Server permanece experimental. O mínimo evita versões
+antigas demais, enquanto o handshake real do App Server valida a sessão antes
+do uso. O smoke `npm run smoke:codex` continua sendo a validação explícita para
+uma release; a lista de versões verificadas não precisa ser alterada a cada
+versão nova do CLI.

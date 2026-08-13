@@ -34,8 +34,11 @@ export class CodexAccountService {
     }
 
     const version = versionOutput.match(/\d+\.\d+\.\d+/)?.[0]
-    const compatible = Boolean(version && compatibility.verified.includes(version))
+    // The CLI is installed and updated outside of Nocturne. Keep the minimum
+    // as a safety floor, while the App Server handshake remains the live
+    // protocol compatibility gate for newer releases.
     const minimumSatisfied = Boolean(version && compareSemver(version, compatibility.minimum) >= 0)
+    const compatible = minimumSatisfied
     const recommended = version === compatibility.recommended
     try {
       const output = await this.run(['login', 'status'], 10_000)
@@ -71,9 +74,9 @@ export class CodexAccountService {
     if (!current.installed) {
       throw new Error('Instale o Codex CLI antes de conectar sua conta ChatGPT.')
     }
-    if (!current.compatible) {
+    if (!current.minimumSatisfied) {
       throw new Error(
-        `A versão instalada do Codex CLI não foi homologada. Use uma das versões verificadas: ${compatibility.verified.join(', ')}.`,
+        `A versão instalada do Codex CLI está abaixo do mínimo suportado (${compatibility.minimum}). Atualize o Codex CLI e tente novamente.`,
       )
     }
     if (current.authenticated && current.authenticationMethod === 'chatgpt') return current

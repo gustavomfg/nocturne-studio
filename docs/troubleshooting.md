@@ -8,9 +8,10 @@ estiver indisponível.
 
 ## Codex não aparece ou não lista modelos
 
-Verifique **Configurações > IA > Diagnóstico**. Instale uma versão compatível,
-faça login pelo Codex CLI e reinicie a verificação. Versões fora da lista
-verificada são bloqueadas por segurança.
+Verifique **Configurações > IA > Diagnóstico**. Instale o Codex CLI na versão
+mínima indicada, faça login pelo Codex CLI e reinicie a verificação. Versões
+mais novas são detectadas automaticamente; se o handshake do App Server falhar,
+use o smoke de contrato antes de atualizar a release do Nocturne.
 
 ## A API informa falta de créditos
 

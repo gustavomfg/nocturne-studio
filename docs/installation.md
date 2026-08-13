@@ -22,10 +22,14 @@ Codex CLI na linha atual.
 
 - Codex CLI mínimo: `0.145.0`;
 - versão recomendada: `0.146.0`;
-- versões verificadas: `0.145.0` e `0.146.0`.
+- versões verificadas: `0.145.0` e `0.146.0`;
+- versões mais novas são aceitas automaticamente quando atendem ao mínimo e
+  passam pelo handshake do App Server.
 
-O App Server é experimental. Uma versão não listada em
-`shared/codex-compatibility.json` é recusada até ser validada explicitamente.
+O App Server é experimental. A versão mínima é um limite de segurança; a
+compatibilidade efetiva é confirmada pelo handshake em tempo de execução. O
+smoke `npm run smoke:codex` deve ser executado para homologar uma versão nova
+antes de uma release.
 
 ## Ambiente de desenvolvimento
 

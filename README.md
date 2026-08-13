@@ -261,7 +261,11 @@ Build Mode and Docs Mode currently require Codex CLI.
 
 **Minimum supported version:** `0.145.0`
 
-**Verified versions:** `0.145.0` and `0.146.0`
+**Recommended version:** `0.146.0`
+
+Versions newer than the minimum are detected automatically. Nocturne validates
+the live App Server handshake before using them, so updating the Codex CLI does
+not require changing a dependency version in this project.
 
 ---
 

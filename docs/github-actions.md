@@ -25,7 +25,7 @@ Para habilitá-lo:
 
 1. registre um runner dedicado, no escopo deste repositório;
 2. adicione ao runner o label `nocturne-studio`;
-3. instale e autentique uma versão do Codex CLI listada em
+3. instale e autentique uma versão do Codex CLI igual ou superior ao mínimo em
    `shared/codex-compatibility.json`;
 4. execute manualmente `Compatibility · Codex CLI` sobre o commit desejado.
 

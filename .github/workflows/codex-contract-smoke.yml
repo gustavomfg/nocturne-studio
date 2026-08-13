@@ -27,7 +27,7 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Exercise the verified Codex App Server contract
+      - name: Exercise the Codex App Server contract
         run: npm run smoke:codex
       - name: Upload the sanitized contract report
         uses: actions/upload-artifact@v7
