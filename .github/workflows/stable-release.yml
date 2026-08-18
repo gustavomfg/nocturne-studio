@@ -115,6 +115,11 @@ jobs:
               ;;
           esac
       - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run test:abi
+      - run: npm run benchmark:sqlite
       - name: Import Linux release key
         if: runner.os == 'Linux'
         shell: bash

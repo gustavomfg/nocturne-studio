@@ -17,16 +17,29 @@ concluído com uma publicação efetivamente assinada. A versão atual continua
 | Atualização | consentimento, notas, progresso, retomada e instalação em `tests/updateService.test.ts` |
 | Recuperação | banco, migração, backup parcial e workspace restaurado em `tests/databaseRecovery.test.ts`, `tests/database.test.ts`, `tests/backupSchemas.test.ts` e `tests/electronBoundaries.e2e.test.ts` |
 | Instalação | pacote real exercitado por `scripts/smoke-package.mjs` em Linux, Windows e macOS no workflow `package-validation.yml` |
+| Durabilidade | transações interrompidas, restore/quarentena, falhas de escrita atômica e comparação WAL `NORMAL`/`FULL` em `tests/databaseDurability.test.ts`, `tests/sqliteProcessInterruption.test.ts`, `tests/atomicFile.test.ts` e `npm run benchmark:sqlite` |
+| Matriz de confiabilidade | typecheck, lint, Vitest, ABI e benchmark SQLite em `ubuntu-latest`, `windows-latest` e `macos-latest` no job `reliability` de `package-validation.yml` |
+
+O banco do produto usa WAL com `synchronous=FULL`; `npm run benchmark:sqlite`
+mantém a comparação reproduzível com `NORMAL` antes de qualquer mudança futura
+de política.
 
 ## Gates locais
 
 - typecheck;
 - lint e design system;
-- 273 testes Vitest;
+- `npm test` (319 testes na execução local desta revisão);
 - build do renderer, main e preload;
 - regressão funcional e visual Playwright;
 - pacote unpacked e smoke de segurança no sistema local;
 - metadados de release consistentes.
+
+O smoke do pacote valida o binário empacotado e seu userData isolado. A
+confirmação nativa de restauração durante um recovery corrompido permanece um
+gate manual: os fuses de produção desabilitam o inspector necessário para
+interceptar `dialog.showMessageBox`, e o produto não possui bypass de teste.
+Os testes automatizados do engine de recovery continuam em
+`tests/databaseRecovery.test.ts`.
 
 ## Gates externos obrigatórios
 
@@ -34,6 +47,8 @@ Os itens abaixo só podem ser marcados como concluídos por uma execução do
 GitHub Actions sobre a tag candidata:
 
 - pacote e smoke nas três plataformas;
+- gates de confiabilidade por plataforma no job `signed-package` (typecheck,
+  lint, Vitest, ABI e benchmark SQLite);
 - assinatura Windows;
 - assinatura e notarização macOS;
 - checksums das três plataformas e assinatura GPG Linux;

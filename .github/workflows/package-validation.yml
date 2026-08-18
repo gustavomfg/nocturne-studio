@@ -14,6 +14,9 @@ on:
       - .nvmrc
       - playwright.config.ts
       - tests/renderer/**
+      - tests/**
+      - scripts/benchmark-sqlite-sync.mjs
+      - docs/release-readiness-1.0.md
       - .github/actionlint.yaml
       - .github/workflows/**
   push:
@@ -124,9 +127,35 @@ jobs:
             test-results
           if-no-files-found: ignore
 
+  reliability:
+    name: Persistence reliability (${{ matrix.os }})
+    needs: workflow-lint
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run test:abi
+      - run: npm run build
+      - name: Compare SQLite synchronous modes
+        run: npm run benchmark:sqlite
+
   package:
     name: Package and smoke (${{ matrix.os }})
-    needs: [verify, renderer]
+    needs: [verify, renderer, reliability]
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
