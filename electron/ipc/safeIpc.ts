@@ -1,4 +1,5 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
+import { isMainProcessOperational } from '../runtime/MainProcessState'
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
 
@@ -34,6 +35,7 @@ export function safeIpcMain(win: BrowserWindow) {
       if (disposed) throw new Error('O registro de handlers IPC já foi descartado.')
       if (channels.has(channel)) throw new Error(`Handler IPC duplicado: ${channel}.`)
       ipcMain.handle(channel, (event, ...args) => {
+        if (!isMainProcessOperational()) throw new Error('O processo principal está encerrando após uma falha fatal.')
         const trustedContents = win.webContents
         const expectedUrl = trustedContents.getURL()
         if (event.sender !== trustedContents || event.senderFrame !== trustedContents.mainFrame || !expectedUrl || event.senderFrame.url !== expectedUrl) {

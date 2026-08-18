@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { LocalDatabase } from './database/Database'
 import { registerIpc } from './ipc/registerIpc'
-import { diagnosticFingerprint, Logger } from './logging/Logger'
+import { diagnosticFingerprint, Logger, redactLogText } from './logging/Logger'
 import { startUpdateService } from './updates/UpdateService'
 import { ModelRegistry } from './ai/ModelRegistry'
 import { ProviderRegistry } from './ai/ProviderRegistry'
@@ -16,6 +16,9 @@ import { ModelCatalogService } from './ai/ModelCatalogService'
 import { migrateProductUserData } from './persistence/ProductUserData'
 import productIdentity from '../shared/product-identity.json'
 import { inspectDatabaseFile, isRecoverableDatabaseCorruption, listDatabaseRecoveryCandidates, restoreDatabaseFile } from './database/recovery'
+import packageMetadata from '../package.json'
+import { FatalShutdownController, type FatalShutdownEvent } from './runtime/FatalShutdown'
+import { isMainProcessOperational, markMainProcessFatal, markMainProcessTerminated } from './runtime/MainProcessState'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const softwareRendering = process.env.NOCTURNE_DISABLE_GPU === '1' || process.argv.includes('--disable-gpu')
@@ -47,16 +50,125 @@ let providerConfigurations: ProviderConfigurationService | null = null
 let providerRegistry: ProviderRegistry | null = null
 let modelRegistry: ModelRegistry | null = null
 let modelCatalog: ModelCatalogService | null = null
+let shutdownResourcesPromise: Promise<void> | null = null
 
 function disposeWindowIpc() {
   disposeIpc?.()
   disposeIpc = null
 }
 
-process.on('uncaughtException', (error) => { logger?.error('app', 'uncaughtException no processo principal', error); console.error(error) })
-process.on('unhandledRejection', (reason) => { logger?.error('app', 'unhandledRejection no processo principal', reason); console.error(reason) })
+async function shutdownResources() {
+  if (shutdownResourcesPromise) return shutdownResourcesPromise
+  shutdownResourcesPromise = (async () => {
+    const failures: unknown[] = []
+    try {
+      disposeUpdates?.()
+    } catch (error) {
+      failures.push(error)
+    } finally {
+      disposeUpdates = null
+    }
+    try {
+      disposeWindowIpc()
+    } catch (error) {
+      failures.push(error)
+    }
+
+    const currentDatabase = database
+    database = null
+    try {
+      currentDatabase?.close()
+    } catch (error) {
+      failures.push(error)
+    }
+
+    const currentProviders = providerRegistry
+    providerRegistry = null
+    providerConfigurations = null
+    modelCatalog = null
+    modelRegistry = null
+    try {
+      await currentProviders?.dispose()
+    } catch (error) {
+      failures.push(error)
+    }
+
+    if (failures.length) throw new Error(`O encerramento encontrou ${failures.length} falha(s) de cleanup.`)
+  })()
+  return shutdownResourcesPromise
+}
+
+function describeFatalError(error: unknown) {
+  let text = 'Falha sem representação textual.'
+  let message = ''
+  let stack = ''
+  try {
+    if (error instanceof Error) {
+      message = redactLogText(error.message).slice(0, 2_000)
+      stack = redactLogText(error.stack ?? '').slice(0, 8_000)
+      text = `${error.name}\n${error.message}\n${error.stack ?? ''}`
+    } else {
+      text = String(error)
+    }
+  } catch { /* preserve a bounded diagnostic even for hostile error values */ }
+  return {
+    errorName: error instanceof Error ? error.name : typeof error,
+    ...(message ? { failureSummary: message } : {}),
+    failureFingerprint: diagnosticFingerprint(text),
+    ...(stack ? { failureStackFingerprint: diagnosticFingerprint(stack) } : {}),
+  }
+}
+
+function recordFatalEvent(event: FatalShutdownEvent) {
+  const details = {
+    appVersion: packageMetadata.version,
+    failureType: event.failureType,
+    phase: event.phase,
+    ...('error' in event ? describeFatalError(event.error) : {}),
+    ...('timeoutMs' in event ? { timeoutMs: event.timeoutMs } : {}),
+  }
+  const messages = {
+    fatal: event.failureType === 'rendererLoadFailure'
+      ? 'O renderer empacotado não pôde ser carregado; o aplicativo será encerrado.'
+      : 'Falha fatal não tratada no processo principal; o aplicativo será encerrado.',
+    'cleanup-failed': 'Falha durante o cleanup de uma falha fatal; o aplicativo será encerrado.',
+    'cleanup-timeout': 'O cleanup de uma falha fatal excedeu o tempo limite; o aplicativo será encerrado.',
+    'exit-failed': 'Não foi possível solicitar o encerramento após uma falha fatal.',
+  } as const
+  logger?.error('app', messages[event.phase], details)
+  try {
+    const fingerprint = 'error' in event ? describeFatalError(event.error).failureFingerprint : 'indisponível'
+    console.error(`Nocturne Studio: ${messages[event.phase]} [${event.failureType}; ${fingerprint}]`)
+  } catch { /* diagnostics must not prevent the fatal exit path */ }
+}
+
+const fatalShutdown = new FatalShutdownController({
+  onFatal: () => {
+    markMainProcessFatal()
+    process.exitCode = 1
+  },
+  onTerminated: markMainProcessTerminated,
+  record: recordFatalEvent,
+  cleanup: shutdownResources,
+  flush: () => logger?.flush(),
+  exit: (code) => {
+    process.exitCode = code
+    try {
+      app.exit(code)
+    } catch (error) {
+      // app.exit normally terminates immediately; process.exit is only the
+      // last-resort fallback once cleanup and diagnostic flushing completed.
+      try { process.exit(code) } catch { /* preserve the original exit failure for diagnostics */ }
+      throw error
+    }
+  },
+})
+
+process.on('uncaughtException', (error) => { void fatalShutdown.handle('uncaughtException', error) })
+process.on('unhandledRejection', (reason) => { void fatalShutdown.handle('unhandledRejection', reason) })
 
 function createWindow() {
+  if (!isMainProcessOperational()) return
   if (!database || !logger || !providerConfigurations || !modelRegistry || !providerRegistry || !modelCatalog) throw new Error('Serviços do Nocturne não foram inicializados.')
   if (win?.isDestroyed()) {
     disposeWindowIpc()
@@ -82,7 +194,10 @@ function createWindow() {
   currentWindow.webContents.session.setPermissionCheckHandler(() => false)
   currentWindow.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false))
   currentWindow.webContents.setWindowOpenHandler(({ url }) => {
-    try { const parsed = new URL(url); if (parsed.protocol === 'https:') void shell.openExternal(parsed.toString()) } catch { /* deny malformed URL */ }
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol === 'https:') void shell.openExternal(parsed.toString()).catch((error) => logger?.warn('app', 'Não foi possível abrir o link externo.', error))
+    } catch { /* deny malformed URL */ }
     return { action: 'deny' }
   })
   currentWindow.webContents.on('will-navigate', (event, url) => {
@@ -131,7 +246,11 @@ function createWindow() {
   })
   currentWindow.webContents.on('render-process-gone', (_event, details) => {
     logger?.error('app', 'Renderer encerrado inesperadamente', details)
-    if (!currentWindow.isDestroyed()) setTimeout(() => { if (!currentWindow.isDestroyed()) void currentWindow.webContents.reload() }, 1_000)
+    if (!currentWindow.isDestroyed()) setTimeout(() => {
+      if (isMainProcessOperational() && !currentWindow.isDestroyed()) {
+        try { currentWindow.webContents.reload() } catch (error) { logger?.warn('app', 'Não foi possível recarregar o renderer após a falha.', error) }
+      }
+    }, 1_000)
   })
   currentWindow.webContents.on('unresponsive', () => logger?.warn('app', 'Renderer não está respondendo'))
   currentWindow.webContents.on('responsive', () => logger?.info('app', 'Renderer voltou a responder'))
@@ -140,8 +259,14 @@ function createWindow() {
     disposeWindowIpc()
     win = null
   })
-  if (VITE_DEV_SERVER_URL) void currentWindow.loadURL(rendererUrl)
-  else void currentWindow.loadFile(path.join(RENDERER_DIST, 'index.html'))
+  if (VITE_DEV_SERVER_URL) {
+    void currentWindow.loadURL(rendererUrl).catch((error) => logger?.error('app', 'Falha ao carregar o renderer de desenvolvimento.', error))
+  } else {
+    void currentWindow.loadFile(path.join(RENDERER_DIST, 'index.html')).catch((error) => {
+      logger?.error('app', 'Falha ao carregar o renderer empacotado.', error)
+      void fatalShutdown.handle('rendererLoadFailure', error)
+    })
+  }
 }
 
 async function initializeServices() {
@@ -303,8 +428,9 @@ app.on('window-all-closed', () => {
   if (process.env.NOCTURNE_PACKAGE_SMOKE_OUTPUT) return
   if (process.platform !== 'darwin') app.quit()
 })
-app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
+app.on('activate', () => { if (isMainProcessOperational() && BrowserWindow.getAllWindows().length === 0) createWindow() })
 app.on('second-instance', () => {
+  if (!isMainProcessOperational()) return
   if (!win || win.isDestroyed()) { createWindow(); return }
   if (win.isMinimized()) win.restore()
   win.show()
@@ -312,14 +438,7 @@ app.on('second-instance', () => {
 })
 app.on('before-quit', () => {
   logger?.info('app', 'Encerrando aplicação')
-  disposeUpdates?.(); disposeUpdates = null
-  disposeWindowIpc()
-  void providerRegistry?.dispose()
-  providerRegistry = null
-  providerConfigurations = null
-  modelCatalog = null
-  modelRegistry = null
-  database?.close(); database = null
+  void shutdownResources().catch((error) => logger?.error('app', 'O cleanup do encerramento normal encontrou uma falha.', error))
 })
 app.on('child-process-gone', (_event, details) => logger?.error('app', 'Processo filho do Electron encerrado', details))
 if (!hasSingleInstanceLock) app.quit()
@@ -330,5 +449,12 @@ else void app.whenReady().then(() => {
   if (logger) disposeUpdates = startUpdateService(logger, () => win)
 }).catch((error) => {
   dialog.showErrorBox('Nocturne Studio não pôde iniciar', error instanceof Error ? error.message : String(error))
-  app.exit(1)
+  void shutdownResources().then(
+    () => { process.exitCode = 1; app.exit(1) },
+    (cleanupError) => {
+      logger?.error('app', 'O cleanup após uma falha de inicialização encontrou um erro.', cleanupError)
+      process.exitCode = 1
+      app.exit(1)
+    },
+  )
 })
