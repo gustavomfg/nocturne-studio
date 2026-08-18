@@ -1,7 +1,6 @@
-import fs from 'node:fs'
-import { randomUUID } from 'node:crypto'
 import { WORKSPACE_READ_LIMITS } from '../../shared/constants'
 import { isWorkspaceFileTooLarge, readWorkspaceFile } from '../security/ExecutionPolicy'
+import { writeAtomicFile } from './AtomicFile'
 
 const writes = new Map<string, Promise<void>>()
 const marker = '<!-- nocturne:suggestion-history -->'
@@ -26,13 +25,5 @@ export function appendSuggestionDecision(workspace: string, memoryPath: string, 
 }
 
 async function atomicWrite(filePath: string, content: string) {
-  const temporary = `${filePath}.tmp-${process.pid}-${randomUUID()}`
-  try {
-    await fs.promises.writeFile(temporary, content, { encoding: 'utf8', mode: 0o600, flag: 'wx' })
-    await fs.promises.rename(temporary, filePath)
-    await fs.promises.chmod(filePath, 0o600)
-  } catch (error) {
-    await fs.promises.unlink(temporary).catch(() => undefined)
-    throw error
-  }
+  await writeAtomicFile(filePath, content)
 }

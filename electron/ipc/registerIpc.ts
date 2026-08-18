@@ -11,6 +11,7 @@ import { Logger } from '../logging/Logger'
 import { isExternalOpenBlocked, isWorkspaceFileTooLarge, readWorkspaceFile, resolveExistingWorkspacePath, resolveInsideWorkspace, sanitizeWorkspaceReadError, statWorkspaceFile } from '../security/ExecutionPolicy'
 import { sanitizeSuggestionTitle } from '../../shared/suggestions'
 import { appendSuggestionDecision } from '../persistence/SuggestionDecisionLog'
+import { writeAtomicFile } from '../persistence/AtomicFile'
 import { approvalSchema, aiCancelSchema, aiSendSchema, applyMarkdownSchema, exportDocumentSchema, fileActionSchema, filePreviewSchema, idSchema, prepareMarkdownSchema, rendererStatsSchema, saveAssistantSchema } from '../../shared/ipc/schemas'
 import { registerDataIpc } from './registerDataIpc'
 import { registerGitIpc } from './registerGitIpc'
@@ -689,12 +690,5 @@ function projectContextsEqual(left: ProjectContext, right: ProjectContext) {
 }
 
 async function atomicWrite(filePath: string, content: string) {
-  const temporary = `${filePath}.tmp-${process.pid}-${randomUUID()}`
-  try {
-    await fs.promises.writeFile(temporary, content, { encoding: 'utf8', mode: 0o600, flag: 'wx' })
-    await fs.promises.rename(temporary, filePath)
-  } catch (error) {
-    await fs.promises.unlink(temporary).catch(() => undefined)
-    throw error
-  }
+  await writeAtomicFile(filePath, content)
 }
