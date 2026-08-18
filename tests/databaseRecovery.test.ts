@@ -117,4 +117,28 @@ describe('recuperação do banco', () => {
     expect(fs.existsSync(backup)).toBe(true)
     expect(fs.readdirSync(root).some((name) => name.startsWith('database-corrupt-'))).toBe(false)
   })
+
+  it('restaura o original quando o replace final falha sem deixar estado parcial', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-recovery-rename-failure-'))
+    directories.push(root)
+    const current = path.join(root, 'nocturne.db')
+    const backup = path.join(root, 'nocturne.db.backup-valid.db')
+    createDatabase(current, 'original')
+    createDatabase(backup, 'restored')
+    const realRename = fs.promises.rename
+    let renameCount = 0
+    vi.spyOn(fs.promises, 'rename').mockImplementation(async (source, destination) => {
+      renameCount += 1
+      if (renameCount === 2) throw new Error('replace interrompido')
+      return realRename(source, destination)
+    })
+
+    await expect(restoreDatabaseFile(root, backup)).rejects.toThrow(/arquivo original foi preservado/)
+
+    expect(inspectDatabaseFile(current)).toEqual({ schemaVersion: 1 })
+    const restored = new Sqlite(current, { readonly: true })
+    expect((restored.prepare('SELECT value FROM state').get() as { value: string }).value).toBe('original')
+    restored.close()
+    expect(fs.readdirSync(root).some((name) => name.startsWith('database-corrupt-'))).toBe(false)
+  })
 })

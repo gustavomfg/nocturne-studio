@@ -69,7 +69,9 @@ export class LocalDatabase {
     this.db.pragma('journal_mode = WAL')
     this.db.pragma('foreign_keys = ON')
     this.db.pragma('busy_timeout = 5000')
-    this.db.pragma('synchronous = NORMAL')
+    // FULL adds stronger commit-time synchronization in WAL mode, improving
+    // durability across OS/power failures while retaining SQLite transactions.
+    this.db.pragma('synchronous = FULL')
     this.db.pragma('temp_store = MEMORY')
     this.restrictDatabaseFiles()
     if (schemaVersion > 0 && schemaVersion < DATABASE_SCHEMA_VERSION && fs.existsSync(this.databasePath)) {

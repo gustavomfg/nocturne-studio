@@ -10,6 +10,20 @@ const directories: string[] = []
 afterEach(() => { for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }) })
 
 describe('durabilidade SQLite e restauração', () => {
+  it('mantém a configuração WAL e synchronous=FULL no banco do produto', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-sqlite-pragmas-'))
+    directories.push(root)
+    const database = new LocalDatabase(root)
+    const connection = (database as unknown as { db: Sqlite.Database }).db
+
+    expect(connection.pragma('journal_mode', { simple: true })).toBe('wal')
+    expect(connection.pragma('synchronous', { simple: true })).toBe(2)
+    expect(connection.pragma('foreign_keys', { simple: true })).toBe(1)
+    expect(connection.pragma('busy_timeout', { simple: true })).toBe(5_000)
+    expect(connection.pragma('temp_store', { simple: true })).toBe(2)
+    database.close()
+  })
+
   it('não expõe dados de uma transação interrompida após reabertura', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-sqlite-rollback-'))
     directories.push(root)
