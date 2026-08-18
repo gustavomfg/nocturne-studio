@@ -35,24 +35,26 @@ export class BuildRollbackService {
   ) {}
 
   async begin(conversationId: string, workspace: string) {
+    let normalizedWorkspace = workspace
     let snapshot: Snapshot
     try {
-      await this.run(['rev-parse', '--verify', 'HEAD'], workspace)
+      normalizedWorkspace = resolveInsideWorkspace('.', workspace)
+      await this.run(['rev-parse', '--verify', 'HEAD'], normalizedWorkspace)
       const status = await this.run(
         ['status', '--porcelain=v1', '--untracked-files=all', '--', '.'],
-        workspace,
+        normalizedWorkspace,
       )
       snapshot = status.stdout.trim()
         ? {
-          workspace,
+          workspace: normalizedWorkspace,
           available: false,
           files: [],
           reason: 'Rollback indisponível: o workspace já possuía alterações antes deste Build.',
         }
-        : { workspace, available: true, files: [] }
+        : { workspace: normalizedWorkspace, available: true, files: [] }
     } catch {
       snapshot = {
-        workspace,
+        workspace: normalizedWorkspace,
         available: false,
         files: [],
         reason: 'Rollback indisponível: o workspace não possui um repositório Git utilizável.',
@@ -99,7 +101,8 @@ export class BuildRollbackService {
 
   async rollback(conversationId: string, workspace: string) {
     const snapshot = this.completed.get(conversationId)
-    if (!snapshot || !snapshot.available || snapshot.workspace !== workspace) {
+    const normalizedWorkspace = snapshot?.available ? resolveInsideWorkspace('.', workspace) : workspace
+    if (!snapshot || !snapshot.available || snapshot.workspace !== normalizedWorkspace) {
       throw new Error(snapshot?.reason ?? 'Nenhum Build reversível foi registrado nesta conversa.')
     }
 
@@ -109,9 +112,9 @@ export class BuildRollbackService {
     try {
       for (const relative of snapshot.files) {
         currentPath = relative
-        const absolute = resolveInsideWorkspace(relative, workspace)
+        const absolute = resolveInsideWorkspace(relative, normalizedWorkspace)
         try {
-          await this.run(['ls-files', '--error-unmatch', '--', relative], workspace)
+          await this.run(['ls-files', '--error-unmatch', '--', relative], normalizedWorkspace)
           tracked.push(relative)
         } catch {
           const stat = await fs.promises.lstat(absolute).catch(() => null)
@@ -124,7 +127,7 @@ export class BuildRollbackService {
       }
       if (tracked.length) {
         currentPath = tracked.join(', ')
-        await this.run(['restore', '--source=HEAD', '--staged', '--worktree', '--', ...tracked], workspace)
+        await this.run(['restore', '--source=HEAD', '--staged', '--worktree', '--', ...tracked], normalizedWorkspace)
       }
       for (const file of created) {
         currentPath = file.relative

@@ -58,7 +58,6 @@ export function resolveInsideWorkspace(candidate: string, workspace: string) {
   }
   const root = path.resolve(workspace)
   const resolved = path.resolve(root, candidate)
-  assertContained(resolved, root)
   const realRoot = fs.realpathSync.native(root)
   let existing = resolved
   while (!fs.existsSync(existing)) {
@@ -140,6 +139,11 @@ async function openWorkspaceFile(candidate: string, workspace: string) {
 
   const handle = await fs.promises.open(resolved, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0))
   try {
+    // Windows does not provide the same O_NOFOLLOW semantics as POSIX. A
+    // post-open canonical-path check catches a symlink swap that happened
+    // between validation and open before any bytes are read.
+    const openedRealPath = await fs.promises.realpath(resolved)
+    assertContained(openedRealPath, realRoot)
     const stat = await handle.stat()
     if (!stat.isFile()) throw new Error('O caminho não é um arquivo regular.')
     if (!sameFileIdentity(expected, stat)) throw new Error('O arquivo mudou durante a validação.')
