@@ -612,7 +612,8 @@ export class LocalDatabase {
   private createMigrationBackup() {
     const integrity = this.db.pragma('quick_check', { simple: true }) as string
     if (integrity !== 'ok') throw new Error(`O banco atual falhou na verificação de integridade (${integrity}); a migração não foi iniciada.`)
-    this.db.pragma('wal_checkpoint(FULL)')
+    const checkpoint = this.db.pragma('wal_checkpoint(FULL)') as Array<{ busy: number }>
+    if (checkpoint[0]?.busy) throw new Error('O WAL está ocupado; a cópia pré-migração não foi concluída com segurança.')
     const directory = path.dirname(this.databasePath)
     const backupPath = path.join(directory, `${MIGRATION_BACKUP_PREFIX}${Date.now()}.db`)
     fs.copyFileSync(this.databasePath, backupPath)

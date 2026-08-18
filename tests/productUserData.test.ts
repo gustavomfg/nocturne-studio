@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import Sqlite from 'better-sqlite3'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { migrateProductUserData } from '../electron/persistence/ProductUserData'
 
@@ -57,6 +58,40 @@ describe('product user data migration', () => {
     fs.mkdirSync(legacyPath)
     fs.writeFileSync(path.join(legacyPath, 'nocturne.db'), 'database')
     fs.mkdirSync(path.join(appData, 'Nocturne Studio'))
+
+    expect(migrateProductUserData(appData, 'Nocturne Studio', 'Nocturne Codex'))
+      .toBe(legacyPath)
+  })
+
+  it('does not hide a valid legacy database behind a corrupt new directory', () => {
+    const appData = createAppData()
+    const currentPath = path.join(appData, 'Nocturne Studio')
+    const legacyPath = path.join(appData, 'Nocturne Codex')
+    fs.mkdirSync(currentPath)
+    fs.writeFileSync(path.join(currentPath, 'nocturne.db'), 'corrupt database')
+    fs.mkdirSync(legacyPath)
+    const legacyDatabase = new Sqlite(path.join(legacyPath, 'nocturne.db'))
+    legacyDatabase.exec('CREATE TABLE state (value TEXT NOT NULL); PRAGMA user_version = 15;')
+    legacyDatabase.prepare('INSERT INTO state(value) VALUES (?)').run('preserved')
+    legacyDatabase.close()
+
+    expect(migrateProductUserData(appData, 'Nocturne Studio', 'Nocturne Codex'))
+      .toBe(legacyPath)
+    expect(fs.readFileSync(path.join(currentPath, 'nocturne.db'), 'utf8')).toBe('corrupt database')
+  })
+
+  it('prefers populated legacy data over an empty database left by an interrupted startup', () => {
+    const appData = createAppData()
+    const currentPath = path.join(appData, 'Nocturne Studio')
+    const legacyPath = path.join(appData, 'Nocturne Codex')
+    fs.mkdirSync(currentPath)
+    const emptyDatabase = new Sqlite(path.join(currentPath, 'nocturne.db'))
+    emptyDatabase.close()
+    fs.mkdirSync(legacyPath)
+    const legacyDatabase = new Sqlite(path.join(legacyPath, 'nocturne.db'))
+    legacyDatabase.exec('CREATE TABLE state (value TEXT NOT NULL); PRAGMA user_version = 15;')
+    legacyDatabase.prepare('INSERT INTO state(value) VALUES (?)').run('preserved')
+    legacyDatabase.close()
 
     expect(migrateProductUserData(appData, 'Nocturne Studio', 'Nocturne Codex'))
       .toBe(legacyPath)

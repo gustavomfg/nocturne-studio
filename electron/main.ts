@@ -15,7 +15,7 @@ import { ElectronCredentialEncryption } from './security/ElectronCredentialEncry
 import { ModelCatalogService } from './ai/ModelCatalogService'
 import { migrateProductUserData } from './persistence/ProductUserData'
 import productIdentity from '../shared/product-identity.json'
-import { inspectDatabaseFile, isRecoverableDatabaseCorruption, listDatabaseRecoveryCandidates, restoreDatabaseFile } from './database/recovery'
+import { hasDatabaseRecoveryArtifacts, inspectDatabaseFile, isRecoverableDatabaseCorruption, listDatabaseRecoveryCandidates, restoreDatabaseFile } from './database/recovery'
 import packageMetadata from '../package.json'
 import { FatalShutdownController, type FatalShutdownEvent } from './runtime/FatalShutdown'
 import { isMainProcessOperational, markMainProcessFatal, markMainProcessTerminated } from './runtime/MainProcessState'
@@ -322,32 +322,44 @@ async function initializeServices() {
 
 async function recoverDatabaseIfNeeded(userDataPath: string) {
   const databasePath = path.join(userDataPath, 'nocturne.db')
-  if (!fs.existsSync(databasePath)) return
+  const databaseMissing = !fs.existsSync(databasePath)
+  if (databaseMissing && !hasDatabaseRecoveryArtifacts(userDataPath)) {
+    const candidates = await listDatabaseRecoveryCandidates(userDataPath)
+    if (!candidates.length) return
+  }
   try {
-    inspectDatabaseFile(databasePath)
-    return
+    if (!databaseMissing) {
+      inspectDatabaseFile(databasePath)
+      return
+    }
   } catch (error) {
     if (!isRecoverableDatabaseCorruption(error)) {
       throw new Error(`Não foi possível validar o banco local. Verifique as permissões e o acesso ao arquivo ${databasePath}. Detalhe: ${error instanceof Error ? error.message : String(error)}`)
     }
-    const candidates = await listDatabaseRecoveryCandidates(userDataPath)
-    const latest = candidates[0]
-    if (!latest) {
-      throw new Error(`O banco local está corrompido e nenhum ponto de recuperação válido foi encontrado. O arquivo foi preservado em ${databasePath}. Detalhe: ${error instanceof Error ? error.message : String(error)}`)
-    }
-    const response = await dialog.showMessageBox({
-      type: 'error',
-      title: 'Recuperar banco de dados?',
-      message: 'O banco local falhou na verificação de integridade.',
-      detail: `Há um ponto de recuperação compatível de ${new Date(latest.modifiedAt).toLocaleString('pt-BR')}. O banco atual será preservado em quarentena antes da restauração.\n\nOrigem: ${latest.path}`,
-      buttons: ['Encerrar sem alterar', 'Restaurar ponto de recuperação'],
-      defaultId: 0,
-      cancelId: 0,
-      noLink: true,
-    })
-    if (response.response !== 1) throw new Error('A recuperação do banco foi cancelada; nenhum arquivo foi alterado.')
-    await restoreDatabaseFile(userDataPath, latest.path)
+    await restoreCorruptDatabase(userDataPath, databasePath, error)
+    return
   }
+  await restoreCorruptDatabase(userDataPath, databasePath, new Error('O banco local desapareceu durante uma operação de recuperação.'))
+}
+
+async function restoreCorruptDatabase(userDataPath: string, databasePath: string, failure: unknown) {
+  const candidates = await listDatabaseRecoveryCandidates(userDataPath)
+  const latest = candidates[0]
+  if (!latest) {
+    throw new Error(`O banco local ${fs.existsSync(databasePath) ? 'está corrompido' : 'não está disponível'} e nenhum ponto de recuperação válido foi encontrado. Os artefatos de recuperação foram preservados em ${userDataPath}. Detalhe: ${failure instanceof Error ? failure.message : String(failure)}`)
+  }
+  const response = await dialog.showMessageBox({
+    type: 'error',
+    title: 'Recuperar banco de dados?',
+    message: 'O banco local falhou na verificação de integridade.',
+    detail: `Há um ponto de recuperação compatível de ${new Date(latest.modifiedAt).toLocaleString('pt-BR')}. O banco atual será preservado em quarentena antes da restauração.\n\nOrigem: ${latest.path}`,
+    buttons: ['Encerrar sem alterar', 'Restaurar ponto de recuperação'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  })
+  if (response.response !== 1) throw new Error('A recuperação do banco foi cancelada; nenhum arquivo foi alterado.')
+  await restoreDatabaseFile(userDataPath, latest.path)
 }
 
 async function runPackageSmoke(output: string) {

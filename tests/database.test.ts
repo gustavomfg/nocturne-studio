@@ -359,6 +359,11 @@ describe('persistência SQLite', () => {
     expect(sqlite.pragma('user_version', { simple: true })).toBe(1)
     expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='migration_probe'").get()).toBeUndefined()
     sqlite.close()
+
+    const reopened = new Sqlite(file, { readonly: true })
+    expect(reopened.pragma('user_version', { simple: true })).toBe(1)
+    expect(reopened.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='migration_probe'").get()).toBeUndefined()
+    reopened.close()
   })
   it('mantém índices de navegação e relacionamentos após a migração', () => {
     const db = create(); db.close()

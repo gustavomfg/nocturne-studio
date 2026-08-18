@@ -9,6 +9,15 @@ export interface DatabaseRecoveryCandidate {
   modifiedAt: string
 }
 
+export function hasDatabaseRecoveryArtifacts(userDataPath: string) {
+  try {
+    return fs.readdirSync(userDataPath).some((name) =>
+      name.startsWith('database-corrupt-') || name.startsWith('nocturne.db.recovery-'))
+  } catch {
+    return false
+  }
+}
+
 export function isRecoverableDatabaseCorruption(error: unknown) {
   const code = (error as NodeJS.ErrnoException | undefined)?.code
   if (code === 'SQLITE_CORRUPT' || code === 'SQLITE_NOTADB') return true
@@ -32,6 +41,7 @@ export function inspectDatabaseFile(filePath: string) {
 export async function listDatabaseRecoveryCandidates(userDataPath: string): Promise<DatabaseRecoveryCandidate[]> {
   const locations = [
     { directory: userDataPath, accepts: (name: string) => name.startsWith('nocturne.db.backup-') && !name.endsWith('-wal') && !name.endsWith('-shm') },
+    { directory: userDataPath, accepts: (name: string) => name.startsWith('nocturne.db.recovery-') && !name.endsWith('-wal') && !name.endsWith('-shm') },
     { directory: path.join(userDataPath, 'backups'), accepts: (name: string) => name.startsWith('nocturne-before-restore-') && name.endsWith('.db') },
   ]
   const candidates: DatabaseRecoveryCandidate[] = []
@@ -76,6 +86,12 @@ export async function restoreDatabaseFile(userDataPath: string, sourcePath: stri
     }
     await fs.promises.copyFile(sourcePath, temporary, fs.constants.COPYFILE_EXCL)
     await fs.promises.chmod(temporary, 0o600)
+    const restoredHandle = await fs.promises.open(temporary, 'r+')
+    try {
+      await restoredHandle.sync()
+    } finally {
+      await restoredHandle.close()
+    }
     inspectDatabaseFile(temporary)
     await fs.promises.rename(temporary, databasePath)
     return quarantine
