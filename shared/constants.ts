@@ -13,6 +13,20 @@ export const PERSISTENCE_LIMITS = {
   documentNameCharacters: 200,
 } as const
 
+/**
+ * Byte limits for files read from an authorized workspace by the main process.
+ * These are deliberately separate from character limits: UTF-8 characters do
+ * not have a fixed byte width and the I/O boundary must be enforced first.
+ */
+export const WORKSPACE_READ_LIMITS = Object.freeze({
+  attachmentBytes: 1_000_000,
+  workspaceContextBytes: 256_000,
+  projectMetadataBytes: 256_000,
+  packageMetadataBytes: 1_000_000,
+  suggestionHistoryBytes: 1_000_000,
+  documentBytes: 2_000_000,
+})
+
 export const UI_TIMING = {
   streamFlushMs: 80,
   activityFlushMs: 150,

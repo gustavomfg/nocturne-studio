@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { diagnosticFingerprint, redactLogText } from '../logging/Logger'
 import { LocalDatabase } from '../database/Database'
 import { Logger } from '../logging/Logger'
-import { isExternalOpenBlocked, readWorkspaceFile, resolveExistingWorkspacePath, resolveInsideWorkspace, statWorkspaceFile } from '../security/ExecutionPolicy'
+import { isExternalOpenBlocked, isWorkspaceFileTooLarge, readWorkspaceFile, resolveExistingWorkspacePath, resolveInsideWorkspace, sanitizeWorkspaceReadError, statWorkspaceFile } from '../security/ExecutionPolicy'
 import { sanitizeSuggestionTitle } from '../../shared/suggestions'
 import { appendSuggestionDecision } from '../persistence/SuggestionDecisionLog'
 import { approvalSchema, aiCancelSchema, aiSendSchema, applyMarkdownSchema, exportDocumentSchema, fileActionSchema, filePreviewSchema, idSchema, prepareMarkdownSchema, rendererStatsSchema, saveAssistantSchema } from '../../shared/ipc/schemas'
@@ -39,7 +39,7 @@ import { BuildRollbackService } from '../ai/BuildRollbackService'
 import { DocumentUpdateService } from '../documents/DocumentUpdateService'
 import type { AwarenessSnapshot } from '../../shared/awareness'
 import packageMetadata from '../../package.json'
-import { RENDERER_PERFORMANCE_BUDGETS } from '../../shared/constants'
+import { RENDERER_PERFORMANCE_BUDGETS, WORKSPACE_READ_LIMITS } from '../../shared/constants'
 
 const execFileAsync = promisify(execFile)
 
@@ -119,7 +119,7 @@ export function registerIpc(
       const inspected = await statWorkspaceFile(filePath, conversation.workspace)
       const stat = inspected.stat
       if (!stat.isFile()) throw new Error(`${path.basename(filePath)} não é um arquivo válido.`)
-      if (stat.size > 1_000_000) throw new Error(`${path.basename(filePath)} excede o limite de 1 MB.`)
+      if (stat.size > WORKSPACE_READ_LIMITS.attachmentBytes) throw new Error(`${path.basename(filePath)} excede o limite de 1 MB.`)
       return { path: path.relative(conversation.workspace, inspected.path), name: path.basename(inspected.path), size: stat.size }
     })))
   })
@@ -146,12 +146,12 @@ export function registerIpc(
     const conversation = getAuthorizedConversation(database, data.conversationId)
     let file
     try {
-      file = await readWorkspaceFile(data.filePath, conversation.workspace, 2_000_000)
+      file = await readWorkspaceFile(data.filePath, conversation.workspace, WORKSPACE_READ_LIMITS.documentBytes)
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
       if (code === 'ENOENT') throw new Error('Arquivo não encontrado.')
       if (code === 'EFBIG') throw new Error('Preview limitado a arquivos de até 2 MB.')
-      throw error
+      throw sanitizeWorkspaceReadError(error, 'Não foi possível ler o arquivo com segurança.')
     }
     const filePath = file.path
     const stat = file.stat
@@ -225,9 +225,13 @@ export function registerIpc(
     const projectPath = path.join(conversation.workspace, '.nocturne', 'project.json')
     let projectName = path.basename(conversation.workspace)
     try {
-      const projectData = JSON.parse(await fs.promises.readFile(projectPath, 'utf8')) as { name?: string }
+      const projectData = JSON.parse((await readWorkspaceFile(projectPath, conversation.workspace, WORKSPACE_READ_LIMITS.projectMetadataBytes)).content.toString('utf8')) as { name?: string }
       if (projectData.name) projectName = projectData.name
-    } catch { /* use directory name */ }
+    } catch (error) {
+      if (isWorkspaceFileTooLarge(error)) throw new Error('O metadata do projeto excede o limite permitido.')
+      if (!((error as NodeJS.ErrnoException).code === 'ENOENT' || error instanceof SyntaxError)) throw new Error('Não foi possível ler o metadata do projeto com segurança.')
+      /* use directory name for missing or malformed metadata */
+    }
 
     const contextSources: NormalizedTaskInput['context'] = []
     if (workspaceMemory.content) {
@@ -436,7 +440,7 @@ export function registerIpc(
       await fs.promises.rename(temporary, target)
       await fs.promises.chmod(target, 0o600)
       const artifactContent = data.format === 'html'
-        ? (await readWorkspaceFile(target, conversation.workspace)).content.toString('utf8')
+        ? (await readWorkspaceFile(target, conversation.workspace, WORKSPACE_READ_LIMITS.documentBytes)).content.toString('utf8')
         : null
       database.addArtifact(data.conversationId, conversation.workspace, 'document', path.basename(target), target, artifactContent, { format: data.format })
       return target
@@ -560,7 +564,7 @@ async function ensureNocturneWorkspace(workspace: string) {
   const rulesPath = path.join(directory, 'rules.md')
   const project = await detectProject(workspace)
   await Promise.all([
-    ensureProjectMetadata(projectPath, project),
+    ensureProjectMetadata(projectPath, workspace, project),
     writeIfMissing(memoryPath, '# Memória do projeto\n\nDecisões, arquitetura e informações aprendidas pelo agente.\n'),
     writeIfMissing(rulesPath, '# Regras do projeto\n\nPreferências e padrões de código que o agente deve seguir.\n'),
   ])
@@ -570,11 +574,25 @@ async function readWorkspaceContext(workspace: string) {
   await ensureNocturneWorkspace(workspace)
   const directory = path.join(workspace, '.nocturne')
   let project = await detectProject(workspace)
-  try { project = JSON.parse(await fs.promises.readFile(path.join(directory, 'project.json'), 'utf8')) as ProjectContext } catch { /* regenerate invalid metadata on save */ }
+  try {
+    project = JSON.parse((await readWorkspaceFile(path.join(directory, 'project.json'), workspace, WORKSPACE_READ_LIMITS.projectMetadataBytes)).content.toString('utf8')) as ProjectContext
+  } catch (error) {
+    if (isWorkspaceFileTooLarge(error)) throw new Error('O metadata do projeto excede o limite permitido.')
+    if (!((error as NodeJS.ErrnoException).code === 'ENOENT' || error instanceof SyntaxError)) throw sanitizeWorkspaceReadError(error, 'Não foi possível ler o metadata do projeto com segurança.')
+    // Regenerate invalid metadata on save, preserving the existing contract.
+  }
   const memoryPath = path.join(directory, 'memory.md')
   const rulesPath = path.join(directory, 'rules.md')
-  const [memoryStat, rulesStat, content, rules] = await Promise.all([fs.promises.stat(memoryPath), fs.promises.stat(rulesPath), fs.promises.readFile(memoryPath, 'utf8'), fs.promises.readFile(rulesPath, 'utf8')])
-  return { content, rules, project, updatedAt: new Date(Math.max(memoryStat.mtimeMs, rulesStat.mtimeMs)).toISOString() }
+  const [memory, rules] = await Promise.all([
+    readWorkspaceContextFile(memoryPath, workspace),
+    readWorkspaceContextFile(rulesPath, workspace),
+  ])
+  return {
+    content: memory.content.toString('utf8'),
+    rules: rules.content.toString('utf8'),
+    project,
+    updatedAt: new Date(Math.max(memory.stat.mtimeMs, rules.stat.mtimeMs)).toISOString(),
+  }
 }
 
 async function writeWorkspaceContext(workspace: string, content: string, rules: string) {
@@ -589,6 +607,16 @@ async function writeWorkspaceContext(workspace: string, content: string, rules: 
   return { content, rules, project, updatedAt: new Date().toISOString() }
 }
 
+async function readWorkspaceContextFile(filePath: string, workspace: string) {
+  try {
+    return await readWorkspaceFile(filePath, workspace, WORKSPACE_READ_LIMITS.workspaceContextBytes)
+  } catch (error) {
+    if (isWorkspaceFileTooLarge(error)) throw new Error('O contexto do workspace excede o limite permitido.')
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error('Arquivo de contexto do workspace não encontrado.')
+    throw sanitizeWorkspaceReadError(error, 'Não foi possível ler o contexto do workspace com segurança.')
+  }
+}
+
 async function detectProject(workspace: string): Promise<ProjectContext> {
   const files = new Set(await fs.promises.readdir(workspace))
   const stack: string[] = []
@@ -597,11 +625,15 @@ async function detectProject(workspace: string): Promise<ProjectContext> {
   if (files.has('package.json')) {
     stack.push('Node.js'); primaryLanguage = files.has('tsconfig.json') ? 'TypeScript' : 'JavaScript'
     try {
-      const pkg = JSON.parse(await fs.promises.readFile(path.join(workspace, 'package.json'), 'utf8')) as { scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string> }
+      const pkg = JSON.parse((await readWorkspaceFile(path.join(workspace, 'package.json'), workspace, WORKSPACE_READ_LIMITS.packageMetadataBytes)).content.toString('utf8')) as { scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string> }
       Object.assign(commands, pkg.scripts ?? {})
       const deps = { ...pkg.dependencies, ...pkg.devDependencies }
       for (const [dependency, label] of Object.entries({ react: 'React', vue: 'Vue', electron: 'Electron', next: 'Next.js', vite: 'Vite' })) if (deps[dependency]) stack.push(label)
-    } catch { /* keep basic detection */ }
+    } catch (error) {
+      if (isWorkspaceFileTooLarge(error)) throw new Error('O package.json excede o limite permitido.')
+      if (!((error as NodeJS.ErrnoException).code === 'ENOENT' || error instanceof SyntaxError)) throw sanitizeWorkspaceReadError(error, 'Não foi possível ler o package.json com segurança.')
+      /* keep basic detection for missing or malformed package metadata */
+    }
   }
   if (files.has('Cargo.toml')) { stack.push('Rust'); primaryLanguage = 'Rust'; commands.test = 'cargo test' }
   if (files.has('pyproject.toml') || files.has('requirements.txt')) { stack.push('Python'); primaryLanguage = 'Python'; commands.test ??= 'pytest' }
@@ -612,7 +644,7 @@ async function detectProject(workspace: string): Promise<ProjectContext> {
 async function recordSuggestionDecision(workspace: string, suggestion: { title: string; status: string; updatedAt: string }) {
   await ensureNocturneWorkspace(workspace)
   const memoryPath = path.join(workspace, '.nocturne', 'memory.md')
-  await appendSuggestionDecision(memoryPath, { ...suggestion, title: sanitizeSuggestionTitle(suggestion.title) })
+  await appendSuggestionDecision(workspace, memoryPath, { ...suggestion, title: sanitizeSuggestionTitle(suggestion.title) })
 }
 
 async function writeIfMissing(filePath: string, content: string) {
@@ -620,12 +652,13 @@ async function writeIfMissing(filePath: string, content: string) {
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error }
 }
 
-async function ensureProjectMetadata(filePath: string, project: ProjectContext) {
+async function ensureProjectMetadata(filePath: string, workspace: string, project: ProjectContext) {
   let current: unknown
   try {
-    current = JSON.parse(await fs.promises.readFile(filePath, 'utf8'))
+    current = JSON.parse((await readWorkspaceFile(filePath, workspace, WORKSPACE_READ_LIMITS.projectMetadataBytes)).content.toString('utf8'))
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error
+    if (isWorkspaceFileTooLarge(error)) throw new Error('O metadata do projeto excede o limite permitido.')
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT' && !(error instanceof SyntaxError)) throw sanitizeWorkspaceReadError(error, 'Não foi possível ler o metadata do projeto com segurança.')
   }
   if (isProjectContext(current) && projectContextsEqual(current, project)) return
   await atomicWrite(filePath, `${JSON.stringify(project, null, 2)}\n`)

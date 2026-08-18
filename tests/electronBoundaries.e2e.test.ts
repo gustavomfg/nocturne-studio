@@ -1,9 +1,11 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { NocturneApi } from '../shared/ipc/contracts'
-import { DATABASE_SCHEMA_VERSION } from '../shared/constants'
+import { DATABASE_SCHEMA_VERSION, WORKSPACE_READ_LIMITS } from '../shared/constants'
+import { aiSendSchema } from '../shared/ipc/schemas'
 import type {
   ProviderConfigurationInput,
   ProviderConfigurationSummary,
@@ -254,6 +256,39 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     await api.conversations.delete(conversation.id)
   })
 
+  it('rejeita payloads de anexos inválidos antes de acessar o workspace', async () => {
+    const handler = electronMock.handlers.get('ai:send')
+    if (!handler) throw new Error('Handler ai:send ausente.')
+    const event = { sender: electronMock.mainWebContents, senderFrame: electronMock.mainFrame }
+    await expect(handler(event, {
+      conversationId: randomUUID(), prompt: 'teste', attachments: Array.from({ length: 11 }, () => 'arquivo.txt'), mode: 'review',
+    })).rejects.toThrow()
+    expect(() => aiSendSchema.parse({
+      conversationId: randomUUID(), prompt: 'teste', attachments: [42], mode: 'review',
+    })).toThrow()
+    expect(() => aiSendSchema.parse({
+      conversationId: randomUUID(), prompt: 'teste', attachments: ['arquivo.txt'], mode: 'review', extra: true,
+    })).toThrow()
+
+    const conversation = await api.conversations.create(workspace)
+    try {
+      await expect(api.ai.send(conversation.id, 'teste', ['../fora.txt'], 'review')).rejects.toThrow(/dentro do workspace/)
+      await expect(api.ai.send(conversation.id, 'teste', [path.join(os.tmpdir(), 'fora.txt')], 'review')).rejects.toThrow(/dentro do workspace/)
+      const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-ipc-outside-'))
+      const link = path.join(workspace, 'ipc-link.txt')
+      fs.writeFileSync(path.join(outside, 'secret.txt'), 'externo')
+      fs.symlinkSync(path.join(outside, 'secret.txt'), link)
+      try {
+        await expect(api.ai.send(conversation.id, 'teste', ['ipc-link.txt'], 'review')).rejects.toThrow(/dentro do workspace/)
+      } finally {
+        fs.rmSync(link, { force: true })
+        fs.rmSync(outside, { recursive: true, force: true })
+      }
+    } finally {
+      await api.conversations.delete(conversation.id)
+    }
+  })
+
   it('atualiza metadata stale do workspace sem apagar contexto local', async () => {
     const metadataWorkspace = path.join(root, 'metadata-workspace')
     fs.mkdirSync(metadataWorkspace)
@@ -292,6 +327,36 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     } finally {
       await api.conversations.delete(conversation.id)
     }
+  })
+
+  it('falha de forma controlada para contexto e metadata acima dos limites', async () => {
+    const contextWorkspace = path.join(root, 'oversized-context-workspace')
+    fs.mkdirSync(contextWorkspace)
+    electron.dialogs.open.push({ canceled: false, filePaths: [contextWorkspace] })
+    await api.workspace.select()
+    const memoryPath = path.join(contextWorkspace, '.nocturne', 'memory.md')
+    fs.writeFileSync(memoryPath, Buffer.alloc(WORKSPACE_READ_LIMITS.workspaceContextBytes + 1, 0x6d))
+    const contextConversation = await api.conversations.create(contextWorkspace)
+    try {
+      await expect(api.memory.get(contextConversation.id)).rejects.toThrow(/limite permitido/)
+    } finally {
+      await api.conversations.delete(contextConversation.id)
+    }
+
+    const packageWorkspace = path.join(root, 'oversized-package-workspace')
+    fs.mkdirSync(packageWorkspace)
+    fs.writeFileSync(path.join(packageWorkspace, 'package.json'), JSON.stringify({ name: 'package-fixture' }))
+    electron.dialogs.open.push({ canceled: false, filePaths: [packageWorkspace] })
+    await api.workspace.select()
+    fs.writeFileSync(path.join(packageWorkspace, 'package.json'), Buffer.alloc(WORKSPACE_READ_LIMITS.packageMetadataBytes + 1, 0x70))
+    await expect(api.conversations.create(packageWorkspace)).rejects.toThrow(/package\.json excede o limite permitido/)
+
+    const projectWorkspace = path.join(root, 'oversized-project-workspace')
+    fs.mkdirSync(projectWorkspace)
+    electron.dialogs.open.push({ canceled: false, filePaths: [projectWorkspace] })
+    await api.workspace.select()
+    fs.writeFileSync(path.join(projectWorkspace, '.nocturne', 'project.json'), Buffer.alloc(WORKSPACE_READ_LIMITS.projectMetadataBytes + 1, 0x70))
+    await expect(api.conversations.create(projectWorkspace)).rejects.toThrow(/metadata do projeto excede o limite permitido/)
   })
 
   it('persiste e recupera conversas com paginação', async () => {

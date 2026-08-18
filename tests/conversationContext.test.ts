@@ -1,9 +1,11 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { WORKSPACE_READ_LIMITS } from '../shared/constants'
 import { AI_TASK_LIMITS } from '../shared/ai/task'
 import { buildAttachmentMessages, buildHistoryMessages } from '../electron/ai/conversationContext'
+import { readWorkspaceFile } from '../electron/security/ExecutionPolicy'
 
 describe('buildHistoryMessages', () => {
   it('mantém apenas mensagens de user/assistant dentro do limite', () => {
@@ -54,6 +56,66 @@ describe('buildAttachmentMessages', () => {
 
   it('bloqueia anexos fora do workspace', async () => {
     await expect(buildAttachmentMessages(['../fora.txt'], workspace)).rejects.toThrow()
+  })
+
+  it('bloqueia symlink existente que aponta para fora do workspace', async () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-context-outside-'))
+    fs.writeFileSync(path.join(outside, 'segredo.txt'), 'externo')
+    const linked = path.join(workspace, 'link.txt')
+    fs.symlinkSync(path.join(outside, 'segredo.txt'), linked)
+    try {
+      await expect(buildAttachmentMessages(['link.txt'], workspace)).rejects.toThrow(/fora do workspace/)
+    } finally {
+      fs.unlinkSync(linked)
+      fs.rmSync(outside, { recursive: true, force: true })
+    }
+  })
+
+  it('rejeita arquivo inexistente e diretório no lugar de anexo', async () => {
+    await expect(buildAttachmentMessages(['ausente.txt'], workspace)).rejects.toThrow(/não foi encontrado/)
+    const directory = path.join(workspace, 'pasta')
+    fs.mkdirSync(directory)
+    try {
+      await expect(buildAttachmentMessages(['pasta'], workspace)).rejects.toThrow(/arquivo regular/)
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('não lê fora do workspace quando o arquivo é trocado por symlink antes da abertura', async () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-context-race-outside-'))
+    const safePath = path.join(workspace, 'race.txt')
+    const outsidePath = path.join(outside, 'segredo.txt')
+    fs.writeFileSync(safePath, 'interno')
+    fs.writeFileSync(outsidePath, 'externo')
+    const originalOpen = fs.promises.open
+    let swapped = false
+    const openSpy = vi.spyOn(fs.promises, 'open').mockImplementation(async (filePath, flags, mode) => {
+      if (!swapped && filePath === safePath) {
+        swapped = true
+        fs.unlinkSync(safePath)
+        fs.symlinkSync(outsidePath, safePath)
+      }
+      return originalOpen(filePath, flags, mode)
+    })
+    try {
+      await expect(readWorkspaceFile('race.txt', workspace, WORKSPACE_READ_LIMITS.attachmentBytes)).rejects.toThrow()
+      expect(swapped).toBe(true)
+    } finally {
+      openSpy.mockRestore()
+      fs.rmSync(safePath, { force: true })
+      fs.rmSync(outside, { recursive: true, force: true })
+    }
+  })
+
+  it('rejeita anexos acima do limite de bytes antes de materializar o conteúdo', async () => {
+    const large = path.join(workspace, 'acima-do-limite.txt')
+    fs.writeFileSync(large, Buffer.alloc(WORKSPACE_READ_LIMITS.attachmentBytes + 1, 0x79))
+    try {
+      await expect(buildAttachmentMessages(['acima-do-limite.txt'], workspace)).rejects.toThrow(/1 MB/)
+    } finally {
+      fs.rmSync(large, { force: true })
+    }
   })
 
   it('trunca anexos acima do limite de caracteres por mensagem', async () => {

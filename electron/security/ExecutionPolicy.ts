@@ -1,5 +1,6 @@
 import path from 'node:path'
 import fs from 'node:fs'
+import { WORKSPACE_READ_LIMITS } from '../../shared/constants'
 
 export type CommandRisk = 'safe' | 'sensitive' | 'dangerous'
 export interface CommandAssessment { risk: CommandRisk; reasons: string[]; requiresApproval: boolean; blockedAutomatic: boolean }
@@ -13,6 +14,8 @@ const commonExternalOpenRiskExtensions = new Set([
   '.js', '.jse', '.mjs', '.vbs', '.vbe', '.wsf', '.wsh', '.hta', '.ps1', '.psm1',
   '.inetloc', '.url', '.webloc', '.website',
 ])
+
+const MAX_WORKSPACE_READ_BYTES = Math.max(...Object.values(WORKSPACE_READ_LIMITS))
 
 export const externalOpenRiskExtensionsByPlatform: Record<string, ReadonlySet<string>> = {
   win32: new Set([...commonExternalOpenRiskExtensions, '.appx', '.appxbundle', '.cmd', '.cpl', '.lnk', '.msix', '.msixbundle', '.pif', '.scr', '.scf', '.url', '.website']),
@@ -78,31 +81,90 @@ export function resolveExistingWorkspacePath(candidate: string, workspace: strin
 }
 
 export async function statWorkspaceFile(candidate: string, workspace: string) {
-  const resolved = resolveInsideWorkspace(candidate, workspace)
-  const handle = await fs.promises.open(resolved, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0))
+  const opened = await openWorkspaceFile(candidate, workspace)
   try {
-    const stat = await handle.stat()
-    return { path: resolved, stat }
+    return { path: opened.path, stat: opened.stat }
   } finally {
-    await handle.close()
+    await opened.handle.close()
   }
 }
 
-export async function readWorkspaceFile(candidate: string, workspace: string, maxBytes?: number) {
+export async function readWorkspaceFile(candidate: string, workspace: string, maxBytes: number) {
+  assertReadLimit(maxBytes)
+  const opened = await openWorkspaceFile(candidate, workspace)
+  try {
+    if (opened.stat.size > maxBytes) throw workspaceFileTooLargeError()
+
+    // Read at most maxBytes + 1 bytes. The extra byte detects a file that
+    // grows after the initial descriptor stat without allocating from the
+    // file's untrusted size.
+    const buffer = Buffer.alloc(maxBytes + 1)
+    let offset = 0
+    while (offset < buffer.length) {
+      const result = await opened.handle.read(buffer, offset, buffer.length - offset, null)
+      if (result.bytesRead === 0) break
+      offset += result.bytesRead
+    }
+    const finalStat = await opened.handle.stat()
+    if (offset > maxBytes || finalStat.size > maxBytes) throw workspaceFileTooLargeError()
+    return { path: opened.path, stat: finalStat, content: buffer.subarray(0, offset) }
+  } finally {
+    await opened.handle.close()
+  }
+}
+
+export function isWorkspaceFileTooLarge(error: unknown) {
+  return (error as NodeJS.ErrnoException | undefined)?.code === 'EFBIG'
+}
+
+export function sanitizeWorkspaceReadError(error: unknown, fallback: string) {
+  if (error instanceof Error && (
+    error.message.startsWith('Acesso bloqueado:')
+    || error.message === 'O caminho não é um arquivo regular.'
+    || error.message === 'O arquivo mudou durante a validação.'
+  )) return error
+  return new Error(fallback)
+}
+
+async function openWorkspaceFile(candidate: string, workspace: string) {
   const resolved = resolveInsideWorkspace(candidate, workspace)
+  const expected = await fs.promises.stat(resolved)
+  if (!expected.isFile()) throw new Error('O caminho não é um arquivo regular.')
+
+  // Re-check the canonical path immediately before opening. The descriptor
+  // identity check below closes the remaining validation/open race window on
+  // platforms where O_NOFOLLOW is unavailable.
+  const realRoot = await fs.promises.realpath(path.resolve(workspace))
+  const realResolved = await fs.promises.realpath(resolved)
+  assertContained(realResolved, realRoot)
+
   const handle = await fs.promises.open(resolved, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0))
   try {
     const stat = await handle.stat()
     if (!stat.isFile()) throw new Error('O caminho não é um arquivo regular.')
-    if (maxBytes !== undefined && stat.size > maxBytes) {
-      const error = new Error('O arquivo excede o limite permitido.') as NodeJS.ErrnoException
-      error.code = 'EFBIG'
-      throw error
-    }
-    return { path: resolved, stat, content: await handle.readFile() }
-  } finally {
-    await handle.close()
+    if (!sameFileIdentity(expected, stat)) throw new Error('O arquivo mudou durante a validação.')
+    return { path: resolved, stat, handle }
+  } catch (error) {
+    await handle.close().catch(() => undefined)
+    throw error
   }
+}
+
+function assertReadLimit(maxBytes: number) {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0 || maxBytes > MAX_WORKSPACE_READ_BYTES) throw new Error('Limite de leitura inválido.')
+}
+
+function workspaceFileTooLargeError() {
+  const error = new Error('O arquivo excede o limite permitido.') as NodeJS.ErrnoException
+  error.code = 'EFBIG'
+  return error
+}
+
+function sameFileIdentity(expected: fs.Stats, actual: fs.Stats) {
+  const identityAvailable = Number.isFinite(expected.dev) && Number.isFinite(expected.ino)
+    && Number.isFinite(actual.dev) && Number.isFinite(actual.ino)
+    && (expected.dev !== 0 || expected.ino !== 0)
+  return !identityAvailable || (expected.dev === actual.dev && expected.ino === actual.ino)
 }
 
 function assertContained(candidate: string, root: string) {

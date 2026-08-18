@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
+import { WORKSPACE_READ_LIMITS } from '../../shared/constants'
 import { readWorkspaceFile, resolveInsideWorkspace } from '../security/ExecutionPolicy'
 
-const MAX_DOCUMENT_BYTES = 2_000_000
+const MAX_DOCUMENT_BYTES = WORKSPACE_READ_LIMITS.documentBytes
 
 export type DocumentUpdateStrategy = 'append' | 'replace'
 

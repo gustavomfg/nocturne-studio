@@ -9,7 +9,7 @@ import { MODEL_LIMITS } from '../ai/model'
 export const idSchema = z.string().uuid()
 export const pageSchema = z.object({ offset: z.number().int().min(0).max(1_000_000), limit: z.number().int().min(1).max(200) }).strict()
 export const conversationPageSchema = pageSchema.extend({ conversationId: idSchema })
-export const aiSendSchema = z.object({ conversationId: idSchema, prompt: z.string().trim().min(1).max(100_000), attachments: z.array(z.string()).max(10).default([]), mode: z.enum(agentModes).default('build') })
+export const aiSendSchema = z.object({ conversationId: idSchema, prompt: z.string().trim().min(1).max(100_000), attachments: z.array(z.string().trim().min(1).max(4_000)).max(10).default([]), mode: z.enum(agentModes).default('build') }).strict()
 export const aiCancelSchema = z.object({ conversationId: idSchema }).strict()
 export const approvalSchema = z.object({ key: z.string().min(1), accepted: z.boolean(), forSession: z.boolean().optional() })
 export const workspaceFavoriteSchema = z.object({ workspace: z.string().min(1), favorite: z.boolean() })
