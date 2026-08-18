@@ -560,7 +560,7 @@ async function ensureNocturneWorkspace(workspace: string) {
   const rulesPath = path.join(directory, 'rules.md')
   const project = await detectProject(workspace)
   await Promise.all([
-    writeIfMissing(projectPath, `${JSON.stringify(project, null, 2)}\n`),
+    ensureProjectMetadata(projectPath, project),
     writeIfMissing(memoryPath, '# Memória do projeto\n\nDecisões, arquitetura e informações aprendidas pelo agente.\n'),
     writeIfMissing(rulesPath, '# Regras do projeto\n\nPreferências e padrões de código que o agente deve seguir.\n'),
   ])
@@ -618,6 +618,41 @@ async function recordSuggestionDecision(workspace: string, suggestion: { title: 
 async function writeIfMissing(filePath: string, content: string) {
   try { await fs.promises.writeFile(filePath, content, { encoding: 'utf8', mode: 0o600, flag: 'wx' }) }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error }
+}
+
+async function ensureProjectMetadata(filePath: string, project: ProjectContext) {
+  let current: unknown
+  try {
+    current = JSON.parse(await fs.promises.readFile(filePath, 'utf8'))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error
+  }
+  if (isProjectContext(current) && projectContextsEqual(current, project)) return
+  await atomicWrite(filePath, `${JSON.stringify(project, null, 2)}\n`)
+}
+
+function isProjectContext(value: unknown): value is ProjectContext {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<ProjectContext>
+  return typeof candidate.name === 'string'
+    && Array.isArray(candidate.stack)
+    && candidate.stack.every((item) => typeof item === 'string')
+    && typeof candidate.primaryLanguage === 'string'
+    && Boolean(candidate.commands)
+    && typeof candidate.commands === 'object'
+    && !Array.isArray(candidate.commands)
+    && Object.entries(candidate.commands).every(([key, command]) => typeof key === 'string' && typeof command === 'string')
+}
+
+function projectContextsEqual(left: ProjectContext, right: ProjectContext) {
+  const leftCommands = Object.entries(left.commands)
+  const rightCommands = Object.entries(right.commands)
+  return left.name === right.name
+    && left.primaryLanguage === right.primaryLanguage
+    && left.stack.length === right.stack.length
+    && left.stack.every((item, index) => item === right.stack[index])
+    && leftCommands.length === rightCommands.length
+    && leftCommands.every(([key, command]) => right.commands[key] === command)
 }
 
 async function atomicWrite(filePath: string, content: string) {

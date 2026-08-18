@@ -254,6 +254,46 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     await api.conversations.delete(conversation.id)
   })
 
+  it('atualiza metadata stale do workspace sem apagar contexto local', async () => {
+    const metadataWorkspace = path.join(root, 'metadata-workspace')
+    fs.mkdirSync(metadataWorkspace)
+    fs.writeFileSync(path.join(metadataWorkspace, 'package.json'), JSON.stringify({
+      name: 'metadata-fixture',
+      scripts: { test: 'vitest run' },
+    }))
+    fs.writeFileSync(path.join(metadataWorkspace, 'tsconfig.json'), '{}\n')
+    electron.dialogs.open.push({ canceled: false, filePaths: [metadataWorkspace] })
+    await expect(api.workspace.select()).resolves.toBe(metadataWorkspace)
+
+    const projectPath = path.join(metadataWorkspace, '.nocturne', 'project.json')
+    fs.writeFileSync(projectPath, JSON.stringify({
+      name: 'nocturne-codex',
+      stack: ['Node.js'],
+      primaryLanguage: 'JavaScript',
+      commands: { build: 'vite build' },
+    }))
+    const memoryPath = path.join(metadataWorkspace, '.nocturne', 'memory.md')
+    fs.writeFileSync(memoryPath, '# Memória preservada\n')
+
+    const conversation = await api.conversations.create(metadataWorkspace)
+    try {
+      const refreshed = JSON.parse(fs.readFileSync(projectPath, 'utf8')) as {
+        name: string
+        stack: string[]
+        primaryLanguage: string
+        commands: Record<string, string>
+      }
+
+      expect(refreshed.name).toBe(path.basename(metadataWorkspace))
+      expect(refreshed.stack).toEqual(expect.arrayContaining(['Node.js']))
+      expect(refreshed.primaryLanguage).toBe('TypeScript')
+      expect(refreshed.commands).toHaveProperty('test', 'vitest run')
+      expect(fs.readFileSync(memoryPath, 'utf8')).toBe('# Memória preservada\n')
+    } finally {
+      await api.conversations.delete(conversation.id)
+    }
+  })
+
   it('persiste e recupera conversas com paginação', async () => {
     const c1 = await api.conversations.create(workspace)
     const page = await api.conversations.page()
