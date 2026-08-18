@@ -3,12 +3,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { DocumentUpdateService } from '../electron/documents/DocumentUpdateService'
+import { removeTestDirectory } from './helpers/platform'
 
 const directories: string[] = []
 
 afterEach(() => {
   for (const directory of directories.splice(0)) {
-    fs.rmSync(directory, { recursive: true, force: true })
+    removeTestDirectory(directory)
   }
 })
 

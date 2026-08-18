@@ -6,6 +6,7 @@ import { WORKSPACE_READ_LIMITS } from '../shared/constants'
 import { AI_TASK_LIMITS } from '../shared/ai/task'
 import { buildAttachmentMessages, buildHistoryMessages } from '../electron/ai/conversationContext'
 import { readWorkspaceFile } from '../electron/security/ExecutionPolicy'
+import { removeTestDirectory } from './helpers/platform'
 
 describe('buildHistoryMessages', () => {
   it('mantém apenas mensagens de user/assistant dentro do limite', () => {
@@ -41,7 +42,7 @@ describe('buildAttachmentMessages', () => {
   })
 
   afterAll(() => {
-    fs.rmSync(workspace, { recursive: true, force: true })
+    removeTestDirectory(workspace)
   })
 
   it('lê o conteúdo de anexos dentro do workspace e ignora arquivos vazios', async () => {
@@ -67,7 +68,7 @@ describe('buildAttachmentMessages', () => {
       await expect(buildAttachmentMessages(['link.txt'], workspace)).rejects.toThrow(/fora do workspace/)
     } finally {
       fs.unlinkSync(linked)
-      fs.rmSync(outside, { recursive: true, force: true })
+      removeTestDirectory(outside)
     }
   })
 
@@ -78,7 +79,7 @@ describe('buildAttachmentMessages', () => {
     try {
       await expect(buildAttachmentMessages(['pasta'], workspace)).rejects.toThrow(/arquivo regular/)
     } finally {
-      fs.rmSync(directory, { recursive: true, force: true })
+      removeTestDirectory(directory)
     }
   })
 
@@ -104,7 +105,7 @@ describe('buildAttachmentMessages', () => {
     } finally {
       openSpy.mockRestore()
       fs.rmSync(safePath, { force: true })
-      fs.rmSync(outside, { recursive: true, force: true })
+      removeTestDirectory(outside)
     }
   })
 

@@ -7,6 +7,7 @@ import {
   ProviderCredentialVaultError,
   type CredentialEncryption,
 } from '../electron/security/ProviderCredentialVault'
+import { expectUserOnlyMode } from './helpers/platform'
 
 const references = [
   '9ba7e635-8746-48bd-a8e9-4609ff1690cb',
@@ -87,7 +88,7 @@ describe('ProviderCredentialVault', () => {
       entries: { [reference]: expect.any(String) },
     })
     const mode = (await fs.promises.stat(vault.filePath)).mode & 0o777
-    expect(mode).toBe(0o600)
+    expectUserOnlyMode(mode)
   })
 
   it('recusa persistência quando o sistema não oferece proteção segura', async () => {

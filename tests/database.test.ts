@@ -9,6 +9,7 @@ import { migrateDatabase, migrations } from '../electron/database/migrations'
 import { DATABASE_SCHEMA_VERSION } from '../shared/constants'
 import { PERSISTENCE_PERFORMANCE_BUDGETS } from '../shared/ipc/backupLimits'
 import type { ModelDescriptor } from '../shared/ai/model'
+import { expectUserOnlyMode, removeTestDirectory } from './helpers/platform'
 
 const directories: string[] = []
 const create = () => { const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-test-')); directories.push(directory); return new LocalDatabase(directory) }
@@ -21,7 +22,7 @@ const model: ModelDescriptor = {
   contextWindow: 128_000,
   availability: 'available',
 }
-afterEach(() => { for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }) })
+afterEach(() => { for (const directory of directories.splice(0)) removeTestDirectory(directory) })
 
 describe('persistência SQLite', () => {
   it('mantém o banco principal e arquivos auxiliares restritos ao usuário', () => {
@@ -31,15 +32,15 @@ describe('persistência SQLite', () => {
     fs.writeFileSync(databasePath, '')
     fs.chmodSync(databasePath, 0o644)
     const db = new LocalDatabase(directory)
-    expect(fs.statSync(databasePath).mode & 0o777).toBe(0o600)
+    expectUserOnlyMode(fs.statSync(databasePath).mode)
     for (const suffix of ['-wal', '-shm']) {
       const auxiliary = `${databasePath}${suffix}`
       if (fs.existsSync(auxiliary)) {
-        expect(fs.statSync(auxiliary).mode & 0o777).toBe(0o600)
+        expectUserOnlyMode(fs.statSync(auxiliary).mode)
       }
     }
     db.close()
-    expect(fs.statSync(databasePath).mode & 0o777).toBe(0o600)
+    expectUserOnlyMode(fs.statSync(databasePath).mode)
   })
   it('mantém migrações incrementais, ordenadas e sem lacunas', () => {
     expect(migrations.map((migration) => migration.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
@@ -266,7 +267,7 @@ describe('persistência SQLite', () => {
     expect(db.getConversation('00000000-0000-4000-8000-000000000099')).toBeNull()
     const snapshot = await db.createRecoverySnapshot(); const recovered = new Sqlite(snapshot, { readonly: true })
     expect((recovered.prepare('SELECT content FROM messages WHERE conversation_id=?').get(conversation.id) as { content: string }).content).toBe('Antes da restauração')
-    expect(fs.statSync(snapshot).mode & 0o777).toBe(0o600)
+    expectUserOnlyMode(fs.statSync(snapshot).mode)
     recovered.close(); db.close()
   })
   it('exporta e importa um fluxo completo restaurável', () => {
@@ -384,7 +385,7 @@ describe('persistência SQLite', () => {
     expect(migrated.listMessages(conversation.id)[0].content).toBe('Preservar')
     const migrationBackups = fs.readdirSync(directory).filter((name) => name.startsWith('nocturne.db.backup-'))
     expect(migrationBackups).toHaveLength(1)
-    expect(fs.statSync(path.join(directory, migrationBackups[0])).mode & 0o777).toBe(0o600)
+    expectUserOnlyMode(fs.statSync(path.join(directory, migrationBackups[0])).mode)
     migrated.close()
     const verified = new Sqlite(file, { readonly: true })
     expect(verified.pragma('user_version', { simple: true })).toBe(15)
@@ -410,7 +411,7 @@ describe('persistência SQLite', () => {
     }
     const backups = fs.readdirSync(directory).filter((name) => name.startsWith('nocturne.db.backup-'))
     expect(backups).toHaveLength(3)
-    for (const name of backups) expect(fs.statSync(path.join(directory, name)).mode & 0o777).toBe(0o600)
+    for (const name of backups) expectUserOnlyMode(fs.statSync(path.join(directory, name)).mode)
   })
   it('migra o schema 7 preservando dados e criando o índice do Segundo Cérebro', () => {
     const db = create(); const conversation = db.createConversation('/tmp/from-7'); db.addMessage(conversation.id, 'user', 'Preservar'); db.close()

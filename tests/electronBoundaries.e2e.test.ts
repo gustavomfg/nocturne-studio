@@ -11,6 +11,7 @@ import type {
   ProviderConfigurationSummary,
 } from '../shared/ai/providerConfiguration'
 import type { ModelDescriptor } from '../shared/ai/model'
+import { canonicalTestPath, expectUserOnlyMode, removeTestDirectory } from './helpers/platform'
 
 type IpcHandler = (event: unknown, ...args: unknown[]) => unknown
 
@@ -183,7 +184,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
   }
 
   beforeAll(async () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-boundary-'))
+    root = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-boundary-')))
     database = await createDatabase(root)
     fs.mkdirSync(workspace, { recursive: true })
     const { registerIpc } = await import('../electron/ipc/registerIpc')
@@ -217,7 +218,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
   afterAll(() => {
     disposeIpc?.()
     database?.close()
-    fs.rmSync(root, { recursive: true, force: true })
+    removeTestDirectory(root)
   })
 
   it('expõe somente a API nomeada e cruza preload, IPC e SQLite', async () => {
@@ -233,7 +234,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     const diagnosticPath = path.join(root, 'diagnostic.json')
     electron.dialogs.save.push({ canceled: false, filePath: diagnosticPath })
     await expect(api.diagnostics.export()).resolves.toBe(diagnosticPath)
-    expect(fs.statSync(diagnosticPath).mode & 0o777).toBe(0o600)
+    expectUserOnlyMode(fs.statSync(diagnosticPath).mode)
     expect(fs.readFileSync(diagnosticPath, 'utf8')).not.toMatch(/prompt|content|credential/i)
     await expect(api.models.list()).resolves.toEqual([simulatedModel])
     await expect(api.models.refresh(simulatedModel.providerId)).resolves.toMatchObject({
@@ -282,7 +283,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
         await expect(api.ai.send(conversation.id, 'teste', ['ipc-link.txt'], 'review')).rejects.toThrow(/dentro do workspace/)
       } finally {
         fs.rmSync(link, { force: true })
-        fs.rmSync(outside, { recursive: true, force: true })
+        removeTestDirectory(outside)
       }
     } finally {
       await api.conversations.delete(conversation.id)
@@ -434,15 +435,16 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
   })
 
   it('rejeita caminhos de workspace fora do escopo durante a importação de backup', async () => {
+    const blockedWorkspace = path.parse(process.cwd()).root
     const backup = {
       schemaVersion: DATABASE_SCHEMA_VERSION, exportedAt: new Date().toISOString(),
-      workspaces: [{ path: '/etc', name: 'etc', favorite: 0 as const, created_at: new Date().toISOString(), last_opened_at: new Date().toISOString() }],
+      workspaces: [{ path: blockedWorkspace, name: 'system-root', favorite: 0 as const, created_at: new Date().toISOString(), last_opened_at: new Date().toISOString() }],
       conversations: [], messages: [], artifacts: [], memories: [], suggestions: [], suggestionDecisions: [], providerConfigs: [], modelCatalog: [], workspaceModelBindings: [],
     }
     const { backupSchema } = await import('../shared/ipc/backupSchemas')
     expect(() => backupSchema.parse(backup)).not.toThrow()
     const { assertSafeWorkspaceScope } = await import('../electron/security/WorkspaceTrust')
-    expect(() => assertSafeWorkspaceScope('/etc', false)).toThrow(/Selecione uma pasta de projeto específica/)
+    expect(() => assertSafeWorkspaceScope(blockedWorkspace, false)).toThrow(/Selecione uma pasta de projeto específica/)
   })
 
   it('gerencia o ciclo de vida completo de providers via IPC', async () => {
@@ -508,7 +510,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
       formatVersion: 1,
       integrity: { algorithm: 'sha256', checksum: expect.stringMatching(/^[a-f0-9]{64}$/) },
     })
-    expect(fs.statSync(destination).mode & 0o777).toBe(0o600)
+    expectUserOnlyMode(fs.statSync(destination).mode)
     expect(fs.readdirSync(root).some((name) => name.startsWith('verified-backup.json.tmp-'))).toBe(false)
   })
 
@@ -640,4 +642,4 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
   })
 })
 
-const workspace = '/tmp/test-workspace-nocturne'
+const workspace = canonicalTestPath('/tmp/test-workspace-nocturne')

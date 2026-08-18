@@ -4,9 +4,10 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { WORKSPACE_READ_LIMITS } from '../shared/constants'
 import { appendSuggestionDecision } from '../electron/persistence/SuggestionDecisionLog'
+import { expectUserOnlyMode, removeTestDirectory } from './helpers/platform'
 
 const directories: string[] = []
-afterEach(() => { for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }) })
+afterEach(() => { for (const directory of directories.splice(0)) removeTestDirectory(directory) })
 
 describe('SuggestionDecisionLog', () => {
   it('serializa decisões concorrentes em uma única seção e preserva permissões restritas', async () => {
@@ -21,7 +22,7 @@ describe('SuggestionDecisionLog', () => {
     expect(content.match(/nocturne:suggestion-history/g)).toHaveLength(1)
     expect(content).toContain('"title":"Primeira"')
     expect(content).toContain('"title":"Segunda"')
-    expect(fs.statSync(memoryPath).mode & 0o777).toBe(0o600)
+    expectUserOnlyMode(fs.statSync(memoryPath).mode)
   })
 
   it('rejeita histórico acima do limite sem materializar o arquivo inteiro', async () => {

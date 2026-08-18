@@ -4,6 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { assessCommand, externalOpenRiskExtensionsByPlatform, isExternalOpenBlocked, resolveInsideWorkspace } from '../electron/security/ExecutionPolicy'
 import { redactLogText, redactLogValue } from '../electron/logging/Logger'
+import { canonicalTestPath, removeTestDirectory } from './helpers/platform'
 
 describe('políticas de execução', () => {
   it('mantém permissões web negadas e fuses essenciais no pacote', () => {
@@ -87,21 +88,21 @@ describe('políticas de execução', () => {
     ['linux', '.pdf'],
   ] as const)('permite formato não executável em %s', (platform, extension) => expect(isExternalOpenBlocked(`arquivo${extension}`, platform)).toBe(false))
   it('bloqueia traversal e aceita arquivo interno', () => {
-    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-security-'))
+    const workspace = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-security-')))
     expect(() => resolveInsideWorkspace('../secret', workspace)).toThrow(/fora do workspace/)
     expect(resolveInsideWorkspace('src/app.ts', workspace)).toBe(path.join(workspace, 'src/app.ts'))
-    fs.rmSync(workspace, { recursive: true, force: true })
+    removeTestDirectory(workspace)
   })
   it('bloqueia symlink interno que aponta para fora do workspace', () => {
-    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-security-'))
-    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-outside-'))
+    const workspace = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-security-')))
+    const outside = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-outside-')))
     fs.symlinkSync(outside, path.join(workspace, 'escape'))
     expect(() => resolveInsideWorkspace('escape/secret.txt', workspace)).toThrow(/fora do workspace/)
-    fs.rmSync(workspace, { recursive: true, force: true }); fs.rmSync(outside, { recursive: true, force: true })
+    removeTestDirectory(workspace); removeTestDirectory(outside)
   })
   it('fixa o caminho real antes de uma troca concorrente de symlink', () => {
-    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-security-'))
-    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-outside-'))
+    const workspace = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-security-')))
+    const outside = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-outside-')))
     const safe = path.join(workspace, 'safe')
     const link = path.join(workspace, 'link')
     fs.mkdirSync(safe)
@@ -115,6 +116,6 @@ describe('políticas de execução', () => {
 
     expect(resolved).toBe(path.join(safe, 'secret.txt'))
     expect(fs.readFileSync(resolved, 'utf8')).toBe('interno')
-    fs.rmSync(workspace, { recursive: true, force: true }); fs.rmSync(outside, { recursive: true, force: true })
+    removeTestDirectory(workspace); removeTestDirectory(outside)
   })
 })

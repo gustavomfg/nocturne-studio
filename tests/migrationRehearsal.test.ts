@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { DATABASE_SCHEMA_VERSION } from '../shared/constants'
 import { LocalDatabase } from '../electron/database/Database'
 import type { Migration } from '../electron/database/migrations'
+import { removeTestDirectory } from './helpers/platform'
 
 const BASELINE_COMMIT = 'f793b9cd2e3dd03d1df7ba79da56007400a60e8f'
 const BASELINE_TAG = 'v0.9.5-beta'
@@ -18,7 +19,7 @@ const HISTORICAL_MIGRATIONS_SHA256 = '8c1f02005533440f73b733a374c9d5faab05ae9903
 const directories: string[] = []
 
 afterEach(() => {
-  for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true })
+  for (const directory of directories.splice(0)) removeTestDirectory(directory)
 })
 
 function readHistoricalFileAt(commit: string, filePath: string) {
