@@ -179,6 +179,10 @@ export class CodexClient extends EventEmitter {
     if (!this.serverVersion) {
       throw new Error('O App Server não informou uma versão identificável.')
     }
+    const configuration = await this.call('config/read', {})
+    if (!configuration || typeof configuration !== 'object' || Array.isArray(configuration)) {
+      throw new Error('O App Server retornou uma configuração inválida.')
+    }
     return { compatible: true as const, serverVersion: this.serverVersion }
   }
 

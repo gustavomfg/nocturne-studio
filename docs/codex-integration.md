@@ -19,10 +19,13 @@ O contrato de compatibilidade é validado pelo smoke test:
 `npm run smoke:codex`.
 
 Além da versão do executável e do estado de autenticação, a tela de IA realiza
-um handshake real com o App Server. Falhas de inicialização, respostas
-incompatíveis e erros internos são exibidos separadamente de “não instalado” e
-“não autenticado”. Como a interface do App Server é experimental, uma versão
-abaixo do mínimo ou um handshake inválido falha de forma fechada.
+um handshake real com o App Server e uma leitura segura de `config/read`. Isso
+confirma que o transporte e pelo menos um método de leitura do contrato estão
+disponíveis antes de marcar a integração como compatível. Falhas de
+inicialização, respostas incompatíveis e erros internos são exibidos
+separadamente de “não instalado” e “não autenticado”. Como a interface do App
+Server é experimental, uma versão abaixo do mínimo ou um contrato inválido
+falha de forma fechada.
 
 ## Modelos da conta ChatGPT
 

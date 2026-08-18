@@ -93,11 +93,28 @@ async function createThread(client: CodexClient, process: FakeCodexProcess) {
 
 describe('CodexClient', () => {
   it('valida o handshake do protocolo antes de declarar o App Server compatível', async () => {
-    const { client } = await readyClient()
-    await expect(client.checkProtocol()).resolves.toEqual({
+    const { client, process } = await readyClient()
+    const checked = client.checkProtocol()
+    await waitForRequest(process, 'config/read')
+    process.respond('config/read', {})
+    await expect(checked).resolves.toEqual({
       compatible: true,
       serverVersion: 'codex-cli/0.146.0',
     })
+  })
+
+  it('recusa o protocolo quando a leitura de configuração não é suportada', async () => {
+    const { client, process } = await readyClient()
+    const checked = client.checkProtocol()
+    await waitForRequest(process, 'config/read')
+    const request = process.request('config/read')
+    expect(request).toBeDefined()
+    process.emit('message', {
+      id: request?.id,
+      error: { code: -32601, message: 'Método não encontrado' },
+    })
+
+    await expect(checked).rejects.toThrow('Método não encontrado')
   })
 
   it('reinicia o transporte antes de reconectar após uma falha interna', async () => {
