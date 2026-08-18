@@ -25,6 +25,7 @@
     "test:abi": "node scripts/run-tests.mjs --abi-only",
     "test:renderer": "playwright test",
     "test:renderer:update": "playwright test --update-snapshots",
+    "benchmark:sqlite": "node scripts/benchmark-sqlite-sync.mjs",
     "test:watch": "node scripts/run-tests.mjs --watch",
     "package": "npm run build && electron-builder",
     "package:dir": "npm run build && electron-builder --dir",
