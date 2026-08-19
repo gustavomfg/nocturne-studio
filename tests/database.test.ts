@@ -13,6 +13,26 @@ import { expectUserOnlyMode, removeTestDirectory } from './helpers/platform'
 
 const directories: string[] = []
 const create = () => { const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-test-')); directories.push(directory); return new LocalDatabase(directory) }
+const seedMessageHistory = (db: LocalDatabase, workspace: string, count: number) => {
+  const conversationId = `history-${count}`
+  const start = Date.UTC(2026, 0, 1)
+  const createdAt = new Date(start).toISOString()
+  db.importData({
+    workspaces: [{ path: workspace, name: path.basename(workspace), favorite: 0, authorized: 1, created_at: createdAt, last_opened_at: createdAt }],
+    conversations: [{ id: conversationId, title: 'Histórico de teste', workspace, codex_thread_id: null, created_at: createdAt, updated_at: createdAt }],
+    messages: Array.from({ length: count }, (_, index) => ({
+      id: `${conversationId}-message-${index}`,
+      conversation_id: conversationId,
+      role: 'user',
+      content: `Mensagem ${index}`,
+      metadata: null,
+      created_at: new Date(start + index).toISOString(),
+    })),
+    artifacts: [],
+    memories: [],
+  })
+  return conversationId
+}
 const model: ModelDescriptor = {
   providerId: 'provider-1',
   modelId: 'model-1',
@@ -231,20 +251,18 @@ describe('persistência SQLite', () => {
     db.close()
   })
   it('pagina históricos extensos do mais recente para o mais antigo', () => {
-    const db = create(); const conversation = db.createConversation('/tmp/history')
-    for (let index = 0; index < 205; index += 1) db.addMessage(conversation.id, 'user', `Mensagem ${index}`)
-    const latest = db.listMessagePage(conversation.id)
-    const middle = db.listMessagePage(conversation.id, 100)
-    const oldest = db.listMessagePage(conversation.id, 200)
+    const db = create(); const conversationId = seedMessageHistory(db, '/tmp/history', 205)
+    const latest = db.listMessagePage(conversationId)
+    const middle = db.listMessagePage(conversationId, 100)
+    const oldest = db.listMessagePage(conversationId, 200)
     expect(latest.items.map((message) => message.content)).toEqual(Array.from({ length: 100 }, (_, index) => `Mensagem ${index + 105}`))
     expect(middle.items).toHaveLength(100); expect(middle.hasMore).toBe(true)
     expect(oldest.items.map((message) => message.content)).toEqual(Array.from({ length: 5 }, (_, index) => `Mensagem ${index}`))
     expect(oldest.hasMore).toBe(false); db.close()
   })
   it('limita o histórico materializado para contexto da IA', () => {
-    const db = create(); const conversation = db.createConversation('/tmp/recent-context')
-    for (let index = 0; index < 250; index += 1) db.addMessage(conversation.id, 'user', `Mensagem ${index}`)
-    const recent = db.listRecentMessages(conversation.id, 40)
+    const db = create(); const conversationId = seedMessageHistory(db, '/tmp/recent-context', 250)
+    const recent = db.listRecentMessages(conversationId, 40)
     expect(recent).toHaveLength(40)
     expect(recent.map((message) => message.content)).toEqual(Array.from({ length: 40 }, (_, index) => `Mensagem ${index + 210}`))
     db.close()
