@@ -29,14 +29,16 @@ export function expectUserOnlyMode(mode: number) {
 }
 
 /**
- * SQLite and native filesystem handles can be released slightly after a test
- * finishes on Windows. Retry cleanup without hiding a persistent failure.
+ * SQLite, Git, and native filesystem handles can be released slightly after a
+ * test finishes on Windows. Keep cleanup bounded while allowing that release
+ * to complete; a persistent failure still propagates from fs.rmSync().
  */
 export function removeTestDirectory(directory: string) {
+  const windows = process.platform === 'win32'
   fs.rmSync(directory, {
     recursive: true,
     force: true,
-    maxRetries: process.platform === 'win32' ? 10 : 0,
-    retryDelay: 100,
+    maxRetries: windows ? 20 : 0,
+    retryDelay: windows ? 50 : 100,
   })
 }

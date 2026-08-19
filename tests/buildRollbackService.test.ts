@@ -20,6 +20,7 @@ function repository() {
   execFileSync('git', ['init'], { cwd: directory })
   execFileSync('git', ['config', 'user.name', 'Nocturne Test'], { cwd: directory })
   execFileSync('git', ['config', 'user.email', 'nocturne@example.invalid'], { cwd: directory })
+  execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: directory })
   fs.writeFileSync(path.join(directory, 'tracked.txt'), 'antes\n')
   execFileSync('git', ['add', 'tracked.txt'], { cwd: directory })
   execFileSync('git', ['commit', '-m', 'test: baseline'], { cwd: directory })

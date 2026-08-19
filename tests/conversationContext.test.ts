@@ -95,13 +95,28 @@ describe('buildAttachmentMessages', () => {
       if (!swapped && filePath === safePath) {
         swapped = true
         fs.unlinkSync(safePath)
-        fs.symlinkSync(outsidePath, safePath)
+        fs.symlinkSync(outsidePath, safePath, 'file')
       }
       return originalOpen(filePath, flags, mode)
     })
     try {
-      await expect(readWorkspaceFile('race.txt', workspace, WORKSPACE_READ_LIMITS.attachmentBytes)).rejects.toThrow()
+      let result: Awaited<ReturnType<typeof readWorkspaceFile>> | null = null
+      let rejected = false
+      try {
+        result = await readWorkspaceFile('race.txt', workspace, WORKSPACE_READ_LIMITS.attachmentBytes)
+      } catch {
+        rejected = true
+      }
       expect(swapped).toBe(true)
+      expect(fs.lstatSync(safePath).isSymbolicLink()).toBe(true)
+      if (process.platform === 'win32') {
+        // Windows may preserve the original file identity across a directory-entry swap.
+        // That is safe as long as the descriptor never yields the external bytes.
+        if (result) expect(result.content.toString('utf8')).toBe('interno')
+        else expect(rejected).toBe(true)
+      } else {
+        expect(rejected).toBe(true)
+      }
     } finally {
       openSpy.mockRestore()
       fs.rmSync(safePath, { force: true })
