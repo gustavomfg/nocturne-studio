@@ -78,8 +78,7 @@ export function registerWorkspaceIpc(win: BrowserWindow, database: LocalDatabase
   ipcMain.handle('workspace:watch', (_event, value: unknown) => {
     const requested = z.string().trim().min(1).max(4_000).nullable().parse(value)
     if (requested === null) {
-      changeWatcher.stop()
-      return
+      return changeWatcher.stop()
     }
     const workspace = dependencies.assertKnownWorkspace(requested)
     return changeWatcher.start(workspace)
@@ -112,7 +111,7 @@ export function registerWorkspaceIpc(win: BrowserWindow, database: LocalDatabase
   })
   ipcMain.handle('conversations:delete', (_event, value: unknown) => database.deleteConversation(idSchema.parse(value)))
   return () => {
-    changeWatcher.stop()
+    void changeWatcher.stop()
     ipcMain.dispose()
   }
 }
