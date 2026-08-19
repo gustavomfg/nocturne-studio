@@ -6,7 +6,7 @@ import { WORKSPACE_READ_LIMITS } from '../shared/constants'
 import { AI_TASK_LIMITS } from '../shared/ai/task'
 import { buildAttachmentMessages, buildHistoryMessages } from '../electron/ai/conversationContext'
 import { readWorkspaceFile } from '../electron/security/ExecutionPolicy'
-import { removeTestDirectory } from './helpers/platform'
+import { canonicalTestPath, removeTestDirectory } from './helpers/platform'
 
 describe('buildHistoryMessages', () => {
   it('mantém apenas mensagens de user/assistant dentro do limite', () => {
@@ -91,11 +91,27 @@ describe('buildAttachmentMessages', () => {
     fs.writeFileSync(outsidePath, 'externo')
     const originalOpen = fs.promises.open
     let swapped = false
+    let observedOpenPath: string | null = null
+    let swapError: unknown = null
     const openSpy = vi.spyOn(fs.promises, 'open').mockImplementation(async (filePath, flags, mode) => {
-      if (!swapped && filePath === safePath) {
-        swapped = true
-        fs.unlinkSync(safePath)
-        fs.symlinkSync(outsidePath, safePath, 'file')
+      if (typeof filePath === 'string') {
+        observedOpenPath = filePath
+      }
+      const openedPath = typeof filePath === 'string' ? canonicalTestPath(filePath) : null
+      const expectedPath = canonicalTestPath(safePath)
+      const samePath = process.platform === 'win32'
+        ? openedPath?.toLowerCase() === expectedPath.toLowerCase()
+        : openedPath === expectedPath
+      if (!swapped && samePath) {
+        try {
+          fs.unlinkSync(safePath)
+          fs.symlinkSync(outsidePath, safePath, 'file')
+          if (!fs.lstatSync(safePath).isSymbolicLink()) throw new Error('o swap não criou um symlink de arquivo')
+          swapped = true
+        } catch (error) {
+          swapError = error
+          throw error
+        }
       }
       return originalOpen(filePath, flags, mode)
     })
@@ -107,7 +123,8 @@ describe('buildAttachmentMessages', () => {
       } catch {
         rejected = true
       }
-      expect(swapped).toBe(true)
+      if (swapError) throw new Error(`Falha ao trocar o anexo por symlink: ${swapError instanceof Error ? swapError.message : String(swapError)}`)
+      expect(swapped, `o hook de abertura não encontrou ${safePath}; caminho observado: ${observedOpenPath ?? '(nenhum)'}`).toBe(true)
       expect(fs.lstatSync(safePath).isSymbolicLink()).toBe(true)
       if (process.platform === 'win32') {
         // Windows may preserve the original file identity across a directory-entry swap.

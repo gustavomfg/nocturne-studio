@@ -4,13 +4,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { BuildRollbackService } from '../electron/ai/BuildRollbackService'
-import { removeTestDirectory } from './helpers/platform'
+import { removeTestDirectoryAsync } from './helpers/platform'
 
 const directories: string[] = []
 
-afterEach(() => {
+afterEach(async () => {
   for (const directory of directories.splice(0)) {
-    removeTestDirectory(directory)
+    await removeTestDirectoryAsync(directory)
   }
 })
 
