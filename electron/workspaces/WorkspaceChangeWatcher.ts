@@ -10,6 +10,12 @@ interface WatchHandle {
   on(event: 'error', listener: (error: Error) => void): this
 }
 
+// Node does not expose a cross-platform ready event for fs.FSWatcher. Let the
+// native backend finish registration before resolving the IPC watch request.
+function waitForNativeWatcherRegistration() {
+  return new Promise<void>((resolve) => setImmediate(resolve))
+}
+
 type WatchFactory = (
   workspace: string,
   options: { recursive: true; persistent: false; encoding: 'utf8' },
@@ -19,6 +25,7 @@ type WatchFactory = (
 export class WorkspaceChangeWatcher {
   private watcher: WatchHandle | null = null
   private workspace = ''
+  private readiness: Promise<void> | null = null
   private changedPaths = new Set<string>()
   private overflow = false
   private timer: NodeJS.Timeout | null = null
@@ -29,8 +36,11 @@ export class WorkspaceChangeWatcher {
     private readonly debounceMs = 250,
   ) {}
 
-  start(workspace: string) {
-    if (this.workspace === workspace && this.watcher) return
+  async start(workspace: string): Promise<void> {
+    if (this.workspace === workspace && this.watcher) {
+      await (this.readiness ?? Promise.resolve())
+      return
+    }
     this.stop()
     this.workspace = workspace
     try {
@@ -41,8 +51,11 @@ export class WorkspaceChangeWatcher {
         this.emit({ workspace: this.workspace, paths: [], overflow: false, detectedAt: new Date().toISOString(), error: `Monitoramento interrompido: ${error.message}` })
         this.stop()
       })
+      this.readiness = waitForNativeWatcherRegistration()
+      await this.readiness
     } catch (error) {
       this.workspace = ''
+      this.readiness = null
       throw new Error(`Não foi possível monitorar alterações no workspace: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
@@ -51,6 +64,7 @@ export class WorkspaceChangeWatcher {
     this.watcher?.close()
     this.watcher = null
     this.workspace = ''
+    this.readiness = null
     this.changedPaths.clear()
     this.overflow = false
     if (this.timer) clearTimeout(this.timer)

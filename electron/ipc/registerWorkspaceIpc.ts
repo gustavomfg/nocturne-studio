@@ -82,7 +82,7 @@ export function registerWorkspaceIpc(win: BrowserWindow, database: LocalDatabase
       return
     }
     const workspace = dependencies.assertKnownWorkspace(requested)
-    changeWatcher.start(workspace)
+    return changeWatcher.start(workspace)
   })
   ipcMain.handle('workspace:openTool', async (_event, value: unknown) => {
     const data = workspaceToolSchema.parse(value); const workspace = dependencies.assertKnownWorkspace(data.workspace)
