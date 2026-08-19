@@ -351,7 +351,7 @@ export class LocalDatabase {
 
   saveAssistantTurn(conversationId: string, workspace: string, content: string, metadata: unknown, artifacts: Array<{ type: string; title: string; filePath?: string | null; content?: string | null; metadata?: unknown }> = []) {
     return this.db.transaction(() => {
-      const message = this.addMessage(conversationId, 'assistant', content, metadata)
+      const message = this.insertMessage(conversationId, 'assistant', content, metadata)
       this.addArtifact(conversationId, workspace, 'markdown', `Resposta · ${new Date().toLocaleString()}`, null, content)
       for (const artifact of artifacts) this.addArtifact(conversationId, workspace, artifact.type, artifact.title, artifact.filePath, artifact.content, artifact.metadata)
       return message
@@ -673,6 +673,10 @@ export class LocalDatabase {
   }
 
   addMessage(conversationId: string, role: MessageRow['role'], content: string, metadata?: unknown) {
+    return this.db.transaction(() => this.insertMessage(conversationId, role, content, metadata))()
+  }
+
+  private insertMessage(conversationId: string, role: MessageRow['role'], content: string, metadata?: unknown) {
     const row: MessageRow = { id: randomUUID(), conversationId, role, content, metadata: metadata ? JSON.stringify(metadata) : null, createdAt: new Date().toISOString() }
     this.db.prepare(`INSERT INTO messages (id,conversation_id,role,content,metadata,created_at)
       VALUES (@id,@conversationId,@role,@content,@metadata,@createdAt)`).run(row)
