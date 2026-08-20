@@ -1,4 +1,8 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import chokidar from 'chokidar'
 import { WorkspaceChangeWatcher } from '../electron/workspaces/WorkspaceChangeWatcher'
 
 interface FakeWatchHandle {
@@ -70,6 +74,54 @@ describe('monitoramento de mudanças no workspace', () => {
     await start
     expect(settled).toBe(true)
     await watcher.stop()
+  })
+
+  it('mantém eventos que chegam imediatamente depois do readiness', async () => {
+    vi.useFakeTimers()
+    const emitted = vi.fn()
+    const captured: { listener: ((eventType: string, filename: string | null) => void) | null } = { listener: null }
+    const handle: FakeWatchHandle = {
+      close: vi.fn(),
+      on: vi.fn((event, listener) => {
+        if (event === 'all') captured.listener = listener as (eventType: string, filename: string | null) => void
+        if (event === 'ready') (listener as () => void)()
+        return handle
+      }),
+    }
+    const watcher = new WorkspaceChangeWatcher(emitted, (_workspace, nextListener) => {
+      captured.listener = nextListener
+      return handle
+    }, 25, async () => new Map())
+
+    await watcher.start('/tmp/nocturne-watched-project')
+    captured.listener?.('add', 'after-ready.txt')
+    vi.advanceTimersByTime(25)
+
+    expect(emitted).toHaveBeenCalledWith(expect.objectContaining({
+      paths: ['after-ready.txt'],
+      overflow: false,
+    }))
+    await watcher.stop()
+  })
+
+  it('mantém o watcher nativo persistente durante o ciclo de vida', async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-watcher-'))
+    const watch = vi.spyOn(chokidar, 'watch')
+    const watcher = new WorkspaceChangeWatcher(vi.fn())
+    try {
+      await watcher.start(workspace)
+      expect(watch).toHaveBeenCalledWith(workspace, expect.objectContaining({
+        atomic: true,
+        followSymlinks: false,
+        ignoreInitial: true,
+        persistent: true,
+        usePolling: false,
+      }))
+    } finally {
+      await watcher.stop()
+      watch.mockRestore()
+      fs.rmSync(workspace, { recursive: true, force: true })
+    }
   })
 
   it('reconcilia alterações ocorridas durante a inicialização', async () => {

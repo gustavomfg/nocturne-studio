@@ -80,7 +80,11 @@ function createWatchHandle(workspace: string, listener: (eventType: string, file
     followSymlinks: false,
     ignoreInitial: true,
     ignored: (candidate) => isIgnoredPath(workspace, candidate),
-    persistent: false,
+    // Keep the native directory watcher referenced for the whole workspace
+    // lifecycle. On macOS, an unreferenced watcher may stop delivering events
+    // immediately after Chokidar emits `ready` even while the Electron process
+    // itself remains alive.
+    persistent: true,
     usePolling: false,
   })
   watcher.on('all', (eventType, filename) => listener(eventType, filename))
