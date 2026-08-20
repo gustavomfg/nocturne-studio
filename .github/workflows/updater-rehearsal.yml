@@ -1,0 +1,65 @@
+name: Release gate · updater rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_version:
+        description: Stable candidate version to rehearse
+        required: true
+        default: 1.0.0
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: updater-rehearsal-${{ inputs.candidate_version }}
+  cancel-in-progress: false
+
+jobs:
+  rehearsal:
+    name: Updater rehearsal (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      UPDATER_REHEARSAL_VERSION: ${{ inputs.candidate_version }}
+      UPDATER_REHEARSAL_BASE_COMMIT: f793b9cd2e3dd03d1df7ba79da56007400a60e8f
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Build the historical 0.9.5-beta fixture package
+        shell: bash
+        run: |
+          base_dir="$RUNNER_TEMP/nocturne-studio-0.9.5-beta"
+          git worktree add --detach "$base_dir" "$UPDATER_REHEARSAL_BASE_COMMIT"
+          npm ci --prefix "$base_dir"
+          npm run package --prefix "$base_dir" -- --publish never
+          echo "UPDATER_REHEARSAL_BASE_RELEASE=$base_dir/release/0.9.5-beta" >> "$GITHUB_ENV"
+      - name: Build the isolated stable candidate package
+        shell: bash
+        run: npx electron-builder --publish never -c.extraMetadata.version=${{ inputs.candidate_version }} -c.directories.output=release/rehearsal-${{ inputs.candidate_version }}
+      - name: Run updater rehearsal (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npx electron --no-sandbox scripts/rehearse-updater.mjs
+      - name: Run updater rehearsal
+        if: runner.os != 'Linux'
+        run: npm run rehearse:updater
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: updater-rehearsal-${{ runner.os }}-${{ runner.arch }}
+          path: test-results/updater-rehearsal.json
+          if-no-files-found: error
+          retention-days: 14
