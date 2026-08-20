@@ -2,6 +2,11 @@ name: Compatibility · Codex CLI
 
 on:
   workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Full candidate commit SHA (dispatch this workflow from the same ref)
+        required: true
+        type: string
 
 concurrency:
   group: codex-contract-smoke
@@ -20,14 +25,25 @@ jobs:
     steps:
       - name: Check out the requested commit
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 1
       - name: Set up the supported Node.js version
         uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm
+      - name: Require the exact candidate SHA
+        env:
+          EXPECTED_SHA: ${{ inputs.commit_sha }}
+        run: |
+          node -e "const { execFileSync } = require('node:child_process'); const expected = (process.env.EXPECTED_SHA || '').trim().toLowerCase(); const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim().toLowerCase(); if (!/^[0-9a-f]{40}$/.test(expected) || (process.env.GITHUB_SHA || '').toLowerCase() !== expected || head !== expected) throw new Error('The workflow must run from the exact candidate SHA.');"
       - name: Install dependencies
         run: npm ci
       - name: Exercise the Codex App Server contract
+        env:
+          CODEX_SMOKE_EXPECTED_SHA: ${{ inputs.commit_sha }}
+          CODEX_SMOKE_REF: ${{ inputs.commit_sha }}
         run: npm run smoke:codex
       - name: Upload the sanitized contract report
         uses: actions/upload-artifact@v7

@@ -55,6 +55,45 @@ jobs:
           test "$conclusion" = success
           test "$event" = workflow_dispatch
           test "$workflow_path" = .github/workflows/codex-contract-smoke.yml
+      - name: Verify the sanitized Codex smoke evidence
+        shell: bash
+        run: |
+          evidence_dir="$(mktemp -d)"
+          gh run download "$CODEX_SMOKE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "codex-contract-smoke-$CODEX_SMOKE_RUN_ID" \
+            --dir "$evidence_dir"
+          report_path="$(find "$evidence_dir" -type f -name codex-contract-smoke.json -print -quit)"
+          test -n "$report_path"
+          EXPECTED_SHA="$(git rev-parse HEAD)" REPORT_PATH="$report_path" node <<'NODE'
+          const fs = require('node:fs')
+          const report = JSON.parse(fs.readFileSync(process.env.REPORT_PATH, 'utf8'))
+          const expectedSha = process.env.EXPECTED_SHA
+          const required = [
+            'appServerHandshake',
+            'authenticationChecked',
+            'authenticatedSession',
+            'modelList',
+            'configRead',
+            'requestResponseContract',
+            'cleanShutdown',
+            'shutdown',
+            'minimumSatisfied',
+            'sessionStarted',
+            'threadStart',
+            'turnStart',
+            'turnCompleted',
+            'agentResponse',
+            'interrupt',
+          ]
+          if (report.ok !== true) throw new Error('O relatório do smoke Codex não está marcado como bem-sucedido.')
+          if (report.repositorySha !== expectedSha || report.expectedSha !== expectedSha) throw new Error('O relatório Codex não corresponde ao SHA da release.')
+          if (report.nocturneVersion !== require('./package.json').version) throw new Error('O relatório Codex não corresponde à versão da release.')
+          if (!/^\d+\.\d+\.\d+$/.test(report.codexVersion || '')) throw new Error('O relatório Codex não informa uma versão semântica válida.')
+          for (const key of required) if (report[key] !== true) throw new Error(`Evidência Codex incompleta: ${key}`)
+          if (report.authenticationMethod === '') throw new Error('O relatório Codex não informa uma autenticação verificada.')
+          if (report.unexpectedStdoutLines !== 0) throw new Error('O App Server emitiu linhas stdout fora do protocolo JSONL.')
+          NODE
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
