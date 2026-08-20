@@ -8,6 +8,7 @@ on:
       - src/**
       - shared/**
       - scripts/smoke-package.mjs
+      - scripts/rehearse-packaged-recovery.mjs
       - electron-builder.json5
       - package.json
       - package-lock.json

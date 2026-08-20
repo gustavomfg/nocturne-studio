@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, shell } from 'electron'
 import fs from 'node:fs'
+import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { LocalDatabase } from './database/Database'
@@ -45,6 +46,7 @@ let database: LocalDatabase | null = null
 let logger: Logger | null = null
 let disposeIpc: (() => void) | null = null
 let packageSmokeScheduled = false
+let packagedRecoveryScheduled = false
 let disposeUpdates: (() => void) | null = null
 let providerConfigurations: ProviderConfigurationService | null = null
 let providerRegistry: ProviderRegistry | null = null
@@ -227,6 +229,7 @@ function createWindow() {
   if (
     app.isPackaged &&
     process.env.NOCTURNE_PACKAGE_SMOKE_OUTPUT &&
+    !process.env.NOCTURNE_PACKAGED_RECOVERY_OUTPUT &&
     !packageSmokeScheduled
   ) {
     packageSmokeScheduled = true
@@ -237,6 +240,16 @@ function createWindow() {
 
     currentWindow.webContents.once('did-finish-load', () => {
       void runPackageSmoke(output)
+    })
+  }
+  if (
+    app.isPackaged &&
+    process.env.NOCTURNE_PACKAGED_RECOVERY_OUTPUT &&
+    !packagedRecoveryScheduled
+  ) {
+    packagedRecoveryScheduled = true
+    currentWindow.webContents.once('did-finish-load', () => {
+      void runPackagedRecoveryHarness()
     })
   }
   currentWindow.webContents.on('preload-error', (_event, preloadPath, error) => logger?.error('app', `Falha no preload: ${preloadPath}`, error))
@@ -397,6 +410,186 @@ async function runPackageSmoke(output: string) {
   }
 }
 
+type PackagedRecoveryMode = 'fixture' | 'verify' | 'verify-historical' | 'engine-restore'
+
+interface PackagedRecoveryContext {
+  root: string
+  output: string
+  workspace: string
+  mode: PackagedRecoveryMode
+}
+
+function isPathInside(parent: string, candidate: string) {
+  const relative = path.relative(parent, candidate)
+  return relative === '' || (
+    relative !== '..' &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  )
+}
+
+function packagedRecoveryContext(): PackagedRecoveryContext {
+  const rootValue = process.env.NOCTURNE_PACKAGED_RECOVERY_ROOT
+  const outputValue = process.env.NOCTURNE_PACKAGED_RECOVERY_OUTPUT
+  const workspaceValue = process.env.NOCTURNE_PACKAGED_RECOVERY_WORKSPACE
+  const mode = process.env.NOCTURNE_PACKAGED_RECOVERY_MODE as PackagedRecoveryMode | undefined
+  if (!rootValue || !outputValue || !workspaceValue || !mode || !['fixture', 'verify', 'verify-historical', 'engine-restore'].includes(mode)) {
+    throw new Error('Configuração incompleta do harness empacotado de recovery.')
+  }
+  const root = path.resolve(rootValue)
+  const output = path.resolve(outputValue)
+  const workspace = path.resolve(workspaceValue)
+  const temporaryRoot = path.resolve(os.tmpdir())
+  const userData = path.resolve(app.getPath('userData'))
+  if (!isPathInside(temporaryRoot, root) || !isPathInside(root, output) || !isPathInside(root, workspace) || !isPathInside(root, userData)) {
+    throw new Error('O harness empacotado exige userData, workspace e relatório dentro de um diretório temporário isolado.')
+  }
+  return { root, output, workspace, mode }
+}
+
+function writePackagedRecoveryResult(context: PackagedRecoveryContext, value: Record<string, unknown>) {
+  fs.mkdirSync(path.dirname(context.output), { recursive: true, mode: 0o700 })
+  fs.writeFileSync(context.output, `${JSON.stringify({
+    packaged: app.isPackaged,
+    mode: context.mode,
+    ...value,
+  })}\n`, { encoding: 'utf8', mode: 0o600 })
+}
+
+function packagedRecoveryState(context: PackagedRecoveryContext) {
+  if (!database) throw new Error('Banco indisponível no harness empacotado de recovery.')
+  const conversations = database.listConversations()
+  const conversation = conversations.find((item) => item.workspace === context.workspace)
+  const messages = conversation ? database.listMessages(conversation.id) : []
+  const artifacts = conversation ? database.listArtifacts(conversation.id) : []
+  const suggestions = conversation ? database.listSuggestions(conversation.id) : []
+  const memories = database.listBrainMemoryPage(context.workspace, 0, 50).items
+  const workspaceRows = database.listWorkspaces()
+  return {
+    schemaVersion: database.exportData().schemaVersion,
+    records: {
+      workspaces: workspaceRows.length,
+      conversations: conversations.length,
+      messages: messages.length,
+      artifacts: artifacts.length,
+      suggestions: suggestions.length,
+      memories: memories.length,
+    },
+    markers: {
+      conversation: Boolean(conversation?.title === 'PACKAGED_RECOVERY_CONVERSATION'),
+      messageA: messages.some((message) => message.content === 'PACKAGED_RECOVERY_MESSAGE_A'),
+      messageB: messages.some((message) => message.content === 'PACKAGED_RECOVERY_MESSAGE_B'),
+      artifact: artifacts.some((artifact) => artifact.content === 'PACKAGED_RECOVERY_ARTIFACT'),
+      suggestion: suggestions.some((suggestion) => suggestion.title === 'PACKAGED_RECOVERY_SUGGESTION'),
+      memory: memories.some((memory) => memory.content === 'PACKAGED_RECOVERY_MEMORY'),
+      setting: database.getSettings().packagedRecoverySetting === 'PACKAGED_RECOVERY_SETTING',
+    },
+    historicalMarkers: {
+      message: messages.some((message) => message.content === 'PACKAGED_RECOVERY_HISTORICAL_MESSAGE'),
+      setting: database.getSettings().packagedHistoricalSetting === 'PACKAGED_RECOVERY_HISTORICAL',
+    },
+    workspace: {
+      historyPresent: workspaceRows.some((item) => item.path === context.workspace),
+      filesystemPresent: fs.existsSync(context.workspace),
+      // The renderer-facing list applies WorkspaceTrust to the persisted row.
+      authorizationRefusedWhenMissing: false,
+    },
+  }
+}
+
+async function runPackagedRecoveryHarness() {
+  try {
+    const context = packagedRecoveryContext()
+    if (!database) throw new Error('Banco indisponível no harness empacotado de recovery.')
+    if (context.mode === 'fixture') {
+      fs.mkdirSync(context.workspace, { recursive: true, mode: 0o700 })
+      fs.writeFileSync(path.join(context.workspace, 'PACKAGED_RECOVERY_WORKSPACE.md'), 'PACKAGED_RECOVERY_WORKSPACE', { encoding: 'utf8', mode: 0o600 })
+      const conversation = database.createConversation(context.workspace)
+      database.renameFromPrompt(conversation.id, 'PACKAGED_RECOVERY_CONVERSATION')
+      database.addMessage(conversation.id, 'user', 'PACKAGED_RECOVERY_MESSAGE_A')
+      database.addMessage(conversation.id, 'assistant', 'PACKAGED_RECOVERY_MESSAGE_B')
+      database.addArtifact(conversation.id, context.workspace, 'markdown', 'PACKAGED_RECOVERY_ARTIFACT', 'PACKAGED_RECOVERY_WORKSPACE.md', 'PACKAGED_RECOVERY_ARTIFACT')
+      database.setWorkspaceMemory(context.workspace, 'PACKAGED_RECOVERY_MEMORY')
+      database.addSuggestion(conversation.id, context.workspace, {
+        title: 'PACKAGED_RECOVERY_SUGGESTION',
+        description: 'Fixture sintético de recuperação empacotada.',
+        reasoning: 'Exercitar preservação semântica.',
+        category: 'testing',
+        severity: 'low',
+        affectedFiles: ['PACKAGED_RECOVERY_WORKSPACE.md'],
+        proposedChanges: 'Nenhuma alteração.',
+        expectedBenefits: ['Evidência reproduzível.'],
+        complexity: 'low',
+        risk: 'low',
+        evidence: [{ source: 'packaged-recovery', detail: 'Fixture sintético.' }],
+        confidence: 100,
+        source: 'packaged-recovery',
+        responsible: 'harness',
+      })
+      database.createBrainMemory(context.workspace, {
+        kind: 'decision',
+        scope: 'workspace',
+        content: 'PACKAGED_RECOVERY_MEMORY',
+        confidence: 100,
+        sourceType: 'manual',
+        status: 'active',
+      })
+      database.setSettings({ packagedRecoverySetting: 'PACKAGED_RECOVERY_SETTING' })
+    }
+    if (context.mode === 'engine-restore') {
+      const userDataPath = app.getPath('userData')
+      const databasePath = path.join(userDataPath, 'nocturne.db')
+      const candidateName = fs.readdirSync(userDataPath).find((name) => name.startsWith('nocturne.db.recovery-engine'))
+      if (!candidateName) throw new Error('Candidato do engine smoke não encontrado.')
+      database.close()
+      database = null
+      fs.truncateSync(databasePath, 32)
+      const quarantine = await restoreDatabaseFile(userDataPath, path.join(userDataPath, candidateName))
+      database = new LocalDatabase(userDataPath)
+      const state = packagedRecoveryState(context)
+      writePackagedRecoveryResult(context, {
+        ok: Object.values(state.markers).every(Boolean),
+        phase: 'engine-restore',
+        recoveryEngine: { restored: true, corruptOriginalPreserved: fs.existsSync(path.join(quarantine, 'nocturne.db')) },
+        state,
+      })
+    } else if (context.mode === 'fixture') {
+      const state = packagedRecoveryState(context)
+      writePackagedRecoveryResult(context, { ok: Object.values(state.markers).every(Boolean), phase: context.mode, state })
+    } else {
+      const state = packagedRecoveryState(context)
+      if (context.mode === 'verify-historical') {
+        const historical = Object.values(state.historicalMarkers).every(Boolean)
+        writePackagedRecoveryResult(context, { ok: historical, phase: 'historical-startup', state })
+      } else {
+        const markers = Object.values(state.markers).every(Boolean)
+        const workspaceRows = await win?.webContents.executeJavaScript('window.nocturne.workspace.list()') as Array<{ path?: string; authorized?: boolean }> | undefined
+        const missingWorkspace = workspaceRows?.find((item) => item.path === context.workspace)
+        state.workspace.authorizationRefusedWhenMissing = !state.workspace.filesystemPresent && missingWorkspace?.authorized === false
+        writePackagedRecoveryResult(context, { ok: markers, phase: context.mode, state })
+      }
+    }
+    app.quit()
+  } catch (error) {
+    try {
+      const context = packagedRecoveryContext()
+      writePackagedRecoveryResult(context, { ok: false, phase: 'harness-failure', failureFingerprint: diagnosticFingerprint(redactLogText(error instanceof Error ? error.message : String(error))) })
+    } catch { /* the harness must not replace the original startup failure */ }
+    app.exit(1)
+  }
+}
+
+function writePackagedRecoveryStartupFailure(error: unknown) {
+  try {
+    const context = packagedRecoveryContext()
+    writePackagedRecoveryResult(context, {
+      ok: false,
+      phase: 'startup-failure',
+      failureFingerprint: diagnosticFingerprint(redactLogText(error instanceof Error ? error.message : String(error))),
+    })
+  } catch { /* preserve the original startup error when the harness is misconfigured */ }
+}
+
 async function recreateWindowForPackageSmoke() {
   const previousWindow = win
   if (!previousWindow) throw new Error('A janela do smoke não foi criada.')
@@ -437,7 +630,7 @@ async function waitForWindowLoad(window: BrowserWindow) {
 }
 
 app.on('window-all-closed', () => {
-  if (process.env.NOCTURNE_PACKAGE_SMOKE_OUTPUT) return
+  if (process.env.NOCTURNE_PACKAGE_SMOKE_OUTPUT || process.env.NOCTURNE_PACKAGED_RECOVERY_OUTPUT) return
   if (process.platform !== 'darwin') app.quit()
 })
 app.on('activate', () => { if (isMainProcessOperational() && BrowserWindow.getAllWindows().length === 0) createWindow() })
@@ -460,7 +653,11 @@ else void app.whenReady().then(() => {
   createWindow()
   if (logger) disposeUpdates = startUpdateService(logger, () => win)
 }).catch((error) => {
-  dialog.showErrorBox('Nocturne Studio não pôde iniciar', error instanceof Error ? error.message : String(error))
+  if (app.isPackaged && process.env.NOCTURNE_PACKAGED_RECOVERY_OUTPUT) {
+    writePackagedRecoveryStartupFailure(error)
+  } else {
+    dialog.showErrorBox('Nocturne Studio não pôde iniciar', error instanceof Error ? error.message : String(error))
+  }
   void shutdownResources().then(
     () => { process.exitCode = 1; app.exit(1) },
     (cleanupError) => {

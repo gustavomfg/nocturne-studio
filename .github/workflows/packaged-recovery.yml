@@ -1,0 +1,48 @@
+name: CI · packaged recovery rehearsal
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packaged-recovery-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  packaged-recovery:
+    name: Packaged recovery (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      PACKAGED_RECOVERY_REPORT: packaged-recovery-report.json
+      PACKAGED_RECOVERY_EXPECTED_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run package:dir -- --publish never
+      - name: Run packaged recovery rehearsal (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run rehearse:packaged-recovery
+      - name: Run packaged recovery rehearsal
+        if: runner.os != 'Linux'
+        run: npm run rehearse:packaged-recovery
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: packaged-recovery-${{ runner.os }}-${{ runner.arch }}
+          path: packaged-recovery-report.json
+          if-no-files-found: error
+          retention-days: 14

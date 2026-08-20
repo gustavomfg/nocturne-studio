@@ -30,6 +30,7 @@
     "package": "npm run build && electron-builder",
     "package:dir": "npm run build && electron-builder --dir",
     "smoke:package": "node scripts/smoke-package.mjs",
+    "rehearse:packaged-recovery": "node scripts/rehearse-packaged-recovery.mjs",
     "rehearse:updater": "electron scripts/rehearse-updater.mjs",
     "smoke:codex": "node scripts/smoke-codex-cli.mjs",
     "checksums": "node scripts/smoke-package.mjs --checksums",
