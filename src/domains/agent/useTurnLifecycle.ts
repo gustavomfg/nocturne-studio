@@ -2,6 +2,8 @@ import { useRef, type MutableRefObject } from 'react'
 import type { AgentMode, Message } from '../../types'
 import { useAppStore } from '../../store'
 import { useShallow } from 'zustand/react/shallow'
+import { PERSISTENCE_LIMITS } from '../../../shared/constants'
+import { isJsonValueWithinLimit } from '../../../shared/json'
 
 export interface ActiveTurnContext { conversationId: string; mode: AgentMode; suggestionId: string | null; suggestionFiles: string[] }
 
@@ -25,6 +27,7 @@ export function useTurnLifecycle({ flushStream, activeTurnRef, refreshGit }: { f
       const error = turn?.error as Record<string, unknown> | undefined
       const cancelled = turn?.status === 'cancelled'
       const persistedMessage = persistedAssistantMessage(params.persistedMessage, context.conversationId)
+      let persistenceRejected = false
       const persistenceWarning = typeof params.persistenceWarning === 'string' ? params.persistenceWarning : ''
       if (error) store.setError(String(error.message ?? 'A execução não foi concluída.'))
       if (persistenceWarning) store.setError(persistenceWarning)
@@ -38,23 +41,36 @@ export function useTurnLifecycle({ flushStream, activeTurnRef, refreshGit }: { f
         }
       } else if (state.streaming) {
       const current = useAppStore.getState()
-      let assistantContent = state.streaming
-      const memoryExtraction = await window.nocturne.brain.extract(context.conversationId, assistantContent)
-      assistantContent = memoryExtraction.content || (memoryExtraction.memories.length ? `${memoryExtraction.memories.length} candidata(s) foram enviadas ao Segundo Cérebro para sua revisão.` : 'A resposta do agente não continha conteúdo persistível.')
-      if (memoryExtraction.warning) store.setError(memoryExtraction.warning)
-      if (context.mode === 'review') {
-        const extracted = await window.nocturne.suggestions.create(context.conversationId, assistantContent)
-        assistantContent = extracted.content || assistantContent
-        if (extracted.warning) store.setError(extracted.warning)
-        if (useAppStore.getState().activeId === context.conversationId) store.setSuggestions((await window.nocturne.suggestions.page(context.conversationId)).items)
+      const activitySnapshot = current.activities.slice(-100).map(({ detail, ...activity }) => ({ ...activity, ...(detail === undefined ? {} : { detail: detail.slice(-4_000) }) }))
+      const metadata = {
+        diff: current.diff.slice(-PERSISTENCE_LIMITS.metadataCharacters),
+        activities: activitySnapshot,
+        files: current.files.slice(-300).map(({ path, kind, status }) => ({ path, kind, status })),
+        plan: current.plan.slice(-100).map(({ step, status }) => ({ step, status })),
+        planExplanation: current.planExplanation.slice(-20_000),
       }
-      const activitySnapshot = current.activities.slice(-100).map((activity) => ({ ...activity, detail: activity.detail?.slice(-4_000) }))
-      const saved = await window.nocturne.ai.saveAssistant(context.conversationId, assistantContent, { diff: current.diff.slice(-500_000), activities: activitySnapshot, files: current.files.slice(-300), plan: current.plan.slice(-100), planExplanation: current.planExplanation.slice(-20_000) })
-      if (useAppStore.getState().activeId === context.conversationId) store.addMessage(saved)
-      useAppStore.setState({ streaming: '' })
-      if (useAppStore.getState().activeId === context.conversationId) store.setArtifacts((await window.nocturne.artifacts.page(context.conversationId)).items)
+      if (!isJsonValueWithinLimit(metadata, PERSISTENCE_LIMITS.metadataCharacters)) {
+        persistenceRejected = true
+        store.setError('A resposta excedeu o limite de metadata persistível e não foi salva.')
+        useAppStore.setState({ streaming: '' })
+      } else {
+        let assistantContent = state.streaming
+        const memoryExtraction = await window.nocturne.brain.extract(context.conversationId, assistantContent)
+        assistantContent = memoryExtraction.content || (memoryExtraction.memories.length ? `${memoryExtraction.memories.length} candidata(s) foram enviadas ao Segundo Cérebro para sua revisão.` : 'A resposta do agente não continha conteúdo persistível.')
+        if (memoryExtraction.warning) store.setError(memoryExtraction.warning)
+        if (context.mode === 'review') {
+          const extracted = await window.nocturne.suggestions.create(context.conversationId, assistantContent)
+          assistantContent = extracted.content || assistantContent
+          if (extracted.warning) store.setError(extracted.warning)
+          if (useAppStore.getState().activeId === context.conversationId) store.setSuggestions((await window.nocturne.suggestions.page(context.conversationId)).items)
+        }
+        const saved = await window.nocturne.ai.saveAssistant(context.conversationId, assistantContent, metadata)
+        if (useAppStore.getState().activeId === context.conversationId) store.addMessage(saved)
+        useAppStore.setState({ streaming: '' })
+        if (useAppStore.getState().activeId === context.conversationId) store.setArtifacts((await window.nocturne.artifacts.page(context.conversationId)).items)
+      }
     }
-    if (context.suggestionId) {
+    if (context.suggestionId && !persistenceRejected) {
       const changedInApprovedScope = hasAppliedSuggestionChanges(context.suggestionFiles, useAppStore.getState().files.map((file) => file.path))
       if (!error && !cancelled && changedInApprovedScope) await window.nocturne.suggestions.status(context.conversationId, context.suggestionId, 'resolved', 'Turno concluído com alterações observadas no escopo aprovado; consulte a resposta do agente para os resultados de validação.')
       if (useAppStore.getState().activeId === context.conversationId) store.setSuggestions((await window.nocturne.suggestions.page(context.conversationId)).items)

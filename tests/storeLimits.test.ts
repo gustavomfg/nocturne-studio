@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { useAppStore } from '../src/store'
 import { PERSISTENCE_LIMITS, RENDERER_PERFORMANCE_BUDGETS } from '../shared/constants'
 import { exportDocumentSchema, prepareMarkdownSchema, rendererStatsSchema, saveAssistantSchema, suggestionExtractSchema } from '../shared/ipc/schemas'
+import { JSON_VALUE_LIMITS } from '../shared/json'
 
 beforeEach(() => useAppStore.setState({ streaming: '', activities: [], files: [] }))
 
@@ -37,6 +38,26 @@ describe('limites de persistência IPC', () => {
     expect(suggestionExtractSchema.safeParse({ conversationId, content: 'x'.repeat(PERSISTENCE_LIMITS.assistantCharacters + 1) }).success).toBe(false)
     expect(exportDocumentSchema.safeParse({ conversationId, content: 'x'.repeat(PERSISTENCE_LIMITS.documentCharacters + 1), format: 'pdf' }).success).toBe(false)
     expect(prepareMarkdownSchema.safeParse({ conversationId, content: '', name: 'a'.repeat(PERSISTENCE_LIMITS.documentNameCharacters + 1) }).success).toBe(false)
+  })
+  it('aceita metadata JSON legítimo no limite serializado e rejeita o excedente', () => {
+    const atLimit = 'x'.repeat(PERSISTENCE_LIMITS.metadataCharacters - 2)
+    expect(saveAssistantSchema.safeParse({ conversationId, content: 'Resposta', metadata: atLimit }).success).toBe(true)
+    expect(saveAssistantSchema.safeParse({ conversationId, content: 'Resposta', metadata: `${atLimit}x` }).success).toBe(false)
+    expect(saveAssistantSchema.safeParse({ conversationId, content: 'Resposta', metadata: { files: [{ path: 'src/App.tsx', kind: 'modified' }], plan: [{ step: 'validar' }], optional: null } }).success).toBe(true)
+  })
+  it('rejeita valores JavaScript que JSON.stringify converteria ou não suportaria', () => {
+    const cyclic: Record<string, unknown> = {}
+    cyclic.self = cyclic
+    expect(saveAssistantSchema.safeParse({ conversationId, content: 'Resposta', metadata: cyclic }).success).toBe(false)
+    expect(saveAssistantSchema.safeParse({ conversationId, content: 'Resposta', metadata: { missing: undefined } }).success).toBe(false)
+    expect(saveAssistantSchema.safeParse({ conversationId, content: 'Resposta', metadata: { unsupported: 1n } }).success).toBe(false)
+    expect(saveAssistantSchema.safeParse({ conversationId, content: 'Resposta', metadata: { unsupported: () => undefined } }).success).toBe(false)
+    expect(saveAssistantSchema.safeParse({ conversationId, content: 'Resposta', metadata: { unsupported: Number.NaN } }).success).toBe(false)
+  })
+  it('limita profundidade para manter a validação previsível', () => {
+    let deep: unknown = 'leaf'
+    for (let index = 0; index <= JSON_VALUE_LIMITS.maxDepth; index += 1) deep = { value: deep }
+    expect(saveAssistantSchema.safeParse({ conversationId, content: 'Resposta', metadata: deep }).success).toBe(false)
   })
 })
 

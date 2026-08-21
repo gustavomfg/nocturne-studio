@@ -5,6 +5,7 @@ import { brainMemoryKinds, brainMemoryScopes, brainMemoryStatuses, isSafeBrainMe
 import { PROVIDER_CONFIGURATION_LIMITS } from '../ai/providerConfiguration'
 import { providerConfigurationInputSchema } from '../ai/providerConfigurationSchemas'
 import { MODEL_LIMITS } from '../ai/model'
+import { isJsonValueWithinLimit, type JsonValue } from '../json'
 
 export const idSchema = z.string().uuid()
 export const pageSchema = z.object({ offset: z.number().int().min(0).max(1_000_000), limit: z.number().int().min(1).max(200) }).strict()
@@ -29,7 +30,8 @@ export const rendererStatsSchema = z.object({
 export const suggestionStatusSchema = z.object({ conversationId: idSchema, suggestionId: idSchema, status: z.enum(suggestionStatuses), result: z.string().max(20_000).optional() })
 export const suggestionExtractSchema = z.object({ conversationId: idSchema, content: z.string().max(PERSISTENCE_LIMITS.assistantCharacters) }).strict()
 export const gitCommitSchema = z.object({ conversationId: idSchema, message: z.string().trim().min(1).max(200), files: z.array(z.string().min(1).max(4_000)).min(1).max(1_000) })
-export const saveAssistantSchema = z.object({ conversationId: idSchema, content: z.string().max(PERSISTENCE_LIMITS.assistantCharacters), metadata: z.unknown().optional() })
+const assistantMetadataSchema = z.custom<JsonValue>((value) => isJsonValueWithinLimit(value, PERSISTENCE_LIMITS.metadataCharacters), 'O metadata precisa conter apenas valores JSON válidos dentro do limite permitido.')
+export const saveAssistantSchema = z.object({ conversationId: idSchema, content: z.string().max(PERSISTENCE_LIMITS.assistantCharacters), metadata: assistantMetadataSchema.optional() })
 export const prepareMarkdownSchema = z.object({ conversationId: idSchema, content: z.string().min(1).max(PERSISTENCE_LIMITS.documentCharacters), name: z.string().trim().min(1).max(PERSISTENCE_LIMITS.documentNameCharacters).default('documento.md') }).strict()
 export const applyMarkdownSchema = z.object({ conversationId: idSchema, target: z.string().min(1).max(4_000), generated: z.string().min(1).max(PERSISTENCE_LIMITS.documentCharacters), expectedHash: z.string().regex(/^[a-f0-9]{64}$/).nullable(), strategy: z.enum(['append', 'replace']) }).strict()
 export const exportDocumentSchema = z.object({ conversationId: idSchema, content: z.string().max(PERSISTENCE_LIMITS.documentCharacters), format: z.enum(['docx', 'pdf', 'html']) })

@@ -4,8 +4,9 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { NocturneApi } from '../shared/ipc/contracts'
-import { DATABASE_SCHEMA_VERSION, WORKSPACE_READ_LIMITS } from '../shared/constants'
-import { aiSendSchema } from '../shared/ipc/schemas'
+import { DATABASE_SCHEMA_VERSION, PERSISTENCE_LIMITS, WORKSPACE_READ_LIMITS } from '../shared/constants'
+import { backupSchema } from '../shared/ipc/backupSchemas'
+import { aiSendSchema, saveAssistantSchema } from '../shared/ipc/schemas'
 import type {
   ProviderConfigurationInput,
   ProviderConfigurationSummary,
@@ -312,6 +313,42 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
         fs.rmSync(link, { force: true })
         removeTestDirectory(outside)
       }
+    } finally {
+      await api.conversations.delete(conversation.id)
+    }
+  })
+
+  it('limita metadata de ai:save-assistant antes da transação e mantém o backup válido', async () => {
+    electron.dialogs.open.push({ canceled: false, filePaths: [workspace] })
+    await api.workspace.select()
+    const conversation = await api.conversations.create(workspace)
+    const event = { sender: electronMock.mainWebContents, senderFrame: electronMock.mainFrame }
+    try {
+      const withoutMetadata = await api.ai.saveAssistant(conversation.id, 'Resposta sem metadata')
+      expect(withoutMetadata.metadata).toBeNull()
+      const validMetadata = { diff: 'diff pequeno', files: [{ path: 'src/App.tsx', kind: 'modified' }], plan: [{ step: 'validar' }], optional: null }
+      const saved = await api.ai.saveAssistant(conversation.id, 'Resposta persistida', validMetadata)
+      expect(JSON.parse(saved.metadata ?? 'null')).toEqual(validMetadata)
+      const genericMetadata = { nested: [null, true], files: [null, 'ignorar'], diff: false }
+      const generic = await api.ai.saveAssistant(conversation.id, 'Metadata genérico', genericMetadata)
+      expect(JSON.parse(generic.metadata ?? 'null')).toEqual(genericMetadata)
+
+      const metadataAtLimit = 'x'.repeat(PERSISTENCE_LIMITS.metadataCharacters - 2)
+      const atLimit = await api.ai.saveAssistant(conversation.id, 'Resposta no limite', metadataAtLimit)
+      expect(atLimit.metadata).toHaveLength(PERSISTENCE_LIMITS.metadataCharacters)
+      expect(() => backupSchema.parse(database!.exportData())).not.toThrow()
+
+      const messagesBeforeRejection = database!.listMessages(conversation.id)
+      const artifactsBeforeRejection = database!.listArtifacts(conversation.id)
+      await expect(api.ai.saveAssistant(conversation.id, 'Não persistir', `${metadataAtLimit}x`)).rejects.toThrow(/metadata/i)
+      const cyclic: Record<string, unknown> = {}
+      cyclic.self = cyclic
+      const saveAssistantHandler = electronMock.handlers.get('ai:save-assistant')
+      if (!saveAssistantHandler) throw new Error('Handler ai:save-assistant ausente.')
+      expect(() => saveAssistantHandler(event, { conversationId: conversation.id, content: 'Também não persistir', metadata: cyclic })).toThrow()
+      expect(database!.listMessages(conversation.id)).toEqual(messagesBeforeRejection)
+      expect(database!.listArtifacts(conversation.id)).toEqual(artifactsBeforeRejection)
+      expect(saveAssistantSchema.safeParse({ conversationId: conversation.id, content: 'Resposta', metadata: { unsupported: 1n } }).success).toBe(false)
     } finally {
       await api.conversations.delete(conversation.id)
     }

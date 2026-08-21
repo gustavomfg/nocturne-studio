@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { suggestionStatuses } from '../suggestions'
 import { BACKUP_LIMITS } from './backupLimits'
-import { DATABASE_SCHEMA_VERSION } from '../constants'
+import { DATABASE_SCHEMA_VERSION, PERSISTENCE_LIMITS } from '../constants'
 import { brainMemoryHistoryActions, isSafeBrainMemoryContent } from '../brainMemory'
 import { modelDescriptorSchema } from '../ai/modelSchemas'
 import { workspaceModelBindingsSchema } from '../ai/bindingSchemas'
@@ -13,8 +13,8 @@ const jsonText = (limit: number) => z.string().max(limit).refine((value) => { tr
 
 const workspace = z.object({ path: pathValue, name: z.string().min(1).max(500), favorite: z.union([z.literal(0), z.literal(1)]).default(0), authorized: z.union([z.literal(0), z.literal(1)]).optional(), created_at: timestamp, last_opened_at: timestamp }).strict()
 const conversation = z.object({ id: uuid, title: z.string().min(1).max(500), workspace: pathValue, codex_thread_id: z.string().min(1).max(512).nullable().default(null), created_at: timestamp, updated_at: timestamp }).strict()
-const message = z.object({ id: uuid, conversation_id: uuid, role: z.enum(['user', 'assistant', 'system']), content: z.string().max(2_000_000), metadata: jsonText(500_000).nullable().default(null), created_at: timestamp }).strict()
-const artifact = z.object({ id: uuid, conversation_id: uuid, workspace: pathValue, type: z.string().min(1).max(50), title: z.string().min(1).max(500), file_path: pathValue.nullable().default(null), content: z.string().max(2_000_000).nullable().default(null), metadata: jsonText(500_000).nullable().default(null), created_at: timestamp, updated_at: timestamp }).strict()
+const message = z.object({ id: uuid, conversation_id: uuid, role: z.enum(['user', 'assistant', 'system']), content: z.string().max(2_000_000), metadata: jsonText(PERSISTENCE_LIMITS.metadataCharacters).nullable().default(null), created_at: timestamp }).strict()
+const artifact = z.object({ id: uuid, conversation_id: uuid, workspace: pathValue, type: z.string().min(1).max(50), title: z.string().min(1).max(500), file_path: pathValue.nullable().default(null), content: z.string().max(2_000_000).nullable().default(null), metadata: jsonText(PERSISTENCE_LIMITS.metadataCharacters).nullable().default(null), created_at: timestamp, updated_at: timestamp }).strict()
 const memory = z.object({ workspace: pathValue, content: z.string().max(50_000), updated_at: timestamp }).strict()
 const brainMemory = z.object({ id: uuid, workspace_id: pathValue, conversation_id: uuid.nullable().default(null), kind: z.enum(['fact', 'decision', 'preference', 'constraint', 'learning']), scope: z.enum(['workspace', 'conversation']), status: z.enum(['candidate', 'active', 'outdated', 'archived']), content: z.string().trim().min(1).max(8_000).refine(isSafeBrainMemoryContent, 'A memória parece conter uma credencial.'), confidence: z.number().int().min(0).max(100), source_type: z.enum(['manual', 'message', 'agent']), source_id: z.string().max(500).nullable().default(null), created_at: timestamp, updated_at: timestamp, last_confirmed_at: timestamp.nullable().default(null), last_used_at: timestamp.nullable().default(null), use_count: z.number().int().min(0).default(0) }).strict()
 const brainMemoryHistoryEntry = z.object({ id: z.string().min(1).max(500), memory_id: uuid, action: z.enum(brainMemoryHistoryActions), from_status: z.enum(['candidate', 'active', 'outdated', 'archived']).nullable(), to_status: z.enum(['candidate', 'active', 'outdated', 'archived']), summary: z.string().min(1).max(500), created_at: timestamp }).strict()

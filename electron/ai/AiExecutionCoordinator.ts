@@ -284,7 +284,7 @@ export class AiExecutionCoordinator {
     const active = this.active
     if (!active || active.conversationId !== conversationId) return
     if (method === 'item/agentMessage/delta') active.content = `${active.content}${String(params.delta ?? '')}`.slice(0, PERSISTENCE_LIMITS.assistantCharacters)
-    if (method === 'turn/diff/updated') active.diff = String(params.diff ?? '').slice(-500_000)
+    if (method === 'turn/diff/updated') active.diff = String(params.diff ?? '').slice(-PERSISTENCE_LIMITS.metadataCharacters)
     if (method === 'turn/plan/updated') {
       active.plan = Array.isArray(params.plan) ? params.plan.slice(-100) : []
       active.planExplanation = String(params.explanation ?? '').slice(-20_000)

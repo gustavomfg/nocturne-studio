@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import { suggestionIdentity, type ReviewComparisonItem, type Suggestion, type SuggestionInput, type SuggestionReconciliation, type SuggestionStatus } from '../../shared/suggestions'
 import type { BrainMemory, BrainMemoryCandidate, BrainMemoryHistoryAction, BrainMemoryHistoryEntry, CreateBrainMemoryInput, UpdateBrainMemoryInput } from '../../shared/brainMemory'
-import { DATABASE_SCHEMA_VERSION } from '../../shared/constants'
+import { DATABASE_SCHEMA_VERSION, PERSISTENCE_LIMITS } from '../../shared/constants'
+import { serializeJsonValue } from '../../shared/json'
 import { migrateDatabase } from './migrations'
 import { ProviderConfigurationRepository } from './ProviderConfigurationRepository'
 import { ModelCatalogRepository } from './ModelCatalogRepository'
@@ -342,7 +343,8 @@ export class LocalDatabase {
   addArtifact(conversationId: string, workspace: string, type: string, title: string, filePath?: string | null, content?: string | null, metadata?: unknown) {
     const now = new Date().toISOString()
     const existing = filePath ? this.db.prepare('SELECT id,created_at createdAt FROM artifacts WHERE conversation_id=? AND file_path=? ORDER BY updated_at DESC LIMIT 1').get(conversationId, filePath) as { id: string; createdAt: string } | undefined : undefined
-    const row: ArtifactRow = { id: existing?.id ?? randomUUID(), conversationId, workspace, type, title, filePath: filePath ?? null, content: content ?? null, metadata: metadata ? JSON.stringify(metadata) : null, createdAt: existing?.createdAt ?? now, updatedAt: now }
+    const serializedMetadata = metadata === undefined || metadata === null ? null : serializeJsonValue(metadata, PERSISTENCE_LIMITS.metadataCharacters)
+    const row: ArtifactRow = { id: existing?.id ?? randomUUID(), conversationId, workspace, type, title, filePath: filePath ?? null, content: content ?? null, metadata: serializedMetadata, createdAt: existing?.createdAt ?? now, updatedAt: now }
     this.db.prepare(`INSERT INTO artifacts(id,conversation_id,workspace,type,title,file_path,content,metadata,created_at,updated_at)
       VALUES(@id,@conversationId,@workspace,@type,@title,@filePath,@content,@metadata,@createdAt,@updatedAt)
       ON CONFLICT(id) DO UPDATE SET type=excluded.type,title=excluded.title,content=excluded.content,metadata=excluded.metadata,updated_at=excluded.updated_at`).run(row)
@@ -677,7 +679,8 @@ export class LocalDatabase {
   }
 
   private insertMessage(conversationId: string, role: MessageRow['role'], content: string, metadata?: unknown) {
-    const row: MessageRow = { id: randomUUID(), conversationId, role, content, metadata: metadata ? JSON.stringify(metadata) : null, createdAt: new Date().toISOString() }
+    const serializedMetadata = metadata === undefined || metadata === null ? null : serializeJsonValue(metadata, PERSISTENCE_LIMITS.metadataCharacters)
+    const row: MessageRow = { id: randomUUID(), conversationId, role, content, metadata: serializedMetadata, createdAt: new Date().toISOString() }
     this.db.prepare(`INSERT INTO messages (id,conversation_id,role,content,metadata,created_at)
       VALUES (@id,@conversationId,@role,@content,@metadata,@createdAt)`).run(row)
     this.db.prepare('UPDATE conversations SET updated_at=? WHERE id=?').run(row.createdAt, conversationId)

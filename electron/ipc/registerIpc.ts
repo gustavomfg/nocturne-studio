@@ -364,13 +364,17 @@ export function registerIpc(
   ipcMain.handle('ai:save-assistant', (_event, value: unknown) => {
     const data = saveAssistantSchema.parse(value)
     const conversation = getAuthorizedConversation(database, data.conversationId)
-    const metadata = data.metadata as { files?: Array<{ path?: string; kind?: string }>; diff?: string } | undefined
+    const metadata = data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata)
+      ? data.metadata as Record<string, unknown>
+      : undefined
     const artifacts: Array<{ type: string; title: string; filePath?: string | null; content?: string | null }> = []
-    for (const file of metadata?.files ?? []) {
-      if (!file.path) continue
-      artifacts.push({ type: artifactType(file.path), title: path.basename(file.path), filePath: file.path })
+    for (const file of Array.isArray(metadata?.files) ? metadata.files : []) {
+      if (!file || typeof file !== 'object' || Array.isArray(file)) continue
+      const filePath = typeof (file as { path?: unknown }).path === 'string' ? (file as { path: string }).path : ''
+      if (!filePath) continue
+      artifacts.push({ type: artifactType(filePath), title: path.basename(filePath), filePath })
     }
-    if (metadata?.diff) artifacts.push({ type: 'report', title: 'Alterações do turno', content: metadata.diff })
+    if (typeof metadata?.diff === 'string' && metadata.diff) artifacts.push({ type: 'report', title: 'Alterações do turno', content: metadata.diff })
     return database.saveAssistantTurn(data.conversationId, conversation.workspace, data.content, data.metadata, artifacts)
   })
 

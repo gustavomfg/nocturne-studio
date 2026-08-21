@@ -10,6 +10,7 @@ import type {
 import type { ModelDescriptor } from '../ai/model'
 import type { WorkspaceModelBindings } from '../ai/bindings'
 import type { CodexModel } from '../codexModels'
+import type { JsonValue } from '../json'
 
 export interface ProviderConfigurationIpcError {
   code: ProviderConfigurationErrorCode
@@ -34,7 +35,7 @@ export type ModelIpcResult<T> =
 export interface NocturneApi {
   workspace: { select(expectedWorkspace?: string): Promise<string | null>; validate(value: string): Promise<string | null>; list(): Promise<Workspace[]>; remove(value: string): Promise<void>; favorite(value: string, favorite: boolean): Promise<void>; openTool(value: string, tool: 'editor' | 'terminal'): Promise<void>; watch(value: string | null): Promise<void>; onChanged(listener: (event: WorkspaceChangeEvent) => void): () => void }
   conversations: { list(): Promise<Conversation[]>; page(offset?: number, limit?: number): Promise<CollectionPage<Conversation>>; create(workspace: string): Promise<Conversation>; messages(id: string): Promise<Message[]>; messagePage(id: string, offset?: number, limit?: number): Promise<MessagePage>; delete(id: string): Promise<void> }
-  ai: { send(conversationId: string, prompt: string, attachments?: string[], mode?: AgentMode): Promise<void>; cancel(conversationId: string): Promise<void>; saveAssistant(conversationId: string, content: string, metadata?: unknown): Promise<Message>; approve(key: string, accepted: boolean, forSession?: boolean): Promise<void>; rollbackStatus(conversationId: string): Promise<BuildRollbackStatus>; rollback(conversationId: string): Promise<{ restored: string[] } | null>; onEvent(listener: (event: AgentEvent) => void): () => void; onStatus(listener: (status: { status: string; conversationId?: string; error?: string }) => void): () => void }
+  ai: { send(conversationId: string, prompt: string, attachments?: string[], mode?: AgentMode): Promise<void>; cancel(conversationId: string): Promise<void>; saveAssistant(conversationId: string, content: string, metadata?: JsonValue): Promise<Message>; approve(key: string, accepted: boolean, forSession?: boolean): Promise<void>; rollbackStatus(conversationId: string): Promise<BuildRollbackStatus>; rollback(conversationId: string): Promise<{ restored: string[] } | null>; onEvent(listener: (event: AgentEvent) => void): () => void; onStatus(listener: (status: { status: string; conversationId?: string; error?: string }) => void): () => void }
   codex: { status(): Promise<CodexAccountStatus>; login(): Promise<CodexAccountStatus>; logout(): Promise<CodexAccountStatus>; models(): Promise<CodexModel[]> }
   files: { attach(conversationId: string): Promise<Attachment[]>; open(conversationId: string, filePath: string, action: 'file' | 'folder' | 'editor'): Promise<void>; preview(conversationId: string, filePath: string): Promise<FilePreview> }
   memory: { get(conversationId: string): Promise<WorkspaceMemory>; set(conversationId: string, content: string, rules: string): Promise<WorkspaceMemory> }

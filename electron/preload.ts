@@ -9,6 +9,7 @@ import type {
 import type { ProviderAvailability } from '../shared/ai/provider'
 import type { ProviderConfigurationErrorCode } from '../shared/ai/providerConfiguration'
 import { COLLECTION_PAGE_LIMITS } from '../shared/constants'
+import type { JsonValue } from '../shared/json'
 
 const on = <T>(channel: string, listener: (payload: T) => void) => {
   const handler = (_event: Electron.IpcRendererEvent, payload: T) => listener(payload)
@@ -69,7 +70,7 @@ export const nocturneApi: NocturneApi = {
   ai: {
     send: (conversationId: string, prompt: string, attachments: string[] = [], mode = 'build') => ipcRenderer.invoke(channels.ai.send, { conversationId, prompt, attachments, mode }),
     cancel: (conversationId: string) => ipcRenderer.invoke(channels.ai.cancel, { conversationId }),
-    saveAssistant: (conversationId: string, content: string, metadata?: unknown) => ipcRenderer.invoke(channels.ai.saveAssistant, { conversationId, content, metadata }),
+    saveAssistant: (conversationId: string, content: string, metadata?: JsonValue) => ipcRenderer.invoke(channels.ai.saveAssistant, { conversationId, content, metadata }),
     approve: (key: string, accepted: boolean, forSession = false) => ipcRenderer.invoke(channels.ai.approve, { key, accepted, forSession }),
     rollbackStatus: (conversationId: string) => ipcRenderer.invoke(channels.ai.rollbackStatus, conversationId),
     rollback: (conversationId: string) => ipcRenderer.invoke(channels.ai.rollback, conversationId),

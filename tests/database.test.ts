@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { LocalDatabase } from '../electron/database/Database'
 import Sqlite from 'better-sqlite3'
 import { migrateDatabase, migrations } from '../electron/database/migrations'
-import { DATABASE_SCHEMA_VERSION } from '../shared/constants'
+import { DATABASE_SCHEMA_VERSION, PERSISTENCE_LIMITS } from '../shared/constants'
+import { backupSchema } from '../shared/ipc/backupSchemas'
 import { PERSISTENCE_PERFORMANCE_BUDGETS } from '../shared/ipc/backupLimits'
 import type { ModelDescriptor } from '../shared/ai/model'
 import { expectUserOnlyMode, removeTestDirectory } from './helpers/platform'
@@ -72,6 +73,24 @@ describe('persistência SQLite', () => {
     expect(db.listMessages(conversation.id)).toHaveLength(1)
     expect(db.getWorkspaceMemory(workspace).content).toBe('decisão')
     expect(db.listArtifacts(conversation.id)[0].type).toBe('markdown'); db.close()
+  })
+  it('mantém metadata de turns dentro do contrato de backup sem escrita parcial', () => {
+    const db = create(); const workspace = '/tmp/metadata-contract'; const conversation = db.createConversation(workspace)
+    const metadataAtLimit = 'x'.repeat(PERSISTENCE_LIMITS.metadataCharacters - 2)
+    const saved = db.saveAssistantTurn(conversation.id, workspace, 'Resposta com metadata', metadataAtLimit)
+    expect(saved.metadata).toHaveLength(PERSISTENCE_LIMITS.metadataCharacters)
+    expect(() => backupSchema.parse(db.exportData())).not.toThrow()
+
+    const messagesBeforeRejection = db.listMessages(conversation.id)
+    const artifactsBeforeRejection = db.listArtifacts(conversation.id)
+    const oversized = `${metadataAtLimit}x`
+    expect(() => db.saveAssistantTurn(conversation.id, workspace, 'Não persistir', oversized)).toThrow(/metadata/i)
+    const cyclic: Record<string, unknown> = {}
+    cyclic.self = cyclic
+    expect(() => db.saveAssistantTurn(conversation.id, workspace, 'Também não persistir', cyclic)).toThrow(/metadata/i)
+    expect(db.listMessages(conversation.id)).toEqual(messagesBeforeRejection)
+    expect(db.listArtifacts(conversation.id)).toEqual(artifactsBeforeRejection)
+    db.close()
   })
   it('persiste a thread Codex associada à conversa e a inclui no backup', () => {
     const db = create()

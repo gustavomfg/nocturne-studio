@@ -4,6 +4,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { persistCompletedTurn } from '../electron/ai/TurnPersistence'
 import { LocalDatabase } from '../electron/database/Database'
+import { PERSISTENCE_LIMITS } from '../shared/constants'
 
 const directories: string[] = []
 afterEach(() => { for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }) })
@@ -52,6 +53,25 @@ describe('persistCompletedTurn', () => {
     expect(database.listSuggestions(conversation.id)).toEqual([
       expect.objectContaining({ title: 'Validar fallback final' }),
     ])
+    database.close()
+  })
+
+  it('rejeita metadata excessivo antes de salvar memórias ou sugestões derivadas', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-turn-oversized-')); directories.push(directory)
+    const database = new LocalDatabase(directory)
+    const conversation = database.createConversation('/tmp/turn-oversized-workspace')
+    const memory = '```nocturne-memories\n[{"kind":"learning","scope":"conversation","content":"Não persistir","confidence":80}]\n```'
+    const suggestion = '```nocturne-suggestions\n[{"title":"Não persistir","description":"Não persistir","reasoning":"Não persistir","category":"bug","severity":"low","affectedFiles":[],"proposedChanges":"Não persistir","expectedBenefits":[],"complexity":"low","risk":"low"}]\n```'
+    const persisted = persistCompletedTurn(database, {
+      conversationId: conversation.id, workspace: conversation.workspace, mode: 'review',
+      content: `${memory}\n${suggestion}`, diff: 'x'.repeat(PERSISTENCE_LIMITS.metadataCharacters), files: [], plan: [], planExplanation: '',
+    })
+    expect(persisted.message).toBeNull()
+    expect(persisted.warning).toMatch(/limite de metadata/)
+    expect(database.listMessages(conversation.id)).toEqual([])
+    expect(database.listSuggestions(conversation.id)).toEqual([])
+    expect(database.listBrainMemoryPage(conversation.workspace).items).toEqual([])
+    expect(database.listArtifacts(conversation.id)).toEqual([])
     database.close()
   })
 })

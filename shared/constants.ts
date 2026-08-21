@@ -11,6 +11,7 @@ export const PERSISTENCE_LIMITS = {
   assistantCharacters: 2_000_000,
   documentCharacters: 2_000_000,
   documentNameCharacters: 200,
+  metadataCharacters: 500_000,
 } as const
 
 /**

@@ -2,6 +2,7 @@ import path from 'node:path'
 import type { AgentMode } from '../../shared/suggestions'
 import { extractBrainMemoryCandidates, extractSuggestions, reviewComparisonMarkdown } from '../../shared/suggestions'
 import { PERSISTENCE_LIMITS } from '../../shared/constants'
+import { isJsonValueWithinLimit } from '../../shared/json'
 import type { LocalDatabase, MessageRow } from '../database/Database'
 
 export interface CompletedTurnSnapshot {
@@ -24,6 +25,16 @@ export function persistCompletedTurn(database: LocalDatabase, snapshot: Complete
   if (!snapshot.content) return { message: null }
   const warnings: string[] = []
   let assistantContent = snapshot.content.slice(0, PERSISTENCE_LIMITS.assistantCharacters)
+  const files = [...new Set(snapshot.files)].slice(-300)
+  const metadata = {
+    diff: snapshot.diff.slice(-PERSISTENCE_LIMITS.metadataCharacters),
+    files: files.map((filePath) => ({ path: filePath, kind: 'modified' })),
+    plan: snapshot.plan.slice(-100),
+    planExplanation: snapshot.planExplanation.slice(-20_000),
+  }
+  if (!isJsonValueWithinLimit(metadata, PERSISTENCE_LIMITS.metadataCharacters)) {
+    return { message: null, warning: 'A resposta excedeu o limite de metadata persistível e não foi salva.' }
+  }
 
   const memoryExtraction = extractBrainMemoryCandidates(assistantContent)
   try {
@@ -48,15 +59,8 @@ export function persistCompletedTurn(database: LocalDatabase, snapshot: Complete
     }
   }
 
-  const files = [...new Set(snapshot.files)].slice(-300)
-  const metadata = {
-    diff: snapshot.diff.slice(-500_000),
-    files: files.map((filePath) => ({ path: filePath, kind: 'modified' })),
-    plan: snapshot.plan.slice(-100),
-    planExplanation: snapshot.planExplanation.slice(-20_000),
-  }
   const artifacts: Array<{ type: string; title: string; filePath?: string; content?: string }> = files.map((filePath) => ({ type: artifactType(filePath), title: path.basename(filePath), filePath }))
-  if (snapshot.diff) artifacts.push({ type: 'report', title: 'Alterações do turno', filePath: undefined, content: snapshot.diff.slice(-500_000) })
+  if (snapshot.diff) artifacts.push({ type: 'report', title: 'Alterações do turno', filePath: undefined, content: snapshot.diff.slice(-PERSISTENCE_LIMITS.metadataCharacters) })
   const message = database.saveAssistantTurn(snapshot.conversationId, snapshot.workspace, assistantContent, metadata, artifacts)
   return { message, ...(warnings.length ? { warning: warnings.join(' ') } : {}) }
 }
