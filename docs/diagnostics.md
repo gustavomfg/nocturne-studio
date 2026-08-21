@@ -1,27 +1,17 @@
-# Diagnóstico e privacidade
+# Diagnostics and privacy
 
-Cada inicialização do Studio recebe um identificador de sessão aleatório. As
-entradas do log são JSON e registram data, sessão, nível, categoria, evento e
-dados operacionais limitados.
+[Português do Brasil](diagnostics.pt-BR.md)
 
-Antes da gravação, o logger:
+Each launch receives a random session identifier. Local logs are structured and
+contain date, session, level, category, event and bounded operational data.
 
-- remove campos de credencial, prompt, conteúdo, diff e saída bruta;
-- mascara padrões conhecidos de tokens e cabeçalhos de autenticação;
-- limita strings, listas, objetos e profundidade;
-- interrompe referências circulares;
-- mantém rotação local e permissões restritivas.
+Before writing, the logger removes credential, prompt, content, diff and raw
+output fields; masks known token and authorization-header patterns; bounds
+strings, lists, objects and nesting; and uses local rotation with restrictive
+permissions. Raw Codex App Server traffic is not stored.
 
-O tráfego bruto do Codex App Server não é armazenado. O diagnóstico registra
-somente o canal e a quantidade de bytes recebidos. Falhas do renderer usam uma
-impressão SHA-256 curta para correlação, sem persistir a mensagem ou a stack
-recebida.
-
-Em **Configurações → Diagnóstico**, o usuário pode copiar ou exportar um relatório
-sanitizado. O relatório contém versão do aplicativo e runtimes, plataforma,
-arquitetura, identificador e duração implícita da sessão, contagens de eventos,
-quantidade de Providers e modelos. Ele não contém credenciais, prompts, conteúdo
-de arquivos, diffs ou histórico de conversas.
-
-“Abrir logs” continua disponível para investigação local. O usuário deve revisar
-qualquer arquivo antes de compartilhá-lo externamente.
+In **Settings > Diagnostics**, users can copy or export a sanitized report with
+application/runtime versions, platform, architecture, session identifier,
+event counts, provider/model counts and timings. It does not contain credentials,
+prompts, file contents, diffs or conversation history. Review any local log
+before sending it outside the device.

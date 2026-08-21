@@ -1,71 +1,86 @@
-# Prontidão da release 1.0
+# 1.0 release readiness
 
-Esta matriz acompanha a implementação dos planos 1.0 sem confundir código
-concluído com uma publicação efetivamente assinada. A versão atual continua
+This is an internal maintainer checklist. It describes release evidence; it
+does not change the installed version. The current repository version is
 `0.9.5-beta`.
 
-## Jornadas automatizadas
+## Current HEAD
 
-| Jornada | Cobertura |
+The candidate audited for this document is the current `main` HEAD. The exact
+SHA must be recorded again by every release-candidate workflow; a local build
+or a result from another commit is not release evidence.
+
+## Automated coverage
+
+The current Vitest suite contains **324 tests** across 47 files. The relevant
+journeys are covered by:
+
+| Area | Evidence in the repository |
 | --- | --- |
-| Primeiro uso | onboarding concluído e decisão persistida em `tests/renderer/renderer.spec.ts` |
-| Workspace | autorização, relocalização, mudança externa e isolamento após restore em `tests/renderer/renderer.spec.ts` e `tests/workspaceTrust.test.ts` |
-| Conversa | envio, streaming, paginação, retomada e erro recuperável em `tests/renderer/renderer.spec.ts`, `tests/turnPersistence.test.ts` e `tests/codexClient.test.ts` |
-| Review | extração, reconciliação, evidência, histórico e decisão em `tests/suggestions.test.ts`, `tests/database.test.ts` e `tests/renderer/renderer.spec.ts` |
-| Build | aprovação, limites de escrita, progresso, cancelamento e rollback em `tests/codexClient.test.ts`, `tests/buildRollbackService.test.ts` e `tests/renderer/renderer.spec.ts` |
-| Docs | preview, concorrência, aplicação incremental e escrita atômica em `tests/documentUpdateService.test.ts` e `tests/renderer/renderer.spec.ts` |
-| Atualização | consentimento, notas, progresso, retomada e instalação em `tests/updateService.test.ts` |
-| Recuperação | banco, migração, backup parcial e workspace restaurado em `tests/databaseRecovery.test.ts`, `tests/database.test.ts`, `tests/backupSchemas.test.ts` e `tests/electronBoundaries.e2e.test.ts` |
-| Instalação | pacote real exercitado por `scripts/smoke-package.mjs` em Linux, Windows e macOS no workflow `package-validation.yml` |
-| Durabilidade | transações interrompidas, restore/quarentena, falhas de escrita atômica e comparação WAL `NORMAL`/`FULL` em `tests/databaseDurability.test.ts`, `tests/sqliteProcessInterruption.test.ts`, `tests/atomicFile.test.ts` e `npm run benchmark:sqlite` |
-| Matriz de confiabilidade | typecheck, lint, Vitest, ABI e benchmark SQLite em `ubuntu-latest`, `windows-latest` e `macos-latest` no job `reliability` de `package-validation.yml` |
+| First use and renderer flow | `tests/renderer/renderer.spec.ts` |
+| Workspace authorization, relocation and change events | `tests/workspaceTrust.test.ts`, `tests/workspaceChangeWatcher.test.ts`, `tests/electronBoundaries.e2e.test.ts` |
+| Conversations, streaming and persistence | `tests/turnPersistence.test.ts`, `tests/codexClient.test.ts`, `tests/database.test.ts` |
+| Review and suggestion reconciliation | `tests/suggestions.test.ts`, `tests/database.test.ts`, renderer tests |
+| Build approvals, boundaries and rollback | `tests/codexClient.test.ts`, `tests/buildRollbackService.test.ts`, renderer tests |
+| Docs preview, concurrency and atomic application | `tests/documentUpdateService.test.ts`, `tests/atomicFile.test.ts`, renderer tests |
+| Database, migration, corruption and recovery | `tests/databaseRecovery.test.ts`, `tests/databaseDurability.test.ts`, `tests/sqliteProcessInterruption.test.ts`, `tests/migrationRehearsal.test.ts` |
+| Electron/package boundaries | `tests/electronBoundaries.e2e.test.ts`, `scripts/smoke-package.mjs` |
+| Codex contract | `scripts/smoke-codex-cli.mjs`, `codex-contract-smoke.yml` |
+| Updater contract | `tests/updateService.test.ts`, `scripts/rehearse-updater.mjs`, `updater-rehearsal.yml` |
 
-O banco do produto usa WAL com `synchronous=FULL`; `npm run benchmark:sqlite`
-mantém a comparação reproduzível com `NORMAL` antes de qualquer mudança futura
-de política.
+The package-validation workflow runs source, renderer, ABI, reliability and
+package smoke jobs on `ubuntu-latest`, `windows-latest` and `macos-latest`.
 
-## Gates locais
+## Gates closed by evidence
 
-- typecheck;
-- lint e design system;
-- `npm test` (319 testes na execução local desta revisão);
-- build do renderer, main e preload;
-- regressão funcional e visual Playwright;
-- pacote unpacked e smoke de segurança no sistema local;
-- metadados de release consistentes.
+- transactional SQLite migrations and the historical 0.9.5-beta rehearsal;
+- WAL durability, process interruption, backup/restore and atomic file writes;
+- bounded workspace reads, attachment containment and symlink protections;
+- fatal main-process shutdown policy;
+- cross-platform WorkspaceChangeWatcher behavior;
+- real updater rehearsal from 0.9.5-beta metadata to stable metadata;
+- authenticated Codex CLI/App Server contract smoke on the candidate workflow;
+- ordinary packaged application smoke and ABI validation on all three CI hosts.
 
-O smoke do pacote valida o binário empacotado e seu userData isolado. A
-confirmação nativa de restauração durante um recovery corrompido permanece um
-gate manual: os fuses de produção desabilitam o inspector necessário para
-interceptar `dialog.showMessageBox`, e o produto não possui bypass de teste.
-Os testes automatizados do engine de recovery continuam em
-`tests/databaseRecovery.test.ts`.
+These statements refer to the corresponding evidence for the candidate commit,
+not to a promise that every future commit has already been validated.
 
-## Gates externos obrigatórios
+## Packaged recovery status
 
-Os itens abaixo só podem ser marcados como concluídos por uma execução do
-GitHub Actions sobre a tag candidata:
+`packaged-recovery.yml` builds an unpacked packaged application with isolated
+temporary user data and exercises normal restart, corruption detection,
+candidate validation, quarantine/restore, historical startup and moved
+workspace behavior. The native recovery-consent dialog remains a manual RC
+check because production fuses intentionally prevent an inspector-based
+automation bypass.
 
-- pacote e smoke nas três plataformas;
-- gates de confiabilidade por plataforma no job `signed-package` (typecheck,
-  lint, Vitest, ABI e benchmark SQLite);
-- assinatura Windows;
-- assinatura e notarização macOS;
-- checksums das três plataformas e assinatura GPG Linux;
-- smoke autenticado do contrato Codex no commit exato;
-- inventário combinado verificado;
-- publicação pelo environment protegido `stable-release`.
+The last recorded matrix run before the diagnostic follow-up passed Linux and
+Windows but failed the macOS fixture before the recovery scenarios. The current
+HEAD contains the sanitized stage/process diagnostics needed for the next macOS
+run. Therefore the cross-platform packaged-recovery gate is **not closed** until
+that run succeeds on the exact candidate SHA.
 
-Uma build local não satisfaz esses gates e não deve ser anunciada como release
-estável.
+## External release gates
 
-## Bloqueio atual de publicação
+Before a stable tag can be published, `stable-release.yml` requires:
 
-A publicação 1.0 permanece bloqueada enquanto:
+1. a tag exactly matching a version without a prerelease suffix;
+2. typecheck, lint, tests, release-metadata validation and Playwright on that
+   tag;
+3. a successful authenticated Codex smoke whose run and report match the tag
+   SHA and package version;
+4. signed Windows and macOS packages, macOS notarization and Linux GPG
+   checksum-signing in the protected `stable-release` environment;
+5. package smoke, checksums and release-asset verification for all platforms;
+6. explicit approval of the protected environment before publication.
 
-- `package.json` estiver em `0.9.5-beta`;
-- não existir uma tag estável correspondente;
-- os gates externos acima não tiverem sido executados com sucesso.
+The final release SHA, manual native recovery-consent check and signed/notarized
+installation validation remain release-candidate tasks. No prerelease document
+or local package is evidence that `1.0.0` has been published.
 
-Isso não bloqueia a conclusão das melhorias de estabilização; impede somente
-afirmar que a release 1.0 foi assinada, validada e publicada.
+## Do not block 1.0 on future scope
+
+Marketplace, cloud collaboration, multi-agent orchestration, MCP/Skills,
+advanced autonomous Build/Docs features and additional provider-specific
+adapters are outside the current 1.0 contract. They must not be presented as
+implemented, but their absence is not a release blocker.

@@ -1,25 +1,17 @@
-# Segundo Cérebro
+# Second Brain
 
-O Segundo Cérebro armazena conhecimento local estruturado por workspace ou por
-conversa. Apenas memórias no estado **Ativa** podem ser selecionadas como
-contexto de uma execução.
+[Português do Brasil](second-brain.pt-BR.md)
 
-Cada memória informa:
+Second Brain stores structured knowledge locally, scoped to a workspace or
+conversation. New memories begin as candidates. Only approved active memories
+can be selected as execution context.
 
-- tipo e escopo;
-- estado atual e confiança;
-- origem manual, mensagem ou proposta do agente;
-- data de criação e atualização;
-- último uso e quantidade de usos;
-- histórico auditável de criação, edição e mudanças de estado.
+Each memory records its type, scope, state, confidence, source, creation and
+update times, last use and usage count. Users can approve, reject, edit, mark
+active memories stale, archive, restore or permanently delete archived memories.
+State changes and their audit history are transactional and included in valid
+backup export/restore.
 
-Novas memórias começam como candidatas. O usuário pode aprovar ou desaprovar
-uma candidata, editar seu conteúdo, marcar uma memória ativa como
-desatualizada, arquivar, restaurar ou excluir definitivamente uma memória já
-arquivada. Arquivar e desaprovar preservam o histórico; excluir remove a memória
-e seu histórico após confirmação.
-
-As alterações da memória e seus registros de histórico são gravados na mesma
-transação. O histórico também participa da exportação, validação e restauração
-de backups. Backups anteriores ao schema 15 recebem um registro inicial para
-cada memória restaurada.
+Memory is not an instruction channel. It is treated as potentially stale,
+untrusted data; the current request and application policies always take
+priority.

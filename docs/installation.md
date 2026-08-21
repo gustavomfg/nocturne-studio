@@ -1,53 +1,45 @@
-# Instalação e requisitos
+# Installation and requirements
 
-## Pacotes oficiais
+[Português do Brasil](installation.pt-BR.md)
 
-Use somente artefatos publicados pela release oficial:
+## Official artifacts
 
-- Windows x64: instalador NSIS `.exe`;
-- Linux x64: `.AppImage` ou `.tar.gz`;
-- macOS: `.dmg`, com `.zip` usado pelo atualizador.
+Install only artifacts published for the intended release:
 
-Compare o arquivo com o manifesto `SHA256SUMS-<plataforma>` da mesma release.
-Windows e macOS exigem assinatura do aplicativo; macOS também exige
-notarização. O manifesto Linux possui assinatura GPG.
+- Windows 10/11 x64: NSIS installer (`.exe`);
+- Linux desktop: AppImage or `tar.gz`;
+- macOS: DMG; the updater also uses the matching ZIP artifact.
 
-A linha `0.9.5-beta` continua sendo pré-release. Os gates descritos nos planos
-1.0 não transformam uma build beta em versão estável.
+The published architecture is the one named by the release assets. Compare
+checksums with the release manifest. Stable Windows and macOS artifacts must be
+signed; macOS also requires notarization. Linux checksum manifests are signed
+with GPG in the protected release workflow. A package-validation build is not a
+stable release and may be unsigned.
 
-## Dependência de IA
+The repository currently remains on `0.9.5-beta`; release-readiness work does
+not itself publish or change the version.
 
-Review pode usar um Provider OpenAI-compatible configurado. Build e Docs usam o
-Codex CLI na linha atual.
+## AI requirements
 
-- Codex CLI mínimo: `0.145.0`;
-- versão recomendada: `0.146.0`;
-- versões verificadas: `0.145.0` e `0.146.0`;
-- versões mais novas são aceitas automaticamente quando atendem ao mínimo e
-  passam pelo handshake do App Server.
+Review can use an OpenAI-compatible provider. Build and Docs require an
+authenticated Codex CLI/App Server installation:
 
-O App Server é experimental. A versão mínima é um limite de segurança; a
-compatibilidade efetiva é confirmada pelo handshake em tempo de execução. O
-smoke `npm run smoke:codex` deve ser executado para homologar uma versão nova
-antes de uma release.
+- minimum supported Codex CLI: `0.145.0`;
+- recommended version: `0.146.0`;
+- verified versions: `0.145.0` and `0.146.0`.
 
-## Ambiente de desenvolvimento
+Newer versions are detected automatically, but the live App Server handshake
+must succeed. The App Server contract is experimental.
 
-Para compilar o projeto:
+## Development setup
 
 - Node.js `>=24.18 <25`;
 - npm `>=11 <12`;
-- launcher `webstorm` disponível no `PATH`;
-- toolchain nativa compatível com `better-sqlite3`.
-
-Execute:
+- native build tooling compatible with `better-sqlite3`.
 
 ```bash
 npm ci
-npm run typecheck
-npm run lint
-npm test
-npm run build
+npm run dev
 ```
 
-Detalhes adicionais estão em `docs/development.md`.
+See [development](development.md) for validation and packaging commands.

@@ -1,294 +1,140 @@
-> **Documentation for Nocturne Studio v0.9.5-beta**
-
-# 🌙 Nocturne Studio
-
-> **An AI-powered software engineering workspace built around your project—not your prompts.**
-
-<p align="center">
-  <img src="docs/images/Captura_de_tela_20260803_145710.png" alt="Nocturne Studio — nova conversa">
-</p>
-
-Nocturne Studio is a local-first software engineering workspace that helps developers understand, review, document and evolve software projects using contextual artificial intelligence.
-
-Rather than treating AI as the product, Nocturne Studio treats the **workspace** as the product.
-
-Knowledge, architecture, documentation, repositories and conversations remain connected, allowing artificial intelligence to work from project context instead of isolated prompts.
-
----
-
-# ✨ Highlights
-
-- 🧠 Local Second Brain
-- 👁️ Context-aware Awareness System
-- 🤖 Multiple AI Providers
-- 📝 Intelligent Review Mode
-- 📚 Persistent Project Knowledge
-- 🔐 Secure Credential Storage
-- ⚡ Typed IPC Communication
-- 🏗️ Local-first Architecture
-- 📦 Provider Abstraction Layer
-
----
-
-# 📸 Workspace
-
-<p align="center">
-  <img src="docs/images/Captura_de_tela_20260803_145404.png" alt="Workspace ativo">
-</p>
-
-Nocturne Studio combines conversations, repositories, project context and engineering tools into a single workspace.
-
-Instead of switching between multiple applications, developers interact with their software from one consistent environment.
-
----
-
-# 📊 Project Health
-
-<p align="center">
-  <img src="docs/images/Captura_de_tela_20260803_145512.png" alt="Project Health" width="40%">
-</p>
-
-Review Mode evaluates software quality across multiple engineering dimensions.
-
-Current analysis includes:
-
-- Architecture
-- Security
-- Tests
-- Performance
-- Documentation
-- Maintainability
-
-Suggestions remain reviewable before any modification is applied. Each
-structured review reconciles the current findings with the previous snapshot:
-new and persistent items stay visible, severity changes are reported, and open
-items no longer supported by the current evidence are resolved. Accepted or
-deferred decisions remain under user control.
-
----
-
-# 💡 AI Suggestions
-
-<p align="center">
-  <img src="docs/images/Captura_de_tela_20260803_145522.png" alt="AI Suggestions" width="35%">
-</p>
-
-Suggestions are grouped by severity and category, making technical debt easier to prioritize and review.
-
-Each recommendation records evidence, confidence, source, responsible party,
-severity, rationale and decision history—not only **what** should change, but
-also **why**.
-
----
-
-# 🔍 Suggestion Details
-
-<p align="center">
-  <img src="docs/images/Captura_de_tela_20260803_145547.png" alt="Suggestion Detail" width="55%">
-</p>
-
-Every suggestion contains detailed engineering information, including:
-
-- Problem and impact
-- Technical reasoning
-- Expected benefits
-- Affected files
-- Proposed implementation
-- Suggested commit message
-
-Developers always remain responsible for reviewing and approving changes.
-
----
-
-# 🌳 Git Integration
-
-<p align="center">
-  <img src="docs/images/Captura_de_tela_20260803_145447.png" alt="Commit Proposal" width="45%">
-</p>
-
-Approved changes can be prepared for version control with integrated Git support, allowing developers to review staged files and commit messages before creating commits.
-
----
-
-# 🤖 AI Providers
-
-<p align="center">
-  <img src="docs/images/Captura_de_tela_20260803_145624.png" alt="Providers" width="45%">
-</p>
-
-Nocturne Studio separates provider integrations from the workspace itself.
-
-Currently available integrations include:
-
-- ChatGPT accounts through the Codex CLI
-- OpenAI API
-- OpenRouter API
-- DeepSeek API
-- Ollama
-- LM Studio
-- Custom OpenAI-compatible endpoints
-
-Anthropic and other provider-specific adapters are planned, but are not
-implemented in this release. Additional providers can be integrated without
-changing the workspace architecture.
-
----
-
-# 🏛️ Core Principles
-
-## Workspace First
-
-Projects are the primary source of context.
-
-Artificial intelligence supports the workspace instead of defining it.
-
----
-
-## Knowledge First
-
-Approved information becomes structured project knowledge.
-
-Knowledge belongs to developers and remains reusable across future work.
-
----
-
-## Provider Agnostic
-
-No provider should become a dependency of the workspace.
-
-Developers remain free to choose the best model for each task.
-
----
-
-## Local First
-
-Workspace data stays local whenever possible.
-
-Artificial intelligence processes requests without owning project knowledge.
-
----
-
-## Human in Control
-
-Artificial intelligence assists engineering decisions.
-
-Developers remain responsible for reviewing, approving and evolving their software.
-
----
-
-# 🏗️ Architecture
-
-```text
-                    Workspace
-                         │
-        ┌────────────────┼────────────────┐
-        │                │                │
-    Second Brain     Sessions      Documents
-        │
-        ▼
-    Awareness
-        │
-        ▼
- Task Orchestrator
-        │
-        ▼
-  Provider Layer
-        │
- ┌──────┴───────────────┐
- │                      │
-Codex CLI       OpenAI-compatible
- │                      │
-ChatGPT       ┌──────────┼──────────┐
-account     APIs      local       custom
-           services  runtimes     endpoints
+# Nocturne Studio
+
+> A local-first desktop workspace for understanding, reviewing and evolving real software projects with AI.
+
+[Português do Brasil](README.pt-BR.md)
+
+Nocturne Studio keeps a project workspace, its conversations, engineering
+findings and durable knowledge together. It is a desktop engineering workspace,
+not an IDE, an autonomous replacement for a developer, or an official OpenAI
+product.
+
+It addresses the context fragmentation of prompt-only tools: project state,
+review evidence, decisions and approved knowledge remain connected instead of
+being reconstructed in every conversation.
+
+![Nocturne Studio workspace](docs/images/Captura_de_tela_20260803_145710.png)
+
+## What it does
+
+- **Workspaces:** explicitly select and authorize a project directory; moved or
+  restored workspaces remain unauthorized until selected again.
+- **Review Mode:** read-only analysis with evidence-backed suggestions and
+  reconciliation of new, persistent and resolved findings.
+- **Build Mode:** Codex-assisted changes inside the authorized workspace, with
+  approvals, progress, a visible diff and guarded rollback when its preconditions
+  are met.
+- **Docs Mode:** preview, compare and apply incremental Markdown updates with
+  confirmation, concurrency checks and atomic writes.
+- **Second Brain and Awareness:** local, structured memories with approval,
+  scope, freshness and an explanation of the context selected for each run.
+- **Conversations and Git:** persistent conversations, paginated histories,
+  workspace Git status and commit preparation.
+- **Provider layer:** a ChatGPT account through the Codex CLI/App Server, plus
+  OpenAI-compatible remote and local endpoints.
+
+The developer remains responsible for intent, approval, review and the final
+change to a project.
+
+## Supported release artifacts
+
+Official release validation currently covers:
+
+| Platform | Artifact configured by the build |
+| --- | --- |
+| Windows 10/11 | x64 NSIS installer (`.exe`) |
+| Linux desktop | AppImage and `tar.gz` (the published build architecture applies) |
+| macOS | DMG and updater ZIP (the published build architecture applies) |
+
+Unsigned package validation runs on Linux, Windows and macOS. A stable release
+must additionally pass the protected signing/notarization and checksum gates;
+see [installation](docs/installation.md) and [compatibility](docs/compatibility.md).
+
+## AI connections
+
+Review can use a configured OpenAI-compatible provider. Build and Docs use the
+Codex CLI/App Server. Available OpenAI-compatible targets include OpenAI API,
+OpenRouter, DeepSeek, Ollama, LM Studio and custom compatible endpoints. A
+ChatGPT subscription is connected through the Codex CLI; it is separate from
+OpenAI Platform API billing.
+
+Provider API credentials are encrypted by the operating-system secure storage,
+kept in the main process and excluded from backups and diagnostics. See
+[providers](docs/providers.md) and [Codex integration](docs/codex-integration.md).
+
+## Local data and recovery
+
+Conversations, settings, model catalog data and structured knowledge are stored
+in a local SQLite database. Workspace context files use bounded, atomic writes.
+The application validates the database, creates snapshots before destructive
+data operations and can quarantine a corrupt database before restoring a valid
+candidate with user confirmation. Backups do not include project files or
+provider credentials. These mechanisms reduce recovery risk; they are not a
+promise of absolute durability against every hardware or filesystem failure.
+
+Read [backup and recovery](docs/backup-and-recovery.md) before moving or
+restoring a workspace.
+
+## Security and privacy
+
+The renderer runs with isolation, sandboxing and no Node.js integration. Native
+capabilities cross named preload APIs and validated IPC handlers. Workspace paths
+are contained and rechecked, Review remains read-only, and remote providers use
+HTTPS with address validation. Nocturne is local-first, but selected prompts,
+context and attachments are sent to the provider the user chooses. See
+[security](docs/security.md), [privacy](docs/privacy.md) and
+[SECURITY.md](SECURITY.md).
+
+## Requirements for development
+
+- Node.js `>=24.18 <25`
+- npm `>=11 <12`
+- native build tooling compatible with `better-sqlite3`
+
+```bash
+npm ci
+npm run dev
 ```
 
-Every provider implements the same execution contract, allowing the workspace to remain independent from any specific AI platform.
+The full command list is in [development](docs/development.md).
 
----
+## Current status
 
-# 🚀 Current Status
+The repository is on the `v0.9.5-beta` line and is in 1.0 release preparation.
+The version is intentionally not changed to `1.0.0` by this documentation.
+The Codex App Server contract is experimental; the minimum supported CLI is
+`0.145.0` and the recommended version is `0.146.0`. Newer versions must pass
+the runtime compatibility handshake.
 
-Current version
+Known 1.0 limitations include the experimental Codex App Server contract,
+OpenAI-compatible adapters without normalized tool calling, and advanced
+autonomous/build-orchestration features outside the current protected modes.
+Dedicated Anthropic, Gemini and GitHub Copilot adapters, marketplace,
+cloud collaboration and multi-agent orchestration are not part of this release
+contract.
 
-> **v0.9.5-beta**
+## Documentation
 
-Implemented:
+- [Documentation index](docs/README.md) · [Português](docs/README.pt-BR.md)
+- [Installation](docs/installation.md) · [Português](docs/installation.pt-BR.md)
+- [Getting started](docs/getting-started.md) · [Português](docs/getting-started.pt-BR.md)
+- [Providers](docs/providers.md) · [Português](docs/providers.pt-BR.md)
+- [Configuration](docs/configuration.md) · [Português](docs/configuration.pt-BR.md)
+- [Codex integration](docs/codex-integration.md) · [Português](docs/codex-integration.pt-BR.md)
+- [Review, Build and Docs modes](docs/modes.md) · [Português](docs/modes.pt-BR.md)
+- [Second Brain and Awareness](docs/second-brain.md) · [Português](docs/second-brain.pt-BR.md)
+- [Backup and recovery](docs/backup-and-recovery.md) · [Português](docs/backup-and-recovery.pt-BR.md)
+- [Updates](docs/updates.md) · [Português](docs/updates.pt-BR.md)
+- [Security](docs/security.md) · [Português](docs/security.pt-BR.md)
+- [Privacy](docs/privacy.md) · [Português](docs/privacy.pt-BR.md)
+- [Troubleshooting](docs/troubleshooting.md) · [Português](docs/troubleshooting.pt-BR.md)
+- [Development](docs/development.md) · [Português](docs/development.pt-BR.md)
+- [Architecture](docs/architecture.md) · [Português](docs/architecture.pt-BR.md)
+- [Release readiness (maintainer document)](docs/release-readiness-1.0.md)
 
-- Review Mode
-- Workspace Memory
-- Second Brain
-- Awareness explicável por execução
-- Secure Provider System
-- Credential Vault
-- Typed IPC
-- Secure Electron Architecture
-- Provider Abstraction Layer
-- Packaging Pipeline
-- Automated CI Validation
+English is the canonical public source. Portuguese translations use the
+`.pt-BR.md` suffix and preserve headings, commands, paths and technical names.
 
-Currently under development:
+## License
 
-- recursos avançados de Build Mode além do fluxo protegido atual
-- recursos avançados de Docs Mode além da comparação e aplicação incremental
-- Workspace Automation
-- Expanded Provider Capabilities
-
----
-
-# 🛣️ Roadmap
-
-## v0.9.x
-
-- Complete Provider System
-- Expand Workspace execution
-- Improve Review Mode
-- Continue Build Mode
-- Continue Docs Mode
-
-## v1.0
-
-- Stable engineering workspace
-- Complete engineering workflow
-- Expanded provider ecosystem
-- Plugin-ready architecture
-
----
-
-# 🔧 Codex CLI
-
-Build Mode and Docs Mode currently require Codex CLI.
-
-**Minimum supported version:** `0.145.0`
-
-**Recommended version:** `0.146.0`
-
-Versions newer than the minimum are detected automatically. Nocturne validates
-the live App Server handshake before using them, so updating the Codex CLI does
-not require changing a dependency version in this project.
-
----
-
-# 📚 Documentation
-
-- [Installation and compatibility](docs/installation.md)
-- [First use](docs/getting-started.md)
-- [Providers and ChatGPT account access](docs/providers.md)
-- [Review, Build and Docs modes](docs/modes.md)
-- [Backup and recovery](docs/backup-and-recovery.md)
-- [Updates](docs/updates.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Security](docs/security.md) and [privacy](docs/privacy.md)
-- [1.0 release readiness](docs/release-readiness-1.0.md)
-- [Development environment](docs/development.md)
-
-Nocturne Studio remains at `0.9.5-beta`. The 1.0 documents describe release
-gates and do not change the installed version by themselves.
-
----
-
-# 📄 License
-
-This project is open source.
-
-See the repository license for licensing information.
+Nocturne Studio is distributed under the [MIT License](LICENSE).

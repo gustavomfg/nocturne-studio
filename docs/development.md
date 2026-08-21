@@ -1,21 +1,51 @@
-# Desenvolvimento
+# Development
 
-Requer Node.js >=24.18 <25 e npm >=11 <12.
+[Português do Brasil](development.pt-BR.md)
 
-Codex CLI: versão mínima 0.145.0; versões verificadas 0.145.0 e 0.146.0.
-Versões mais novas são detectadas automaticamente e precisam passar pelo
-handshake do App Server; não fixe uma nova versão no código apenas porque o
-CLI foi atualizado.
+## Environment
 
-## Comandos
+- Node.js `>=24.18 <25`;
+- npm `>=11 <12`;
+- Codex CLI minimum `0.145.0`; recommended `0.146.0`;
+- WebStorm is recommended and the `webstorm` launcher should be available in
+  `PATH`;
+- native tooling compatible with the Electron ABI and `better-sqlite3`.
 
-- `npm run dev` — inicia o app em modo desenvolvimento
-- `npm test` — executa os testes
-- `npm run lint` — verifica codigo
-- `npm run typecheck` — verifica tipos
-- `npm run build` — compila para producao
+## Daily commands
 
-## Automação
+```bash
+npm ci
+npm run dev
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
 
-Consulte [GitHub Actions e releases](github-actions.md) para os gatilhos dos
-workflows, a configuração do runner dedicado e as credenciais de assinatura.
+Additional validation:
+
+```bash
+npm run test:abi
+npm run test:renderer
+npm run benchmark:sqlite
+```
+
+`npm run test:renderer` runs Playwright. `npm run test:abi` verifies the native
+SQLite module inside the adopted Electron runtime.
+
+## Packaging and smoke checks
+
+```bash
+npm run package -- --publish never
+npm run package:dir -- --publish never
+npm run smoke:package
+npm run rehearse:packaged-recovery
+```
+
+The rehearsal commands use isolated temporary data and are release-engineering
+checks, not a replacement for signed release validation. `npm run smoke:codex`
+requires an authenticated Codex installation and should be run only in the
+authorized compatibility workflow.
+
+Run `git diff --check` before submitting a change. Keep tests, contracts,
+preload APIs and documentation aligned when changing a native capability.

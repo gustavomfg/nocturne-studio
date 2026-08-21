@@ -1,25 +1,13 @@
-# Recuperação do Build Mode
+# Build Mode recovery
 
-Build Mode mantém as políticas de aprovação do Codex App Server, limita a
-escrita à raiz autorizada e publica progresso, arquivos e diff no painel do
-agente.
+[Português do Brasil](build-recovery.pt-BR.md)
 
-## Rollback
+Before a Build run, Nocturne records the Git state of the authorized workspace.
+Rollback is offered only when there is a `HEAD` commit, the workspace was clean,
+the agent reported changed paths and every path remains contained by the
+authorized root.
 
-Antes de iniciar um Build, o Studio verifica o estado Git do workspace. O
-rollback só fica disponível quando:
-
-- existe um commit `HEAD`;
-- o workspace estava limpo antes da execução;
-- o agente reportou os caminhos alterados;
-- todos os caminhos permanecem dentro da raiz autorizada.
-
-Após confirmação explícita, arquivos versionados reportados são restaurados a
-partir de `HEAD` e arquivos novos reportados são removidos. O rollback nunca é
-oferecido sobre um workspace que já continha alterações do usuário, pois nesse
-caso não seria possível separar mudanças anteriores das mudanças do agente com
-segurança.
-
-Falhas informam o caminho exato em que a restauração parou e preservam o estado
-de rollback para nova inspeção. O usuário deve revisar o diff atual antes de
-confirmar a operação.
+After explicit confirmation, versioned reported files are restored from `HEAD`
+and reported new files are removed. Rollback is not offered when pre-existing
+user changes make attribution unsafe. If restoration stops, the failure path and
+current state remain visible for inspection; review the diff before retrying.

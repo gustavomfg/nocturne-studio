@@ -1,43 +1,43 @@
-# Solução de problemas
+# Troubleshooting
 
-## O projeto não abre
+[Português do Brasil](troubleshooting.pt-BR.md)
 
-Confirme que a pasta existe e possui permissão de leitura. Para um projeto
-movido, use **Localizar pasta**. O histórico local é preservado enquanto a raiz
-estiver indisponível.
+## The app or project does not open
 
-## Codex não aparece ou não lista modelos
+Confirm that the project folder exists and is readable. If it moved, choose
+**Locate folder** and authorize the new root. History remains local and readable
+while the old root is unavailable, but access to files, Git and AI stays blocked
+until explicit reselection.
 
-Verifique **Configurações > IA > Diagnóstico**. Instale o Codex CLI na versão
-mínima indicada, faça login pelo Codex CLI e reinicie a verificação. Versões
-mais novas são detectadas automaticamente; se o handshake do App Server falhar,
-use o smoke de contrato antes de atualizar a release do Nocturne.
+## Codex is missing or has no models
 
-## A API informa falta de créditos
+Install a supported Codex CLI, authenticate it outside Nocturne and run the AI
+diagnostic again. A newer CLI must pass the App Server handshake. An absent or
+incompatible CLI is a recoverable provider error, not a reason to expose
+credentials or continue with an unknown protocol.
 
-Saldo da API e assinatura ChatGPT são produtos separados. Adicione crédito à
-conta da API, troque de Provider ou conecte a conta ChatGPT pelo Codex CLI.
+## A provider fails
 
-## Provider não conecta
+Check the endpoint, HTTPS/loopback rule, credential and model catalog. For
+Ollama or LM Studio, start the local service. The diagnostic distinguishes
+authentication, credits, rate limits, timeout, unavailable endpoint and invalid
+response.
 
-Revise URL, HTTPS, credencial e catálogo. Para Ollama ou LM Studio, confirme que
-o serviço local está ativo no endereço de loopback configurado. Use o
-diagnóstico para distinguir timeout, autenticação, rate limit e resposta
-inválida.
+## A run was interrupted
 
-## Uma execução foi interrompida
+Read the error summary for what was preserved and use **Try again** when the
+operation is eligible. Build rollback is offered only when its snapshot and
+reported file boundaries make a safe rollback possible.
 
-O erro informa o que foi preservado. Use **Tentar novamente** quando disponível.
-Build mantém logs e oferece rollback somente quando existe um snapshot
-reversível válido.
+## Recovery or update failed
 
-## Atualização falhou
+Do not delete local database or recovery artifacts. Use the guided recovery or
+import a verified backup. For an interrupted update, resume the download; the
+current installed version and local data remain the recovery baseline until the
+new package is validated.
 
-Escolha **Retomar download**. A versão atual e os dados locais permanecem
-intactos até um pacote ser baixado, validado e confirmado.
+## Diagnostics
 
-## Banco ou restauração falhou
-
-Não apague os arquivos locais. Use a recuperação guiada ou importe um backup
-verificado. Exporte um diagnóstico sanitizado em **Dados e diagnóstico** para
-investigar sem incluir conteúdo privado.
+Use **Settings > Diagnostics** to copy or export a sanitized report. Review any
+log before sharing it. Reports must not contain credentials, prompts, project
+contents, diffs or private paths.

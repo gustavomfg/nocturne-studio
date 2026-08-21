@@ -1,18 +1,22 @@
-# Primeiro uso
+# Getting started
 
-1. Abra o Nocturne Studio e conclua a apresentação inicial.
-2. Selecione uma pasta de projeto. A seleção explícita autoriza somente aquela
-   raiz; uma restauração de backup não restaura essa autorização.
-3. Abra **Configurações > IA**.
-4. Conecte uma conta ChatGPT pelo Codex CLI, configure uma API
-   OpenAI-compatible ou registre um runtime local.
-5. Atualize o catálogo, escolha um modelo disponível e associe-o ao workspace.
-6. Crie uma conversa e comece em Review Mode para analisar sem escrita.
-7. Avalie as sugestões, evidências e diferenças antes de aceitar, adiar,
-   rejeitar ou preparar uma aplicação.
-8. Aprove memórias somente quando elas forem úteis e duráveis.
+[Português do Brasil](getting-started.pt-BR.md)
 
-Ao reabrir o aplicativo, conversas, decisões e memórias permanecem no banco
-local. Se o projeto tiver sido movido, use **Localizar pasta**. Se estiver
-ausente ou sem permissão, o histórico continua legível, mas o workspace fica
-desautorizado até nova seleção.
+1. Open Nocturne Studio and complete the first-use screen.
+2. Select a project folder. The explicit selection authorizes only that root.
+3. Open **Settings > AI**.
+4. Connect a ChatGPT account through the Codex CLI, configure an
+   OpenAI-compatible API, or register a local runtime.
+5. Refresh the model catalog, choose a model and bind it to the workspace.
+6. Create a conversation and start in Review Mode for a read-only analysis.
+7. Review evidence and suggestions before accepting, deferring, rejecting or
+   preparing an application.
+8. Approve memories only when they are useful and durable.
+
+On the next launch, conversations, decisions and memories remain in the local
+database. If a project moved, use **Locate folder**. If it is missing or not
+readable, history remains available but the workspace is unauthorized until a
+new explicit selection.
+
+Backups restore data, not project files or workspace authorization. Select the
+project again after a restore.

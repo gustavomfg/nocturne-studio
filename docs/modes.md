@@ -1,26 +1,32 @@
-# Review, Build e Docs
+# Review, Build and Docs modes
+
+[Português do Brasil](modes.pt-BR.md)
 
 ## Review Mode
 
-Review é somente leitura. A análise produz sugestões estruturadas com evidência,
-confiança, origem, severidade, justificativa e histórico. Uma nova análise
-reconcilia sugestões novas, persistentes, resolvidas e mudanças de severidade.
-Nenhuma sugestão altera arquivos por si só.
+Review is analysis-only. It reads the authorized workspace and produces
+structured suggestions with evidence, confidence, source, severity, rationale
+and decision history. A later review reconciles new and persistent findings and
+resolves open findings no longer supported by current evidence. Review never
+changes project files by itself.
 
 ## Build Mode
 
-Build pode escrever apenas na raiz autorizada, com rede desabilitada e
-aprovações explícitas. Atividades, diffs e arquivos alterados ficam visíveis. O
-snapshot de rollback é criado antes da execução; uma restauração exige
-confirmação e só cobre mudanças registradas pelo fluxo reversível.
+Build can modify files only inside the authorized workspace and under the active
+approval and sandbox policy. The Codex App Server receives a workspace-write
+policy with network access disabled. Progress, requested approvals, changed
+files and diffs remain visible.
 
-Build avançado e automação autônoma continuam fora do compromisso da 1.0.
+Guarded rollback is available only when the workspace was clean before the run,
+there is a `HEAD` commit and the agent reported paths that remain within the
+authorized root. Review the current diff before confirming a rollback.
 
 ## Docs Mode
 
-A geração é somente leitura. Para atualizar Markdown, o usuário escolhe o
-arquivo, compara conteúdo atual e proposto e decide entre acrescentar ou
-substituir. A gravação é atômica, exige confirmação e falha se o arquivo mudou
-desde o preview.
+Docs generates proposals read-only. The user selects a Markdown file, compares
+the current and proposed content, then confirms append, replace or create. The
+hash is checked again before writing, and the write is atomic. HTML, DOCX and
+PDF exports are derived copies and are not incremental source-document updates.
 
-Detalhes: `docs/build-recovery.md` e `docs/docs-mode.md`.
+Advanced autonomous build, documentation and orchestration features are outside
+the current 1.0 contract.

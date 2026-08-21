@@ -1,43 +1,37 @@
-# Compatibilidade oficial
+# Compatibility
 
-## Aplicativo
+[Português do Brasil](compatibility.pt-BR.md)
 
-| Plataforma | Arquitetura e pacote da release |
+## Official application targets
+
+| Platform | Release artifact |
 | --- | --- |
-| Windows 10/11 | x64, instalador NSIS |
-| Linux desktop atual | x64, AppImage ou tar.gz |
-| macOS mantido pela build oficial | arquitetura do artefato assinado, DMG |
+| Windows 10/11 | x64 NSIS installer |
+| Linux desktop | AppImage or `tar.gz` for the published build architecture |
+| macOS | DMG and updater ZIP for the published build architecture |
 
-Somente combinações produzidas e aprovadas pelo workflow
-`Release · stable` são consideradas suportadas. Pacotes locais ou builds em
-outra arquitetura são de desenvolvimento até passarem pelo mesmo smoke.
+Only artifacts produced and approved by the protected stable-release workflow
+are official releases. Local packages and builds for another architecture are
+development artifacts until they pass the same smoke and release gates.
 
-## Desenvolvimento
+## Development compatibility
 
 - Node.js `>=24.18 <25`;
 - npm `>=11 <12`;
-- Electron `43.x`;
-- SQLite via `better-sqlite3` reconstruído para o Electron adotado.
+- Electron 43.x;
+- `better-sqlite3` rebuilt for the adopted Electron ABI.
 
-Antes de iniciar a suíte, o runner verifica o ABI do Electron carregando
-`better-sqlite3` no runtime embutido. Em caso de falha, execute
-`npm run rebuild:native` e tente novamente. Para executar somente esse
-diagnóstico, use `npm run test:abi`.
+Use `npm run test:abi` to check that native module compatibility before running
+the full suite.
 
-## IA
+## AI compatibility
 
-- Codex CLI mínimo `0.145.0`;
-- recomendado `0.146.0`;
-- verificados `0.145.0` e `0.146.0`;
-- versões mais novas são detectadas automaticamente quando atendem ao mínimo;
-- Providers OpenAI-compatible remotos por HTTPS;
-- Ollama, LM Studio e endpoints locais por loopback.
+- Codex CLI minimum: `0.145.0`;
+- recommended: `0.146.0`;
+- verified: `0.145.0` and `0.146.0`;
+- newer versions require a successful App Server handshake;
+- remote OpenAI-compatible endpoints require HTTPS;
+- local Ollama and LM Studio endpoints use loopback.
 
-Anthropic nativo, plugins, múltiplos agentes, nuvem e execução totalmente
-autônoma não fazem parte da compatibilidade da linha atual.
-
-O contrato do Codex App Server permanece experimental. O mínimo evita versões
-antigas demais, enquanto o handshake real do App Server valida a sessão antes
-do uso. O smoke `npm run smoke:codex` continua sendo a validação explícita para
-uma release; a lista de versões verificadas não precisa ser alterada a cada
-versão nova do CLI.
+There are no dedicated native adapters for Anthropic, Gemini or GitHub Copilot
+in the current release contract. The Codex App Server remains experimental.

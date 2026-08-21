@@ -1,24 +1,20 @@
 # Docs Mode
 
-Docs Mode prepara documentação sem escrever no workspace durante a geração.
-O fluxo mantém análise, aprovação e aplicação como etapas separadas:
+[Português do Brasil](docs-mode.pt-BR.md)
 
-1. O agente inspeciona a documentação relacionada em modo somente leitura.
-2. A resposta produz uma proposta Markdown incremental e focada.
-3. O usuário escolhe um arquivo Markdown dentro do workspace.
-4. O Nocturne mostra lado a lado o conteúdo atual e a proposta.
-5. O usuário decide cancelar, anexar o conteúdo ou substituir/criar o documento.
-6. O processo principal pede uma confirmação final antes de gravar.
+Docs Mode keeps analysis, approval and application separate:
 
-Anexar preserva o documento existente e acrescenta a proposta ao final.
-Substituir nunca acontece automaticamente: exige a decisão no preview e uma
-segunda confirmação nativa.
+1. the agent reads related documentation without writing;
+2. it proposes a focused Markdown update;
+3. the user selects a Markdown file inside the authorized workspace;
+4. Nocturne shows current and proposed content side by side;
+5. the user chooses cancel, append, replace or create;
+6. the main process requests final confirmation before writing.
 
-Entre o preview e a aplicação, o Nocturne verifica o hash do arquivo. Se outro
-programa modificar o documento nesse intervalo, a gravação é recusada e uma
-nova comparação deve ser gerada. A escrita usa arquivo temporário, sincronização
-e renomeação atômica, com permissão restritiva.
+Before applying, Nocturne checks the expected file hash. If another program
+changed the file after preview, the operation is refused and a new comparison is
+required. Writes use a temporary file, synchronization, restrictive permissions
+and atomic replacement.
 
-Exportações HTML, DOCX e PDF continuam sendo cópias derivadas da resposta e
-dependem do Pandoc. Elas não constituem atualização incremental de um documento
-fonte.
+HTML, DOCX and PDF exports depend on Pandoc and are derived copies of the
+response; they do not update a source Markdown document incrementally.

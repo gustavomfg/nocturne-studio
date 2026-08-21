@@ -1,5 +1,7 @@
 # Contributing
 
+[Português do Brasil](CONTRIBUTING.pt-BR.md)
+
 Thank you for your interest in contributing to **Nocturne Studio**.
 
 Whether you are fixing a bug, improving documentation, proposing a feature or submitting code, your contribution is appreciated.
@@ -56,6 +58,8 @@ npm run typecheck
 npm run lint
 npm test
 npm run build
+npm run test:abi
+npm run test:renderer
 ```
 
 If applicable, also run the project's packaging and smoke validation workflows.

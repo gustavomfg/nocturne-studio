@@ -1,75 +1,55 @@
-# Security Policy
+# Security policy
 
-Thank you for helping improve the security of Nocturne Studio.
+[Português do Brasil](SECURITY.pt-BR.md)
 
-We take security seriously and appreciate responsible disclosure of vulnerabilities.
+Nocturne Studio is a local desktop application, but it handles project files,
+provider credentials and communication with external AI services. Security
+reports are welcome.
 
----
+## Reporting a vulnerability
 
-## Reporting a Vulnerability
+Do not include secrets, project files or private prompts in a public issue. Use
+the repository's GitHub Security Advisory feature for a private report when it
+is available. If private reporting is unavailable, open a minimal issue that
+contains no sensitive details and ask the maintainers for a private channel.
 
-Please **do not open a public GitHub issue** for security vulnerabilities.
+Include, when safe:
 
-Instead, use the repository's **GitHub Security Advisory** feature to report the issue privately.
+- affected version or commit;
+- operating system and architecture;
+- impact and a minimal reproduction;
+- expected and actual behavior;
+- a mitigation or workaround, if known.
 
-Your report should include, whenever possible:
+Before sharing logs, remove API keys, access tokens, cookies, database files,
+workspace contents and personal information.
 
-- Affected version
-- Operating system and platform
-- Impact assessment
-- Steps to reproduce
-- Expected behavior
-- Actual behavior
-- Possible mitigations or workarounds
+## Supported security scope
 
-Before sharing logs or project files, remove any sensitive information such as:
+The policy covers the desktop application, Electron main/preload/renderer
+boundaries, IPC validation, workspace authorization and containment, persistence
+and recovery, provider integrations, credential storage and packaged updates.
+Third-party providers and the Codex CLI have their own security policies.
 
-- API keys
-- Access tokens
-- Authentication cookies
-- Database contents
-- Personal information
+The current supported development/release line is `0.9.5-beta`; a future stable
+`1.0.0` release will publish its support policy with the tag. Historical beta
+notes are not a promise of support for old versions.
 
----
+## Security design
 
-## Supported Versions
+- Renderer `contextIsolation` and sandboxing are enabled; Node integration is
+  disabled.
+- The preload exposes named APIs rather than a generic IPC bridge.
+- IPC validates origin, payload, rate and workspace authorization before native
+  work begins.
+- Review Mode is read-only. Build writes are scoped to the authorized workspace,
+  use Codex approvals and disable network access for the agent sandbox.
+- Workspace paths are contained and bounded reads reject traversal and symlink
+  escapes where the platform permits them.
+- Provider credentials are encrypted with the operating-system secure storage,
+  never returned to the renderer and excluded from backups and diagnostics.
+- Remote OpenAI-compatible connections require HTTPS, reject redirects and
+  validate resolved addresses to reduce SSRF and DNS-rebinding risk.
+- Packaged builds use ASAR, embedded integrity validation and Electron fuses.
 
-| Version | Security Updates |
-|---------|------------------|
-| `0.9.x-beta` | ✅ Supported |
-| `0.8.x-beta` | Supported until the next beta release |
-| `0.7.x-beta` and earlier | ❌ Not supported |
-
-Please update to the latest beta release before reporting or validating a security issue.
-
----
-
-## Security Principles
-
-Nocturne Studio follows a security-first architecture.
-
-Current principles include:
-
-- Renderer isolation with `contextIsolation` enabled.
-- `nodeIntegration` disabled.
-- Explicit IPC communication through the preload layer.
-- Authentication handled outside the renderer.
-- Support for local models and API providers without exposing secrets to the UI.
-- Sensitive credentials are never intended to be embedded in the application source code.
-
-The project currently integrates with the Codex CLI for account-based capabilities. Authentication is delegated to the external tool and credentials must never be transported through the renderer.
-
----
-
-## Scope
-
-This policy applies to:
-
-- Desktop application
-- Electron main process
-- IPC layer
-- Workspace persistence
-- AI provider integrations
-- Documentation related to secure operation
-
-Third-party services and providers follow their own security policies.
+These are implemented mitigations, not a formal security certification.

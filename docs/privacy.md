@@ -1,23 +1,26 @@
-# Privacidade
+# Privacy
 
-Nocturne Studio é local-first. Banco, conversas, sugestões, memórias,
-configurações e logs ficam no diretório local de dados do aplicativo.
+[Português do Brasil](privacy.pt-BR.md)
 
-Conteúdo é enviado a um serviço externo somente quando o usuário executa uma
-tarefa com um Provider remoto ou com a conta ChatGPT pelo Codex CLI. O material
-enviado é limitado à solicitação, ao histórico/contexto selecionado e aos anexos
-explicitamente incluídos. Providers locais permanecem no endpoint configurado.
+Nocturne Studio is local-first. The local database, conversations, suggestions,
+memories, settings and application logs remain on the device under the product
+user-data directory.
 
-Credenciais:
+Content leaves the device only when the user runs a task with a remote provider
+or with the authenticated Codex CLI. The request can include the prompt,
+selected conversation/context and explicitly attached files. Local providers
+receive requests at the configured loopback endpoint.
 
-- ficam no processo principal;
-- são cifradas pelo armazenamento seguro do sistema;
-- não chegam ao renderer;
-- não entram em backup, logs ou relatório de diagnóstico.
+Provider credentials:
 
-Diagnósticos usam identificação aleatória de sessão e removem prompts,
-respostas, diffs, conteúdo de arquivos, caminhos sensíveis e credenciais. As
-métricas de desempenho contêm somente números agregados.
+- are kept in the Electron main process;
+- are encrypted with the operating-system secure storage;
+- never cross the renderer/preload API;
+- are not exported to backups or diagnostic reports.
 
-O Nocturne Studio é independente e não é um produto oficial da OpenAI.
-Políticas do Provider escolhido também se aplicam aos dados enviados a ele.
+Diagnostics use a random session identifier, bounded fields and redaction of
+credentials, prompts, responses, diffs, file contents and sensitive paths.
+Performance metrics are aggregate numbers only. The policies of the selected
+provider and the Codex service also apply to any content sent to them.
+
+Nocturne Studio is independent and is not an official OpenAI product.

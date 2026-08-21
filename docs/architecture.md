@@ -1,65 +1,49 @@
-# Arquitetura
+# Architecture
 
-O Nocturne Studio é um workspace desktop local. O renderer apresenta estado e
-solicita operações; ele não recebe acesso direto a Node.js, Electron,
-credenciais ou ao sistema de arquivos.
+[Português do Brasil](architecture.pt-BR.md)
 
-## Processos e limites
+Nocturne Studio is an Electron desktop workspace. The renderer presents state
+and requests operations; it does not receive Node.js, Electron, credential or
+direct filesystem access.
 
-- `src/` contém o renderer React e consome apenas a API nominal do preload.
-- `electron/preload.ts` expõe contratos explícitos pelo `contextBridge`.
-- `electron/ipc/` valida origem, payload, autorização do workspace e limites de
-  chamadas antes de alcançar capacidades nativas.
-- `electron/` mantém persistência, Git, arquivos, Providers e Codex App Server
-  no processo principal.
-- `shared/` contém contratos e limites usados nos dois lados da fronteira.
+## Processes and boundaries
 
-## Execução de IA
+- `src/` is the React renderer.
+- `electron/preload.ts` exposes named, typed methods through `contextBridge`.
+- `electron/ipc/` validates origin, payload, rate limits and workspace
+  authorization before native work begins.
+- The Electron main process owns SQLite, files, Git, Providers and the Codex App
+  Server.
+- `shared/` contains contracts and limits shared by the two sides.
 
-Existem dois caminhos intencionalmente distintos:
+The BrowserWindow uses `contextIsolation: true`, `sandbox: true` and
+`nodeIntegration: false`. External navigation is denied; permitted HTTPS links
+are opened by the operating system.
 
-1. O Codex CLI reutiliza uma conta ChatGPT autenticada ou a autenticação
-   configurada no próprio CLI. O App Server fornece ferramentas, streaming,
-   aprovações e cancelamento. Review usa sandbox somente leitura; Build limita
-   escrita à raiz autorizada e mantém rede desabilitada.
-2. Providers OpenAI-compatible usam uma chave de API ou runtime local. O
-   contrato atual oferece chat em Review e não simula ferramentas de escrita.
+## AI execution
 
-O contrato comum e os campos de diagnóstico estão documentados em
-[`provider-contract.md`](provider-contract.md).
+Codex CLI/App Server is used for the account-based path and for Build and Docs.
+Review uses read-only policies. Build uses a workspace-scoped write policy,
+explicit approvals and disabled network access for the agent sandbox.
 
-O renderer recebe eventos normalizados com o identificador da conversa. Uma
-única execução pode ficar ativa por vez, e aprovações nativas são resolvidas
-somente no processo principal.
+OpenAI-compatible providers use a separate adapter contract for model discovery,
+streaming, cancellation, bounded responses and diagnostics. Tool calling is not
+normalized by that adapter. Provider credentials remain in the main process.
 
-O processo principal acumula a resposta normalizada e persiste, em uma única
-transação, a mensagem e seus artefatos antes de publicar `turn/completed`.
-Extrações de sugestões e candidatas do Segundo Cérebro também acontecem nessa
-fronteira. Assim, reiniciar o renderer não torna a resposta concluída
-dependente de estado React transitório; o renderer apenas reflete a mensagem
-já persistida e mantém um caminho legado de recuperação caso a finalização no
-processo principal falhe.
+## Local state
 
-## Estado local
+SQLite stores conversations, messages, settings, model catalogs, bindings,
+suggestions and structured knowledge. Migrations are transactional and the
+database uses WAL with `synchronous=FULL`. Workspace context files are bounded
+and written atomically. Backups use a versioned envelope and checksum; restore
+creates a local snapshot first.
 
-SQLite é a fonte de verdade para conversas, catálogo, bindings e conhecimento
-estruturado. Migrações são transacionais, restaurações mantêm workspaces sem
-autorização e snapshots precedem importações. Contexto editável do projeto
-também é mantido em `.nocturne/` com escrita atômica. O processo principal
-mantém no máximo um observador nativo para o workspace ativo. Mudanças são
-agrupadas, limitadas e enviadas por um canal nomeado do preload; a interface
-atualiza o estado Git e recarrega memória/regras quando esses arquivos mudam.
-Backups exportados usam um envelope versionado com SHA-256 sobre os dados e são
-gravados por arquivo temporário seguido de substituição atômica. A importação
-continua aceitando o JSON legado, mas exige checksum válido no formato novo
-antes da validação relacional e de qualquer alteração no banco.
-A restauração sempre cria primeiro um snapshot local. O modo completo substitui
-todo o estado exportável; o modo parcial substitui somente projetos, conversas,
-artefatos, sugestões e memórias, preservando Providers, catálogo de modelos e
-preferências desta instalação.
-O histórico e a política operacional das migrações estão em
-[`database-migrations.md`](database-migrations.md).
+Restored workspaces are not authorized automatically. The active workspace is
+watched through a single Chokidar backend with ignored generated directories,
+bounded reconciliation and debounced semantic change events.
 
-O Segundo Cérebro injeta somente memórias aprovadas e relevantes, sempre
-marcadas como potencialmente desatualizadas e serializadas como dados não
-executáveis.
+## Trust model
+
+The developer controls provider selection, workspace authorization, approvals,
+review decisions and final changes. Persistent memory is treated as untrusted,
+possibly stale data rather than executable instructions.

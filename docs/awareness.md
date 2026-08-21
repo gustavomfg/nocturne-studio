@@ -1,36 +1,18 @@
 # Awareness
 
-Awareness é a seleção automática e explicável do contexto usado em cada
-execução. O Studio consulta somente memórias ativas e compatíveis com o
-workspace ou com a conversa atual.
+[Português do Brasil](awareness.pt-BR.md)
 
-Para evitar que a ordem bruta da busca defina o contexto, o seletor avalia um
-conjunto limitado de candidatas e calcula uma relevância de 0 a 100 a partir de:
+Awareness is the explainable selection of context for an execution. Nocturne
+considers only active memories compatible with the current workspace or
+conversation, scores textual relevance, approved confidence, scope and
+freshness, and applies quantity and character limits.
 
-- correspondência textual com o pedido;
-- confiança aprovada da memória;
-- escopo da conversa ou do workspace;
-- idade da última atualização.
+The selected-context snapshot is persisted with the user message. In
+**Activity > Context used in this run**, the user can inspect the selected
+memory/context, relevance, reason, source, scope, update time and the bounded
+excerpt actually sent. A previous snapshot remains an audit record; it is not
+silently reused as the current context.
 
-Memórias abaixo do limiar de relevância são descartadas. As demais são
-priorizadas deterministicamente e continuam sujeitas aos limites de quantidade
-e caracteres do contexto.
-
-O snapshot da seleção é persistido nos metadados da mensagem do usuário. No
-painel **Atividade → Contexto usado nesta execução**, o usuário pode consultar:
-
-- memória ou contexto utilizado;
-- relevância calculada;
-- motivo da seleção;
-- origem e escopo;
-- data de atualização;
-- trecho efetivamente enviado como contexto.
-
-Cada mensagem do usuário também mantém um resumo expansível de seu próprio
-contexto. Isso permite auditar execuções anteriores depois de reabrir ou paginar
-a conversa, sem confundir o snapshot antigo com o contexto da execução atual.
-
-O snapshot permanece junto da conversa em exportações e restaurações. Ele não
-contém credenciais e não transforma memórias em instruções: o agente recebe as
-entradas como dados potencialmente desatualizados e deve confrontá-las com o
-workspace e o pedido atual.
+Snapshots follow conversations through valid export and restore. They contain
+no credentials and are passed as data that may be stale, not as executable
+instructions.

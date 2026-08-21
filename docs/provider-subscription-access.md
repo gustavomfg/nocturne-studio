@@ -1,4 +1,7 @@
-# Acesso via Assinatura em Provedores de IA
+# Internal research: subscription access in AI providers
+
+> This file is maintainer research, not a supported-provider contract. For
+> product behavior, use [Providers](providers.md) and [Codex integration](codex-integration.md).
 
 Levantamento de quais provedores permitem conectar ferramentas terceiras
 usando assinatura/plano (OAuth) em vez de API key direta.

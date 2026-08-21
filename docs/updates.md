@@ -1,27 +1,28 @@
-# Atualizações
+# Updates
 
-O Nocturne Studio consulta atualizações somente quando está empacotado. A
-versão de desenvolvimento e o smoke de pacote não acessam o serviço de release.
+[Português do Brasil](updates.pt-BR.md)
 
-## Fluxo
+The updater checks for releases only in a packaged application. Development
+builds and package smoke tests do not contact the release service.
 
-1. O aplicativo consulta a release após a inicialização e, depois, a cada seis
-   horas, sem permitir consultas sobrepostas.
-2. Quando existe uma versão, o diálogo mostra a versão e notas sanitizadas antes
-   de pedir consentimento.
-3. O download só começa após confirmação. O progresso aparece no indicador do
-   sistema operacional e o aplicativo continua utilizável.
-4. O pacote baixado passa pela validação do `electron-updater`.
-5. A instalação ocorre após nova confirmação ou no encerramento do aplicativo.
+## User flow
 
-Se a conexão cair, o indicador de progresso é limpo e o aplicativo oferece
-`Retomar download`. A nova tentativa volta a usar o atualizador e exige a mesma
-validação antes de instalar. Recusar ou adiar não remove dados nem bloqueia o
-uso da versão atual.
+1. After startup, the packaged app checks for an update and repeats the check
+   every six hours without overlapping requests.
+2. When a release is available, the app displays a sanitized version and notes.
+3. Download starts only after confirmation; progress is shown by the operating
+   system and the current app remains usable.
+4. `electron-updater` validates the downloaded artifact.
+5. Installation happens after a second confirmation or when the app quits,
+   according to the updater's normal installation flow.
 
-## Publicação
+If a download fails, progress is cleared and **Resume download** starts a new
+validated attempt. Declining or postponing an update does not remove local data
+or disable the current version. Binary installation rollback belongs to the
+installer and operating system; Nocturne's responsibility is preserving and
+recovering user data during the next startup.
 
-Releases estáveis são publicadas apenas pelo workflow protegido
-`.github/workflows/stable-release.yml`, depois de reunir os artefatos assinados
-de Linux, Windows e macOS, verificar checksums, assinaturas e o commit da tag.
-Os detalhes operacionais ficam em `docs/github-actions.md`.
+Stable releases use the stable `release` metadata policy. Prerelease settings
+are not a promise that every beta will receive every stable build; the
+0.9.5-beta to stable path is rehearsed with real updater metadata before a
+release. See the maintainer [release workflow](github-actions.md).
