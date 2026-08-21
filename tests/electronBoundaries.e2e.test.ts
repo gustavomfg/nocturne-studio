@@ -221,6 +221,33 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     removeTestDirectory(root)
   })
 
+  function seedUnauthorizedKnowledgeState() {
+    const restoredWorkspace = path.join(root, 'restored-knowledge-workspace')
+    fs.mkdirSync(restoredWorkspace, { recursive: true })
+    const now = new Date().toISOString()
+    const conversationId = randomUUID()
+    const messageId = randomUUID()
+    database!.importData({
+      workspaces: [{ path: restoredWorkspace, name: 'Restored knowledge workspace', favorite: 0, authorized: 1, created_at: now, last_opened_at: now }],
+      conversations: [{ id: conversationId, title: 'Conversa restaurada', workspace: restoredWorkspace, codex_thread_id: null, created_at: now, updated_at: now }],
+      messages: [{ id: messageId, conversation_id: conversationId, role: 'assistant', content: 'Histórico somente leitura preservado.', metadata: null, created_at: now }],
+      artifacts: [], memories: [], suggestions: [], suggestionDecisions: [], providerConfigs: [], modelCatalog: [], workspaceModelBindings: [],
+    })
+    const artifact = database!.addArtifact(conversationId, restoredWorkspace, 'markdown', 'Artefato restaurado', null, 'Conteúdo restaurado')
+    const suggestion = database!.addSuggestion(conversationId, restoredWorkspace, {
+      title: 'Sugestão restaurada', description: 'Descrição preservada', reasoning: 'Evidência preservada', category: 'testing', severity: 'low',
+      affectedFiles: ['tests/fixture.ts'], proposedChanges: 'Manter o teste', expectedBenefits: ['Regressão coberta'], complexity: 'low', risk: 'low',
+    })
+    return { restoredWorkspace, conversationId, artifactId: artifact.id, suggestionId: suggestion.id }
+  }
+
+  function structuredSuggestion(title: string) {
+    return `Texto da revisão.\n\n\`\`\`nocturne-suggestions\n${JSON.stringify([{
+      title, description: 'Uma sugestão criada após autorização explícita.', reasoning: 'O workspace foi autorizado no processo principal.', category: 'testing', severity: 'medium',
+      affectedFiles: ['tests/authorization.ts'], proposedChanges: 'Adicionar cobertura de autorização.', expectedBenefits: ['Mutações protegidas'], complexity: 'low', risk: 'low',
+    }])}\n\`\`\``
+  }
+
   it('expõe somente a API nomeada e cruza preload, IPC e SQLite', async () => {
     expect(Object.keys(api).sort()).toEqual(['ai', 'artifacts', 'brain', 'clipboard', 'codex', 'conversations', 'data', 'diagnostics', 'documents', 'files', 'git', 'memory', 'models', 'providers', 'settings', 'suggestions', 'workspace'])
     await api.clipboard.writeText('commit sugerido')
@@ -639,6 +666,40 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     } finally {
       process.env.PATH = previousPath
     }
+  })
+
+  it('preserva histórico read-only e rejeita mutações de knowledge em workspace não autorizado', async () => {
+    const state = seedUnauthorizedKnowledgeState()
+
+    await expect(api.conversations.messages(state.conversationId)).resolves.toEqual([
+      expect.objectContaining({ content: 'Histórico somente leitura preservado.' }),
+    ])
+    await expect(api.artifacts.delete(state.conversationId, state.artifactId)).rejects.toThrow(/Workspace não autorizado/)
+    expect((await api.artifacts.page(state.conversationId)).items).toEqual([
+      expect.objectContaining({ id: state.artifactId, title: 'Artefato restaurado' }),
+    ])
+
+    const beforeSuggestions = await api.suggestions.page(state.conversationId)
+    expect(beforeSuggestions.items).toEqual([expect.objectContaining({ id: state.suggestionId, title: 'Sugestão restaurada' })])
+    await expect(api.suggestions.create(state.conversationId, structuredSuggestion('Não deve persistir'))).rejects.toThrow(/Workspace não autorizado/)
+    expect(await api.suggestions.page(state.conversationId)).toEqual(beforeSuggestions)
+  })
+
+  it('permite artifacts:delete e suggestions:create depois da autorização atual', async () => {
+    const state = seedUnauthorizedKnowledgeState()
+    electron.dialogs.open.push({ canceled: false, filePaths: [state.restoredWorkspace] })
+    await expect(api.workspace.select()).resolves.toBe(state.restoredWorkspace)
+
+    await expect(api.artifacts.delete(state.conversationId, state.artifactId)).resolves.toEqual({ deleted: true })
+    expect((await api.artifacts.page(state.conversationId)).items).toEqual([])
+
+    await expect(api.suggestions.create(state.conversationId, structuredSuggestion('Persistir após autorização'))).resolves.toMatchObject({
+      suggestions: [expect.objectContaining({ title: 'Persistir após autorização' })],
+    })
+    expect(database!.listSuggestions(state.conversationId)).toEqual([
+      expect.objectContaining({ title: 'Persistir após autorização' }),
+    ])
+    expect(database!.getSuggestion(state.suggestionId)?.status).toBe('resolved')
   })
 })
 

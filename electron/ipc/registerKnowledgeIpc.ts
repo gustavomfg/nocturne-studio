@@ -9,7 +9,6 @@ import { safeIpcMain } from './safeIpc'
 
 interface WorkspaceContext { content: string; rules: string; updatedAt: string }
 interface Dependencies {
-  workspace(conversationId: string): string
   authorizedWorkspace(conversationId: string): string
   read(workspace: string): Promise<WorkspaceContext>
   write(workspace: string, content: string, rules: string): Promise<WorkspaceContext>
@@ -71,11 +70,11 @@ export function registerKnowledgeIpc(win: BrowserWindow, database: LocalDatabase
   })
   ipcMain.handle('artifacts:list', (_event, value: unknown) => database.listArtifacts(idSchema.parse(value)))
   ipcMain.handle('artifacts:page', (_event, value: unknown) => { const data = conversationPageSchema.parse(value); return database.listArtifactPage(data.conversationId, data.offset, data.limit) })
-  ipcMain.handle('artifacts:delete', (_event, value: unknown) => { const data = z.object({ conversationId: idSchema, artifactId: idSchema }).parse(value); if (!database.deleteArtifact(data.artifactId, data.conversationId)) throw new Error('Artefato não encontrado ou já removido.'); return { deleted: true } })
+  ipcMain.handle('artifacts:delete', (_event, value: unknown) => { const data = z.object({ conversationId: idSchema, artifactId: idSchema }).parse(value); dependencies.authorizedWorkspace(data.conversationId); if (!database.deleteArtifact(data.artifactId, data.conversationId)) throw new Error('Artefato não encontrado ou já removido.'); return { deleted: true } })
   ipcMain.handle('suggestions:list', (_event, value: unknown) => database.listSuggestions(idSchema.parse(value)))
   ipcMain.handle('suggestions:page', (_event, value: unknown) => { const data = conversationPageSchema.parse(value); return database.listSuggestionPage(data.conversationId, data.offset, data.limit) })
   ipcMain.handle('suggestions:create', (_event, value: unknown) => {
-    const data = suggestionExtractSchema.parse(value); const workspace = dependencies.workspace(data.conversationId); const extracted = extractSuggestions(data.content)
+    const data = suggestionExtractSchema.parse(value); const workspace = dependencies.authorizedWorkspace(data.conversationId); const extracted = extractSuggestions(data.content)
     if (!extracted.structured) return { suggestions: [], content: extracted.content, warning: 'A resposta não trouxe um snapshot estruturado; sugestões anteriores foram preservadas.' }
     const reconciliation = database.reconcileSuggestions(data.conversationId, workspace, extracted.suggestions)
     if (reconciliation.suggestions.length || reconciliation.comparison.resolvedSuggestions.length) logger.info('artifacts', 'Sugestões de review reconciliadas', { conversationId: data.conversationId, count: reconciliation.suggestions.length, resolved: reconciliation.comparison.resolvedSuggestions.length })

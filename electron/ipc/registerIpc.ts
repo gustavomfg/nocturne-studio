@@ -18,7 +18,7 @@ import { registerGitIpc } from './registerGitIpc'
 import { registerWorkspaceIpc } from './registerWorkspaceIpc'
 import { registerKnowledgeIpc } from './registerKnowledgeIpc'
 import { safeIpcMain } from './safeIpc'
-import { getAuthorizedConversation, getAuthorizedWorkspace, getConversation } from './conversationAccess'
+import { getAuthorizedConversation, getAuthorizedWorkspace } from './conversationAccess'
 import {
   registerProviderIpc,
   type ProviderConfigurationOperations,
@@ -57,7 +57,7 @@ export function registerIpc(
   const disposeData = registerDataIpc(win, database, logger)
   const disposeGit = registerGitIpc(win, database)
   const disposeWorkspace = registerWorkspaceIpc(win, database, { ensureWorkspace: ensureNocturneWorkspace, assertKnownWorkspace: (value) => getAuthorizedWorkspace(database, value), run })
-  const disposeKnowledge = registerKnowledgeIpc(win, database, logger, { workspace: (id) => getConversation(database, id).workspace, authorizedWorkspace: (id) => getAuthorizedConversation(database, id).workspace, read: readWorkspaceContext, write: writeWorkspaceContext, recordDecision: recordSuggestionDecision })
+  const disposeKnowledge = registerKnowledgeIpc(win, database, logger, { authorizedWorkspace: (id) => getAuthorizedConversation(database, id).workspace, read: readWorkspaceContext, write: writeWorkspaceContext, recordDecision: recordSuggestionDecision })
   const disposeProviders = registerProviderIpc(win, providerConfigurations)
   const disposeModels = registerModelIpc(win, database, modelCatalog)
   ipcMain.handle('clipboard:readText', () => clipboard.readText().slice(0, 10_000))
