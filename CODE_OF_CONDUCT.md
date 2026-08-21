@@ -1,5 +1,7 @@
 # Code of Conduct
 
+[English](CODE_OF_CONDUCT.pt-BR.md)
+
 ## Our Commitment
 
 Nocturne Studio aims to provide a welcoming, respectful and collaborative environment for everyone.
