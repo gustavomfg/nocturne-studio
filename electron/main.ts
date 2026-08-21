@@ -47,6 +47,7 @@ let logger: Logger | null = null
 let disposeIpc: (() => void) | null = null
 let packageSmokeScheduled = false
 let packagedRecoveryScheduled = false
+let packagedRecoveryStage = 'bootstrap'
 let disposeUpdates: (() => void) | null = null
 let providerConfigurations: ProviderConfigurationService | null = null
 let providerRegistry: ProviderRegistry | null = null
@@ -428,6 +429,79 @@ function isPathInside(parent: string, candidate: string) {
   )
 }
 
+function setPackagedRecoveryStage(stage: string) {
+  packagedRecoveryStage = stage
+}
+
+function sanitizePackagedRecoveryText(value: string) {
+  const knownRoots = [process.cwd(), os.homedir(), path.resolve(os.tmpdir()), process.env.NOCTURNE_PACKAGED_RECOVERY_ROOT].filter((entry): entry is string => Boolean(entry))
+  let text = redactLogText(value)
+  for (const root of knownRoots) text = text.split(root).join('<redacted-root>')
+  text = text.replace(/(?:[A-Za-z]:[\\/]|\\\\|\/)(?:[^\s'"`]|\\ )+/g, '<redacted-path>')
+  return text.slice(0, 2_000)
+}
+
+function packagedRecoveryOutputContext() {
+  const rootValue = process.env.NOCTURNE_PACKAGED_RECOVERY_ROOT
+  const outputValue = process.env.NOCTURNE_PACKAGED_RECOVERY_OUTPUT
+  if (!rootValue || !outputValue) return null
+  const root = path.resolve(rootValue)
+  const output = path.resolve(outputValue)
+  const temporaryRoot = path.resolve(os.tmpdir())
+  if (!isPathInside(temporaryRoot, root) || !isPathInside(root, output)) return null
+  return { root, output }
+}
+
+function inspectPackagedRecoveryPaths() {
+  const rootValue = process.env.NOCTURNE_PACKAGED_RECOVERY_ROOT
+  const outputValue = process.env.NOCTURNE_PACKAGED_RECOVERY_OUTPUT
+  const temporaryRoot = path.resolve(os.tmpdir())
+  const root = rootValue ? path.resolve(rootValue) : null
+  const output = outputValue ? path.resolve(outputValue) : null
+  const userData = path.resolve(app.getPath('userData'))
+  const canonical = (value: string | null) => {
+    if (!value) return null
+    try { return path.resolve(fs.realpathSync.native(value)) } catch { return null }
+  }
+  const canonicalTemporaryRoot = canonical(temporaryRoot)
+  const canonicalRoot = canonical(root)
+  const canonicalUserData = canonical(userData)
+  return {
+    rootLexicalInsideTemporary: Boolean(root && isPathInside(temporaryRoot, root)),
+    outputLexicalInsideRoot: Boolean(root && output && isPathInside(root, output)),
+    userDataExists: fs.existsSync(userData),
+    userDataLexicalInsideTemporary: isPathInside(temporaryRoot, userData),
+    canonicalTemporaryAvailable: Boolean(canonicalTemporaryRoot),
+    canonicalRootAvailable: Boolean(canonicalRoot),
+    canonicalUserDataAvailable: Boolean(canonicalUserData),
+    canonicalRootInsideTemporary: Boolean(canonicalTemporaryRoot && canonicalRoot && isPathInside(canonicalTemporaryRoot, canonicalRoot)),
+    canonicalUserDataInsideTemporary: Boolean(canonicalTemporaryRoot && canonicalUserData && isPathInside(canonicalTemporaryRoot, canonicalUserData)),
+    temporaryAliasChanged: Boolean(canonicalTemporaryRoot && canonicalTemporaryRoot !== temporaryRoot),
+    rootAliasChanged: Boolean(canonicalRoot && root && canonicalRoot !== root),
+    userDataAliasChanged: Boolean(canonicalUserData && canonicalUserData !== userData),
+  }
+}
+
+function writePackagedRecoveryFailure(error: unknown, phase: string) {
+  const outputContext = packagedRecoveryOutputContext()
+  if (!outputContext) return
+  try {
+    fs.mkdirSync(path.dirname(outputContext.output), { recursive: true, mode: 0o700 })
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    fs.writeFileSync(outputContext.output, `${JSON.stringify({
+      packaged: app.isPackaged,
+      mode: process.env.NOCTURNE_PACKAGED_RECOVERY_MODE ?? null,
+      ok: false,
+      phase,
+      stage: packagedRecoveryStage,
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorMessage: sanitizePackagedRecoveryText(errorMessage),
+      failureFingerprint: diagnosticFingerprint(`${errorMessage}\n${error instanceof Error ? error.stack ?? '' : ''}`),
+      pathDiagnostics: inspectPackagedRecoveryPaths(),
+    })}\n`, { encoding: 'utf8', mode: 0o600 })
+  } catch { /* diagnostics must not replace the original failure */ }
+}
+
 function packagedRecoveryContext(): PackagedRecoveryContext {
   const rootValue = process.env.NOCTURNE_PACKAGED_RECOVERY_ROOT
   const outputValue = process.env.NOCTURNE_PACKAGED_RECOVERY_OUTPUT
@@ -452,6 +526,7 @@ function writePackagedRecoveryResult(context: PackagedRecoveryContext, value: Re
   fs.writeFileSync(context.output, `${JSON.stringify({
     packaged: app.isPackaged,
     mode: context.mode,
+    stage: packagedRecoveryStage,
     ...value,
   })}\n`, { encoding: 'utf8', mode: 0o600 })
 }
@@ -499,10 +574,14 @@ function packagedRecoveryState(context: PackagedRecoveryContext) {
 
 async function runPackagedRecoveryHarness() {
   try {
+    setPackagedRecoveryStage('validate-environment')
     const context = packagedRecoveryContext()
+    setPackagedRecoveryStage('validate-user-data')
     if (!database) throw new Error('Banco indisponível no harness empacotado de recovery.')
     if (context.mode === 'fixture') {
+      setPackagedRecoveryStage('prepare-fixture')
       fs.mkdirSync(context.workspace, { recursive: true, mode: 0o700 })
+      setPackagedRecoveryStage('write-fixture')
       fs.writeFileSync(path.join(context.workspace, 'PACKAGED_RECOVERY_WORKSPACE.md'), 'PACKAGED_RECOVERY_WORKSPACE', { encoding: 'utf8', mode: 0o600 })
       const conversation = database.createConversation(context.workspace)
       database.renameFromPrompt(conversation.id, 'PACKAGED_RECOVERY_CONVERSATION')
@@ -537,6 +616,7 @@ async function runPackagedRecoveryHarness() {
       database.setSettings({ packagedRecoverySetting: 'PACKAGED_RECOVERY_SETTING' })
     }
     if (context.mode === 'engine-restore') {
+      setPackagedRecoveryStage('open-database')
       const userDataPath = app.getPath('userData')
       const databasePath = path.join(userDataPath, 'nocturne.db')
       const candidateName = fs.readdirSync(userDataPath).find((name) => name.startsWith('nocturne.db.recovery-engine'))
@@ -547,6 +627,7 @@ async function runPackagedRecoveryHarness() {
       const quarantine = await restoreDatabaseFile(userDataPath, path.join(userDataPath, candidateName))
       database = new LocalDatabase(userDataPath)
       const state = packagedRecoveryState(context)
+      setPackagedRecoveryStage('write-report')
       writePackagedRecoveryResult(context, {
         ok: Object.values(state.markers).every(Boolean),
         phase: 'engine-restore',
@@ -555,39 +636,35 @@ async function runPackagedRecoveryHarness() {
       })
     } else if (context.mode === 'fixture') {
       const state = packagedRecoveryState(context)
+      setPackagedRecoveryStage('write-report')
       writePackagedRecoveryResult(context, { ok: Object.values(state.markers).every(Boolean), phase: context.mode, state })
     } else {
+      setPackagedRecoveryStage('open-database')
       const state = packagedRecoveryState(context)
       if (context.mode === 'verify-historical') {
         const historical = Object.values(state.historicalMarkers).every(Boolean)
+        setPackagedRecoveryStage('write-report')
         writePackagedRecoveryResult(context, { ok: historical, phase: 'historical-startup', state })
       } else {
         const markers = Object.values(state.markers).every(Boolean)
         const workspaceRows = await win?.webContents.executeJavaScript('window.nocturne.workspace.list()') as Array<{ path?: string; authorized?: boolean }> | undefined
         const missingWorkspace = workspaceRows?.find((item) => item.path === context.workspace)
         state.workspace.authorizationRefusedWhenMissing = !state.workspace.filesystemPresent && missingWorkspace?.authorized === false
+        setPackagedRecoveryStage('write-report')
         writePackagedRecoveryResult(context, { ok: markers, phase: context.mode, state })
       }
     }
+    setPackagedRecoveryStage('shutdown')
     app.quit()
   } catch (error) {
-    try {
-      const context = packagedRecoveryContext()
-      writePackagedRecoveryResult(context, { ok: false, phase: 'harness-failure', failureFingerprint: diagnosticFingerprint(redactLogText(error instanceof Error ? error.message : String(error))) })
-    } catch { /* the harness must not replace the original startup failure */ }
+    writePackagedRecoveryFailure(error, 'harness-failure')
     app.exit(1)
   }
 }
 
 function writePackagedRecoveryStartupFailure(error: unknown) {
-  try {
-    const context = packagedRecoveryContext()
-    writePackagedRecoveryResult(context, {
-      ok: false,
-      phase: 'startup-failure',
-      failureFingerprint: diagnosticFingerprint(redactLogText(error instanceof Error ? error.message : String(error))),
-    })
-  } catch { /* preserve the original startup error when the harness is misconfigured */ }
+  setPackagedRecoveryStage('startup')
+  writePackagedRecoveryFailure(error, 'startup-failure')
 }
 
 async function recreateWindowForPackageSmoke() {

@@ -42,6 +42,13 @@ const report = {
   credentialsExported: false,
   integrity: 'unknown',
   manualRecoveryRequired: true,
+  diagnostics: {
+    currentStage: 'bootstrap',
+    currentScenario: 'bootstrap',
+    executable: null,
+    processes: [],
+    partialReports: [],
+  },
   timingsMs: {},
   failure: null,
 }
@@ -49,63 +56,80 @@ const report = {
 let temporaryRoot = ''
 
 try {
+  setDiagnosticStage('bootstrap', 'bootstrap')
   const executable = packagedExecutable()
+  report.diagnostics.executable = path.basename(executable)
   if (expectedSha && report.sha !== expectedSha) throw new Error('O SHA do checkout não corresponde ao SHA esperado pelo rehearsal.')
+  setDiagnosticStage('validate-environment', 'bootstrap')
   temporaryRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'nocturne-packaged-recovery-'))
   const userData = path.join(temporaryRoot, 'user-data')
   const workspace = path.join(temporaryRoot, 'workspace-a')
+  setDiagnosticStage('validate-user-data', 'bootstrap')
   await fsp.mkdir(userData, { recursive: true, mode: 0o700 })
   await fsp.mkdir(workspace, { recursive: true, mode: 0o700 })
   assertIsolatedUserData(temporaryRoot, userData)
   report.isolatedUserData = true
 
   const baseReport = path.join(temporaryRoot, 'fixture.json')
+  setDiagnosticStage('prepare-fixture', 'fixture')
   const fixtureStart = Date.now()
-  const fixture = await launch(executable, userData, workspace, 'fixture', baseReport)
+  const fixture = await launch(executable, userData, workspace, 'fixture', baseReport, { scenario: 'fixture' })
   report.timingsMs.fixtureStartup = Date.now() - fixtureStart
   assertSuccessfulFixture(fixture)
+  setDiagnosticStage('open-database', 'fixture')
   const baselineDatabase = path.join(userData, 'nocturne.db')
   if (!fs.existsSync(baselineDatabase)) throw new Error('O fixture empacotado não produziu o banco esperado.')
+  setDiagnosticStage('write-report', 'fixture')
   const baselineState = await readReport(baseReport)
   if (!baselineState.ok || !allMarkers(baselineState.state?.markers)) throw new Error('O fixture empacotado não contém todos os marcadores semânticos.')
 
   const restartReport = path.join(temporaryRoot, 'restart.json')
+  setDiagnosticStage('prepare-fixture', 'normal-restart')
   const restartStart = Date.now()
-  const restart = await launch(executable, userData, workspace, 'verify', restartReport)
+  const restart = await launch(executable, userData, workspace, 'verify', restartReport, { scenario: 'normal-restart' })
   report.timingsMs.normalRestart = Date.now() - restartStart
+  setDiagnosticStage('write-report', 'normal-restart')
   const restarted = await readReport(restartReport)
   report.normalRestart = restart.code === 0 && restarted.ok === true && allMarkers(restarted.state?.markers)
   if (!report.normalRestart) throw new Error('O restart normal empacotado não preservou o fixture.')
   report.workspaceHistoryPreserved = true
 
   const noCandidate = await cloneScenario(temporaryRoot, 'no-candidate', userData, workspace)
+  setDiagnosticStage('prepare-fixture', 'corruption-no-candidate')
   corruptDatabase(noCandidate.userData)
-  const noCandidateResult = await launch(executable, noCandidate.userData, noCandidate.workspace, 'verify', noCandidate.report, { harnessRoot: temporaryRoot })
+  const noCandidateResult = await launch(executable, noCandidate.userData, noCandidate.workspace, 'verify', noCandidate.report, { harnessRoot: temporaryRoot, scenario: 'corruption-no-candidate' })
+  setDiagnosticStage('write-report', 'corruption-no-candidate')
   const noCandidateFailure = await readReport(noCandidate.report)
   report.corruptionDetected = noCandidateResult.code !== 0 && noCandidateFailure.phase === 'startup-failure'
   report.corruptOriginalPreserved = isCorruptDatabase(noCandidate.database)
   if (!report.corruptionDetected || !report.corruptOriginalPreserved) throw new Error('O startup empacotado não preservou um banco corrompido sem candidato.')
 
   const invalidCandidate = await cloneScenario(temporaryRoot, 'invalid-candidate', userData, workspace)
+  setDiagnosticStage('prepare-fixture', 'invalid-candidate')
   corruptDatabase(invalidCandidate.userData)
   await fsp.copyFile(invalidCandidate.database, path.join(invalidCandidate.userData, 'nocturne.db.recovery-invalid'))
-  const invalidResult = await launch(executable, invalidCandidate.userData, invalidCandidate.workspace, 'verify', invalidCandidate.report, { harnessRoot: temporaryRoot })
+  const invalidResult = await launch(executable, invalidCandidate.userData, invalidCandidate.workspace, 'verify', invalidCandidate.report, { harnessRoot: temporaryRoot, scenario: 'invalid-candidate' })
+  setDiagnosticStage('write-report', 'invalid-candidate')
   const invalidFailure = await readReport(invalidCandidate.report)
   report.invalidCandidateRejected = invalidResult.code !== 0 && invalidFailure.phase === 'startup-failure' && isCorruptDatabase(invalidCandidate.database) && fs.existsSync(path.join(invalidCandidate.userData, 'nocturne.db.recovery-invalid'))
   if (!report.invalidCandidateRejected) throw new Error('Um candidato de recovery inválido não foi rejeitado de forma controlada.')
 
   const interruptedArtifact = await cloneScenario(temporaryRoot, 'interrupted-artifact', userData, workspace)
+  setDiagnosticStage('prepare-fixture', 'interrupted-artifact')
   corruptDatabase(interruptedArtifact.userData)
   await fsp.writeFile(path.join(interruptedArtifact.userData, 'nocturne.db.recovery-interrupted'), Buffer.from('partial recovery copy'))
-  const interruptedResult = await launch(executable, interruptedArtifact.userData, interruptedArtifact.workspace, 'verify', interruptedArtifact.report, { harnessRoot: temporaryRoot })
+  const interruptedResult = await launch(executable, interruptedArtifact.userData, interruptedArtifact.workspace, 'verify', interruptedArtifact.report, { harnessRoot: temporaryRoot, scenario: 'interrupted-artifact' })
+  setDiagnosticStage('write-report', 'interrupted-artifact')
   const interruptedFailure = await readReport(interruptedArtifact.report)
   report.recoveryTemporaryArtifactHandled = interruptedResult.code !== 0 && interruptedFailure.phase === 'startup-failure' && fs.existsSync(path.join(interruptedArtifact.userData, 'nocturne.db.recovery-interrupted')) && isCorruptDatabase(interruptedArtifact.database)
   if (!report.recoveryTemporaryArtifactHandled) throw new Error('Um artefato temporário inválido não foi preservado durante o startup empacotado.')
 
   const engine = await cloneScenario(temporaryRoot, 'engine-recovery', userData, workspace)
+  setDiagnosticStage('prepare-fixture', 'engine-recovery')
   await fsp.copyFile(baselineDatabase, path.join(engine.userData, 'nocturne.db.recovery-engine'))
   const engineReport = path.join(engine.scenario, 'result.json')
-  const engineResult = await launch(executable, engine.userData, engine.workspace, 'engine-restore', engineReport, { harnessRoot: temporaryRoot })
+  const engineResult = await launch(executable, engine.userData, engine.workspace, 'engine-restore', engineReport, { harnessRoot: temporaryRoot, scenario: 'engine-recovery' })
+  setDiagnosticStage('write-report', 'engine-recovery')
   const engineState = await readReport(engineReport)
   report.recoveryEngineAutomated = engineResult.code === 0 && engineState.ok === true && engineState.recoveryEngine?.restored === true && engineState.recoveryEngine?.corruptOriginalPreserved === true && allMarkers(engineState.state?.markers)
   report.validRecoveryRestored = report.recoveryEngineAutomated
@@ -113,17 +137,21 @@ try {
   if (!report.recoveryEngineAutomated || !report.postRecoveryRestart) throw new Error('O engine de recovery empacotado não restaurou o candidato válido ou não passou no restart.')
 
   const moved = await cloneScenario(temporaryRoot, 'moved-workspace', userData, workspace)
+  setDiagnosticStage('prepare-fixture', 'moved-workspace')
   const movedWorkspace = path.join(temporaryRoot, 'workspace-b')
   await fsp.rename(moved.workspace, movedWorkspace)
   const movedReport = path.join(temporaryRoot, 'moved.json')
-  const movedResult = await launch(executable, moved.userData, moved.workspace, 'verify', movedReport, { harnessRoot: temporaryRoot })
+  const movedResult = await launch(executable, moved.userData, moved.workspace, 'verify', movedReport, { harnessRoot: temporaryRoot, scenario: 'moved-workspace' })
+  setDiagnosticStage('write-report', 'moved-workspace')
   const movedState = await readReport(movedReport)
   report.workspaceHistoryPreserved = movedResult.code === 0 && movedState.ok === true && allMarkers(movedState.state?.markers)
   report.workspaceAuthorizationRefusedWhenMissing = movedState.state?.workspace?.authorizationRefusedWhenMissing === true
   if (!report.workspaceHistoryPreserved || !report.workspaceAuthorizationRefusedWhenMissing) throw new Error('O workspace movido não preservou o histórico ou não perdeu autorização até a reseleção.')
   await fsp.rename(movedWorkspace, workspace)
 
+  setDiagnosticStage('prepare-fixture', 'historical-startup')
   const historical = await runHistoricalStartup(executable, temporaryRoot)
+  setDiagnosticStage('write-report', 'historical-startup')
   report.historicalStartup = historical.ok
   report.migrationApplied = historical.migrationApplied
   report.migrationPreservedData = historical.preservedData
@@ -132,10 +160,12 @@ try {
 
   if (manualRecovery) {
     const valid = await cloneScenario(temporaryRoot, 'valid-recovery', userData, workspace)
+    setDiagnosticStage('prepare-fixture', 'manual-valid-recovery')
     corruptDatabase(valid.userData)
     await fsp.copyFile(baselineDatabase, path.join(valid.userData, 'nocturne.db.recovery-valid'))
     process.stdout.write('Confirme “Restaurar ponto de recuperação” no diálogo nativo do Nocturne Studio para concluir a etapa manual.\n')
-    const validResult = await launch(executable, valid.userData, valid.workspace, 'verify', valid.report, { timeoutMs: 120_000, harnessRoot: temporaryRoot })
+    const validResult = await launch(executable, valid.userData, valid.workspace, 'verify', valid.report, { timeoutMs: 120_000, harnessRoot: temporaryRoot, scenario: 'manual-valid-recovery' })
+    setDiagnosticStage('write-report', 'manual-valid-recovery')
     const validState = await readReport(valid.report)
     report.nativeRecoveryConsentConfirmed = validResult.code === 0 && validState.ok === true && allMarkers(validState.state?.markers) && hasQuarantine(valid.userData)
     report.validRecoveryRestored = report.nativeRecoveryConsentConfirmed
@@ -145,13 +175,15 @@ try {
   }
 
   report.integrity = report.normalRestart && report.corruptionDetected && report.corruptOriginalPreserved && report.invalidCandidateRejected && report.recoveryTemporaryArtifactHandled && report.recoveryEngineAutomated && report.historicalStartup ? 'ok' : 'partial'
+  setDiagnosticStage('shutdown', 'complete')
   await writeReport()
   process.stdout.write(`Packaged recovery rehearsal concluído: ${JSON.stringify(summarize())}\n`)
 } catch (error) {
   report.integrity = 'failed'
   report.failure = 'packaged-recovery-failed'
+  report.diagnostics.failure = sanitizeError(error)
   await writeReport().catch(() => undefined)
-  process.stderr.write(`Packaged recovery rehearsal falhou: ${error instanceof Error ? error.message : String(error)}\n`)
+  process.stderr.write(`Packaged recovery rehearsal falhou: ${sanitizeDiagnosticText(error instanceof Error ? error.message : String(error))}\n`)
   process.exitCode = 1
 } finally {
   if (temporaryRoot) await fsp.rm(temporaryRoot, { recursive: true, force: true }).catch(() => undefined)
@@ -224,6 +256,8 @@ function isCorruptDatabase(filePath) {
 }
 
 async function launch(executable, userData, workspace, mode, output, options = {}) {
+  const scenario = options.scenario || mode
+  setDiagnosticStage('launch-process', scenario)
   const args = [`--user-data-dir=${userData}`]
   if (process.platform === 'linux' && process.env.CI) args.push('--no-sandbox')
   const env = {
@@ -238,7 +272,93 @@ async function launch(executable, userData, workspace, mode, output, options = {
     NOCTURNE_PACKAGED_RECOVERY_WORKSPACE: workspace,
     NOCTURNE_PACKAGED_RECOVERY_MODE: mode,
   }
-  return runProcess(executable, args, env, options.timeoutMs ?? 30_000)
+  let result
+  try {
+    result = await runProcess(executable, args, env, options.timeoutMs ?? 30_000)
+  } catch (error) {
+    recordProcessDiagnostic(scenario, executable, null, output, error)
+    throw error
+  }
+  recordProcessDiagnostic(scenario, executable, result, output)
+  return result
+}
+
+function setDiagnosticStage(stage, scenario = report.diagnostics.currentScenario) {
+  report.diagnostics.currentStage = stage
+  report.diagnostics.currentScenario = scenario
+}
+
+function recordProcessDiagnostic(scenario, executable, result, output, error) {
+  const partial = inspectPartialReport(output)
+  const diagnostic = {
+    scenario,
+    stage: report.diagnostics.currentStage,
+    executable: path.basename(executable),
+    exitCode: result?.code ?? null,
+    signal: result?.signal ?? null,
+    timedOut: result?.timedOut ?? false,
+    stdout: sanitizeDiagnosticText(result?.stdout ?? ''),
+    stderr: sanitizeDiagnosticText(result?.stderr ?? ''),
+    spawnError: error ? sanitizeError(error) : null,
+    report: partial,
+  }
+  report.diagnostics.processes.push(diagnostic)
+  if (report.diagnostics.processes.length > 20) report.diagnostics.processes.shift()
+  if (partial.exists) report.diagnostics.partialReports.push({ scenario, ...partial })
+}
+
+function inspectPartialReport(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return { exists: false, parseable: false }
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+    return {
+      exists: true,
+      parseable: true,
+      ok: parsed?.ok === true,
+      phase: typeof parsed?.phase === 'string' ? parsed.phase : null,
+      stage: typeof parsed?.stage === 'string' ? parsed.stage : null,
+      failureFingerprint: typeof parsed?.failureFingerprint === 'string' ? parsed.failureFingerprint : null,
+      errorName: typeof parsed?.errorName === 'string' ? parsed.errorName : null,
+      errorMessage: typeof parsed?.errorMessage === 'string' ? sanitizeDiagnosticText(parsed.errorMessage) : null,
+      pathDiagnostics: parsed?.pathDiagnostics && typeof parsed.pathDiagnostics === 'object' ? sanitizePathDiagnostics(parsed.pathDiagnostics) : null,
+    }
+  } catch {
+    return { exists: true, parseable: false }
+  }
+}
+
+function sanitizePathDiagnostics(value) {
+  const allowed = [
+    'rootLexicalInsideTemporary',
+    'outputLexicalInsideRoot',
+    'userDataExists',
+    'userDataLexicalInsideTemporary',
+    'canonicalTemporaryAvailable',
+    'canonicalRootAvailable',
+    'canonicalUserDataAvailable',
+    'canonicalRootInsideTemporary',
+    'canonicalUserDataInsideTemporary',
+    'temporaryAliasChanged',
+    'rootAliasChanged',
+    'userDataAliasChanged',
+  ]
+  return Object.fromEntries(allowed.filter((key) => typeof value[key] === 'boolean').map((key) => [key, value[key]]))
+}
+
+function sanitizeError(error) {
+  return {
+    name: error instanceof Error ? error.name : typeof error,
+    message: sanitizeDiagnosticText(error instanceof Error ? error.message : String(error)),
+  }
+}
+
+function sanitizeDiagnosticText(value) {
+  let text = String(value ?? '')
+  const knownRoots = [temporaryRoot, root, process.cwd(), os.homedir()].filter(Boolean)
+  for (const knownRoot of knownRoots) text = text.split(knownRoot).join('<redacted-root>')
+  // Keep native error wording while removing absolute POSIX/Windows paths.
+  text = text.replace(/(?:[A-Za-z]:[\\/]|\\\\|\/)(?:[^\s'"`]|\\ )+/g, '<redacted-path>')
+  return text.slice(-4_000)
 }
 
 function runProcess(command, args, env, timeoutMs) {
@@ -279,7 +399,11 @@ async function readReport(filePath) {
 }
 
 function assertSuccessfulFixture(result) {
-  if (result.code !== 0 || result.timedOut) throw new Error(`O aplicativo empacotado não encerrou o fixture normalmente (${result.code ?? 'sem código'}).`)
+  if (result.code !== 0 || result.timedOut) {
+    const signal = result.signal ? `, sinal ${result.signal}` : ''
+    const stderr = sanitizeDiagnosticText(result.stderr)
+    throw new Error(`O aplicativo empacotado não encerrou o fixture normalmente (${result.code ?? 'sem código'}${signal}${result.timedOut ? ', timeout' : ''}).${stderr ? ` stderr: ${stderr}` : ''}`)
+  }
 }
 
 function allMarkers(markers) {
@@ -292,7 +416,7 @@ function hasQuarantine(userData) {
 
 async function verifyPostRecoveryRestart(executable, userData, workspace, parent) {
   const output = path.join(parent, 'post-recovery-restart.json')
-  const result = await launch(executable, userData, workspace, 'verify', output)
+  const result = await launch(executable, userData, workspace, 'verify', output, { scenario: 'post-recovery-restart' })
   if (result.code !== 0) return false
   const value = await readReport(output)
   return value.ok === true && allMarkers(value.state?.markers)
@@ -306,7 +430,7 @@ async function runHistoricalStartup(executable, parent) {
   await fsp.mkdir(userData, { recursive: true, mode: 0o700 })
   await fsp.mkdir(workspace, { recursive: true, mode: 0o700 })
   await createHistoricalDatabase(path.join(userData, 'nocturne.db'), workspace)
-  const result = await launch(executable, userData, workspace, 'verify-historical', output)
+  const result = await launch(executable, userData, workspace, 'verify-historical', output, { scenario: 'historical-startup' })
   const value = await readReport(output)
   return {
     ok: result.code === 0 && value.ok === true && value.state?.historicalMarkers?.message === true,
