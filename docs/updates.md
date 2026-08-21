@@ -24,5 +24,5 @@ recovering user data during the next startup.
 
 Stable releases use the stable `release` metadata policy. Prerelease settings
 are not a promise that every beta will receive every stable build; the
-0.9.5-beta to stable path is rehearsed with real updater metadata before a
-release. See the maintainer [release workflow](github-actions.md).
+`0.9.5-beta` to `1.0.0` path is rehearsed with real updater metadata before the
+stable release. See the maintainer [release workflow](github-actions.md).

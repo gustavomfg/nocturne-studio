@@ -31,9 +31,10 @@ boundaries, IPC validation, workspace authorization and containment, persistence
 and recovery, provider integrations, credential storage and packaged updates.
 Third-party providers and the Codex CLI have their own security policies.
 
-The current supported development/release line is `0.9.5-beta`; a future stable
-`1.0.0` release will publish its support policy with the tag. Historical beta
-notes are not a promise of support for old versions.
+The repository is prepared as the `1.0.0` release candidate. Stable support for
+that version begins only after the `v1.0.0` tag and protected publication; the
+candidate has not been published yet. Historical beta notes are not a promise
+of support for old versions.
 
 ## Security design
 

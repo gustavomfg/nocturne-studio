@@ -1,14 +1,17 @@
-# 1.0 release readiness
+# 1.0.0 release readiness
 
-This is an internal maintainer checklist. It describes release evidence; it
-does not change the installed version. The current repository version is
-`0.9.5-beta`.
+This is an internal maintainer checklist for the `1.0.0` release candidate. It
+records evidence and open release gates; it does not create the `v1.0.0` tag or
+claim that a stable release has been published.
 
-## Current HEAD
+## Candidate identity
 
-The candidate audited for this document is the current `main` HEAD. The exact
-SHA must be recorded again by every release-candidate workflow; a local build
-or a result from another commit is not release evidence.
+- Prepared version: `1.0.0` (no prerelease suffix).
+- Candidate SHA: must be recorded by the final candidate commit and every
+  release workflow; a local build from another SHA is not release evidence.
+- Expected stable tag: `v1.0.0`.
+- Product identity remains `com.nocturne.codex` / `Nocturne Studio` so existing
+  user-data and update paths remain compatible.
 
 ## Automated coverage
 
@@ -17,7 +20,7 @@ journeys are covered by:
 
 | Area | Evidence in the repository |
 | --- | --- |
-| First use and renderer flow | `tests/renderer/renderer.spec.ts` |
+| First use and renderer flow | `tests/renderer/renderer.spec.ts` and the Playwright candidate workflow |
 | Workspace authorization, relocation and change events | `tests/workspaceTrust.test.ts`, `tests/workspaceChangeWatcher.test.ts`, `tests/electronBoundaries.e2e.test.ts` |
 | Conversations, streaming and persistence | `tests/turnPersistence.test.ts`, `tests/codexClient.test.ts`, `tests/database.test.ts` |
 | Review and suggestion reconciliation | `tests/suggestions.test.ts`, `tests/database.test.ts`, renderer tests |
@@ -28,59 +31,68 @@ journeys are covered by:
 | Codex contract | `scripts/smoke-codex-cli.mjs`, `codex-contract-smoke.yml` |
 | Updater contract | `tests/updateService.test.ts`, `scripts/rehearse-updater.mjs`, `updater-rehearsal.yml` |
 
-The package-validation workflow runs source, renderer, ABI, reliability and
-package smoke jobs on `ubuntu-latest`, `windows-latest` and `macos-latest`.
+`package-validation.yml` runs source, renderer, ABI, reliability and package
+smoke jobs on `ubuntu-latest`, `windows-latest` and `macos-latest`. The current
+local Playwright run contains **45 tests**; the candidate workflow remains the
+authoritative cross-platform result.
 
-## Gates closed by evidence
+## Gates closed by current evidence
 
-- transactional SQLite migrations and the historical 0.9.5-beta rehearsal;
+- Transactional SQLite migrations and the historical `0.9.5-beta` rehearsal;
 - WAL durability, process interruption, backup/restore and atomic file writes;
 - bounded workspace reads, attachment containment and symlink protections;
 - fatal main-process shutdown policy;
 - cross-platform WorkspaceChangeWatcher behavior;
-- real updater rehearsal from 0.9.5-beta metadata to stable metadata;
+- real updater rehearsal from `0.9.5-beta` metadata to stable `1.0.0` metadata;
 - authenticated Codex CLI/App Server contract smoke on the candidate workflow;
-- ordinary packaged application smoke and ABI validation on all three CI hosts.
+- packaged recovery rehearsal on Linux, Windows and macOS in the latest
+  GitHub Actions matrix evidence supplied for the candidate;
+- ordinary packaged application smoke and ABI validation on all three CI hosts;
+- public English and pt-BR documentation coverage.
 
-These statements refer to the corresponding evidence for the candidate commit,
-not to a promise that every future commit has already been validated.
+The packaged-recovery engine evidence covers isolated user data, normal restart,
+corruption detection, quarantine, valid-candidate restore, invalid-candidate
+rejection, temporary recovery-artifact handling, historical startup, moved
+workspace authorization and post-recovery restart. Native recovery consent is
+deliberately not automated and remains a manual RC check.
 
-## Packaged recovery status
+## Platform artifacts
 
-`packaged-recovery.yml` builds an unpacked packaged application with isolated
-temporary user data and exercises normal restart, corruption detection,
-candidate validation, quarantine/restore, historical startup and moved
-workspace behavior. The native recovery-consent dialog remains a manual RC
-check because production fuses intentionally prevent an inspector-based
-automation bypass.
+The current electron-builder configuration produces:
 
-The last recorded matrix run before the diagnostic follow-up passed Linux and
-Windows but failed the macOS fixture before the recovery scenarios. The current
-HEAD contains the sanitized stage/process diagnostics needed for the next macOS
-run. Therefore the cross-platform packaged-recovery gate is **not closed** until
-that run succeeds on the exact candidate SHA.
+| Platform | Configured artifact | Architecture claim |
+| --- | --- | --- |
+| Windows 10/11 | NSIS installer (`.exe`) | x64 |
+| Linux desktop | AppImage and `tar.gz` | architecture named by the release artifact |
+| macOS | DMG and updater ZIP | architecture named by the release artifact; no universal claim |
 
-## External release gates
+Unsigned package validation is distinct from official stable support. Signing
+and notarization are release gates, not evidence supplied by ordinary package
+smoke jobs.
 
-Before a stable tag can be published, `stable-release.yml` requires:
+## Open gates before publication
 
-1. a tag exactly matching a version without a prerelease suffix;
-2. typecheck, lint, tests, release-metadata validation and Playwright on that
-   tag;
-3. a successful authenticated Codex smoke whose run and report match the tag
-   SHA and package version;
-4. signed Windows and macOS packages, macOS notarization and Linux GPG
-   checksum-signing in the protected `stable-release` environment;
-5. package smoke, checksums and release-asset verification for all platforms;
-6. explicit approval of the protected environment before publication.
+1. Create the final candidate commit and record its exact SHA.
+2. Create tag `v1.0.0` only after that SHA has passed the source and renderer
+   gates.
+3. Run the authenticated Codex smoke and pass its exact run ID to
+   `stable-release.yml`; the report must match the tag SHA and `1.0.0`.
+4. Complete the protected signed-package matrix: Windows signing, macOS signing
+   and notarization, and Linux GPG checksum signing.
+5. Run the short [manual RC checklist](release-rc-checklist.md), including the
+   native recovery-consent dialog, first startup and install/update checks.
+6. Verify checksums, release-asset inventory and the protected stable approval
+   before publishing.
 
-The final release SHA, manual native recovery-consent check and signed/notarized
-installation validation remain release-candidate tasks. No prerelease document
-or local package is evidence that `1.0.0` has been published.
+The updater rehearsal proves the beta-to-stable metadata path; it does not
+publish an update or replace the installer/signing checks. The packaged recovery
+rehearsal proves the recovery engine through the real unpacked application; the
+native consent click remains manual by design. Signing, notarization, the final
+tag and publication are separate gates.
 
-## Do not block 1.0 on future scope
+## Out of 1.0 scope
 
 Marketplace, cloud collaboration, multi-agent orchestration, MCP/Skills,
 advanced autonomous Build/Docs features and additional provider-specific
-adapters are outside the current 1.0 contract. They must not be presented as
-implemented, but their absence is not a release blocker.
+adapters are outside the current 1.0 contract. Their absence is not a release
+blocker and they must not be presented as implemented.

@@ -100,8 +100,9 @@ The full command list is in [development](docs/development.md).
 
 ## Current status
 
-The repository is on the `v0.9.5-beta` line and is in 1.0 release preparation.
-The version is intentionally not changed to `1.0.0` by this documentation.
+The repository is prepared as the `v1.0.0` release candidate. It has not been
+tagged or published; signed artifacts, the final SHA checks and protected stable
+release approval are still required.
 The Codex App Server contract is experimental; the minimum supported CLI is
 `0.145.0` and the recommended version is `0.146.0`. Newer versions must pass
 the runtime compatibility handshake.
@@ -130,6 +131,8 @@ contract.
 - [Troubleshooting](docs/troubleshooting.md) · [Português](docs/troubleshooting.pt-BR.md)
 - [Development](docs/development.md) · [Português](docs/development.pt-BR.md)
 - [Architecture](docs/architecture.md) · [Português](docs/architecture.pt-BR.md)
+- [1.0.0 release notes](docs/releases/v1.0.0.md) · [Português](docs/releases/v1.0.0.pt-BR.md)
+- [Release-candidate checklist](docs/release-rc-checklist.md) · [Português](docs/release-rc-checklist.pt-BR.md)
 - [Release readiness (maintainer document)](docs/release-readiness-1.0.md)
 
 English is the canonical public source. Portuguese translations use the

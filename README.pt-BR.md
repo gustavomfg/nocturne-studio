@@ -102,8 +102,10 @@ A lista completa está em [desenvolvimento](docs/development.pt-BR.md).
 
 ## Estado atual
 
-O repositório está na linha `v0.9.5-beta` e em preparação para a release 1.0.
-Esta documentação não altera a versão para `1.0.0`. O contrato do Codex App
+O repositório está preparado como candidato `v1.0.0`. Ele ainda não foi
+tagueado nem publicado; artefatos assinados, validação do SHA final e aprovação
+da release estável protegida ainda são necessários.
+O contrato do Codex App
 Server é experimental; o CLI mínimo suportado é `0.145.0` e o recomendado é
 `0.146.0`. Versões mais novas precisam passar pelo handshake de compatibilidade
 em tempo de execução.
@@ -131,6 +133,8 @@ colaboração em nuvem e orquestração multiagente não fazem parte deste contr
 - [Solução de problemas](docs/troubleshooting.pt-BR.md) · [English](docs/troubleshooting.md)
 - [Desenvolvimento](docs/development.pt-BR.md) · [English](docs/development.md)
 - [Arquitetura](docs/architecture.pt-BR.md) · [English](docs/architecture.md)
+- [Notas da versão 1.0.0](docs/releases/v1.0.0.pt-BR.md) · [English](docs/releases/v1.0.0.md)
+- [Checklist do candidato de release](docs/release-rc-checklist.pt-BR.md) · [English](docs/release-rc-checklist.md)
 - [Prontidão da release (mantenedores)](docs/release-readiness-1.0.md)
 
 English é a fonte pública canônica. As traduções em português usam o sufixo

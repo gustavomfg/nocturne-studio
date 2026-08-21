@@ -24,5 +24,5 @@ próximo startup.
 
 Releases estáveis usam a política de metadados estável `release`. A configuração
 de prerelease não promete que toda beta receberá toda build estável; o caminho
-`0.9.5-beta` para stable é ensaiado com metadados reais antes da release. Veja o
-[workflow de release](github-actions.md).
+`0.9.5-beta` para `1.0.0` é ensaiado com metadados reais antes da release
+estável. Veja o [workflow de release](github-actions.md).

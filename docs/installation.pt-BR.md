@@ -16,8 +16,9 @@ ser assinados; o macOS também exige notarização. Manifestos Linux são assina
 com GPG no workflow protegido de release. Um build de validação pode não ter
 assinatura e não é uma release estável.
 
-O repositório continua na linha `0.9.5-beta`; o trabalho de prontidão não muda
-nem publica a versão.
+O repositório está preparado como candidato `1.0.0`. Essa preparação não cria a
+tag `v1.0.0` nem publica um artefato; para a versão oficial, use somente assets
+da release estável protegida.
 
 ## Requisitos de IA
 

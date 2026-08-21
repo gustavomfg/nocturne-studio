@@ -1,8 +1,8 @@
 {
   "name": "nocturne-studio",
   "private": true,
-  "version": "0.9.5-beta",
-  "description": "Cliente desktop local e independente para desenvolvimento assistido pelo Codex CLI.",
+  "version": "1.0.0",
+  "description": "Local-first desktop engineering workspace for projects, AI providers and Codex-assisted workflows.",
   "desktopName": "Nocturne Studio",
   "license": "MIT",
   "author": "Nocturne Studio contributors",

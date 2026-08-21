@@ -42,3 +42,7 @@ tradução.
 O [checklist de prontidão](release-readiness-1.0.md) é a fonte atual dos gates
 abertos. Não trate plano ou nota histórica como evidência de que uma
 funcionalidade existe no build atual.
+
+As [notas da versão 1.0.0](releases/v1.0.0.pt-BR.md) e o
+[checklist do candidato](release-rc-checklist.pt-BR.md) descrevem o candidato
+sem afirmar que a tag estável foi publicada.
