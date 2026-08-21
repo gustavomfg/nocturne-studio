@@ -1,8 +1,8 @@
 # Nocturne Studio
 
-> A local-first desktop workspace for understanding, reviewing and evolving real software projects with AI.
-
 [Português do Brasil](README.pt-BR.md)
+
+> A local-first desktop workspace for understanding, reviewing and evolving real software projects with AI.
 
 Nocturne Studio keeps a project workspace, its conversations, engineering
 findings and durable knowledge together. It is a desktop engineering workspace,
