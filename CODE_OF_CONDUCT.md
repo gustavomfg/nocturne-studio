@@ -1,6 +1,6 @@
 # Code of Conduct
 
-[English](CODE_OF_CONDUCT.pt-BR.md)
+[Português do Brasil](CODE_OF_CONDUCT.pt-BR.md)
 
 ## Our Commitment
 
