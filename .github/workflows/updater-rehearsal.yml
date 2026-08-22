@@ -46,7 +46,11 @@ jobs:
           git worktree add --detach "$base_dir" "$UPDATER_REHEARSAL_BASE_COMMIT"
           npm ci --prefix "$base_dir"
           npm run package --prefix "$base_dir" -- --publish never
+          base_package="$base_dir/package.json"
+          base_version="$(BASE_PACKAGE="$base_package" node -e "const fs=require('node:fs'); const path=require('node:path'); process.stdout.write(JSON.parse(fs.readFileSync(path.resolve(process.env.BASE_PACKAGE), 'utf8')).version)")"
           echo "UPDATER_REHEARSAL_BASE_RELEASE=$base_dir/release/0.9.5-beta" >> "$GITHUB_ENV"
+          echo "UPDATER_REHEARSAL_BASE_PACKAGE=$base_package" >> "$GITHUB_ENV"
+          echo "UPDATER_REHEARSAL_BASE_VERSION=$base_version" >> "$GITHUB_ENV"
       - name: Build the isolated stable candidate package
         shell: bash
         run: npx electron-builder --publish never -c.extraMetadata.version=${{ inputs.candidate_version }} -c.directories.output=release/rehearsal-${{ inputs.candidate_version }}

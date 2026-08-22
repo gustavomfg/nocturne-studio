@@ -9,13 +9,16 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
+import { resolveBaseVersion, validateRehearsalVersions } from './updater-rehearsal-contract.mjs'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3')
 const { load: parseYaml } = require('js-yaml')
 const root = process.cwd()
 const packageMetadata = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
-const stableVersion = process.env.UPDATER_REHEARSAL_VERSION || '1.0.0'
+const stableVersion = process.env.UPDATER_REHEARSAL_VERSION || packageMetadata.version
+const basePackagePath = process.env.UPDATER_REHEARSAL_BASE_PACKAGE || ''
+const explicitBaseVersion = process.env.UPDATER_REHEARSAL_BASE_VERSION || ''
 const reportPath = path.resolve(process.env.UPDATER_REHEARSAL_REPORT || path.join('test-results', 'updater-rehearsal.json'))
 const startupTimeoutMs = 120_000
 const downloadChunkDelayMs = 5
@@ -29,6 +32,8 @@ const report = {
   platform: process.platform,
   architecture: process.arch,
   currentVersion: packageMetadata.version,
+  baseVersion: '',
+  candidateVersion: stableVersion,
   baseCommit: process.env.UPDATER_REHEARSAL_BASE_COMMIT || '',
   stableVersion,
   releaseType: 'release',
@@ -83,15 +88,16 @@ async function main() {
   report.metadataFile = paths.metadataFile
   report.currentAppVersion = readAsarVersion(paths.baseApp)
   report.candidateAppVersion = readAsarVersion(paths.candidateApp)
-  if (report.currentAppVersion !== packageMetadata.version) {
-    throw new Error(`O pacote base não representa ${packageMetadata.version}: ${report.currentAppVersion}`)
-  }
-  if (report.candidateAppVersion !== stableVersion) {
-    throw new Error(`O pacote candidato não representa ${stableVersion}: ${report.candidateAppVersion}`)
-  }
-  if (stableVersion.includes('-')) {
-    throw new Error(`O rehearsal stable exige uma versão sem prerelease: ${stableVersion}`)
-  }
+  const baseVersion = resolveBaseVersion({ packagePath: basePackagePath, explicitVersion: explicitBaseVersion })
+  const versions = validateRehearsalVersions({
+    baseVersion,
+    baseArtifactVersion: report.currentAppVersion,
+    candidateVersion: stableVersion,
+    candidatePackageVersion: packageMetadata.version,
+    candidateArtifactVersion: report.candidateAppVersion,
+  })
+  report.baseVersion = versions.baseVersion
+  report.candidateVersion = versions.candidateVersion
 
   const baseResult = await launchPackagedApp(paths.baseApp, 'base')
   report.baseStartup = baseResult.report
@@ -119,7 +125,7 @@ async function main() {
     await fsp.copyFile(baseArtifact, oldAppImage)
     process.env.APPIMAGE = oldAppImage
   }
-  updater = createUpdater(configPath, server.baseUrl)
+  updater = createUpdater(configPath, server.baseUrl, report.currentAppVersion)
   const check = await updater.checkForUpdates()
   report.allowPrerelease = updater.allowPrerelease
   report.channel = updater.channel || ''
@@ -394,7 +400,7 @@ async function writeUpdaterConfig(baseUrl) {
   return configPath
 }
 
-function createUpdater(configPath, baseUrl, versionOverride = packageMetadata.version) {
+function createUpdater(configPath, baseUrl, versionOverride) {
   const updater = process.platform === 'linux'
     ? new AppImageUpdater()
     : process.platform === 'win32'
