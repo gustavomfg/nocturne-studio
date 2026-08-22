@@ -18,7 +18,7 @@ uma certificação externa.
 | SSRF | HTTPS remoto obrigatório, loopback somente para provider local, redirects e redes reservadas recusados | `tests/openAICompatibleProviderAdapter.test.ts` | aprovado |
 | Workspace malicioso | autorização explícita, Review somente leitura, anexos limitados e execução sem rede | `tests/security.test.ts`, `tests/taskBuilder.test.ts`, `tests/codexClient.test.ts` | aprovado |
 | Arquivos gigantes | limites para anexos, preview, contexto, diffs, RPC, stream e backup | `tests/storeLimits.test.ts`, `tests/conversationContext.test.ts`, `tests/gitStatus.test.ts`, `tests/backupSchemas.test.ts` | aprovado |
-| Corrupção de dados | integridade SQLite, quarentena, restauração guiada, checksum e importação transacional | `tests/databaseRecovery.test.ts`, `tests/databaseMigration.test.ts`, `tests/backupSchemas.test.ts` | aprovado |
+| Corrupção de dados | integridade SQLite, quarentena, restauração guiada, checksum e importação transacional | `tests/databaseRecovery.test.ts`, `tests/migrationRehearsal.test.ts`, `tests/backupSchemas.test.ts` | aprovado |
 
 ## Fronteiras revisadas
 

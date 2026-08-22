@@ -720,6 +720,18 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     expect(beforeSuggestions.items).toEqual([expect.objectContaining({ id: state.suggestionId, title: 'Sugestão restaurada' })])
     await expect(api.suggestions.create(state.conversationId, structuredSuggestion('Não deve persistir'))).rejects.toThrow(/Workspace não autorizado/)
     expect(await api.suggestions.page(state.conversationId)).toEqual(beforeSuggestions)
+
+    await expect(api.conversations.delete(state.conversationId)).rejects.toThrow(/Workspace não autorizado/)
+    expect((await api.conversations.list()).some((conversation) => conversation.id === state.conversationId)).toBe(true)
+    await expect(api.conversations.messages(state.conversationId)).resolves.toEqual([
+      expect.objectContaining({ content: 'Histórico somente leitura preservado.' }),
+    ])
+    expect((await api.artifacts.page(state.conversationId)).items).toEqual([
+      expect.objectContaining({ id: state.artifactId, title: 'Artefato restaurado' }),
+    ])
+    expect((await api.suggestions.page(state.conversationId)).items).toEqual([
+      expect.objectContaining({ id: state.suggestionId, title: 'Sugestão restaurada' }),
+    ])
   })
 
   it('permite artifacts:delete e suggestions:create depois da autorização atual', async () => {
@@ -737,6 +749,12 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
       expect.objectContaining({ title: 'Persistir após autorização' }),
     ])
     expect(database!.getSuggestion(state.suggestionId)?.status).toBe('resolved')
+
+    await expect(api.conversations.delete(state.conversationId)).resolves.toBeUndefined()
+    expect((await api.conversations.list()).some((conversation) => conversation.id === state.conversationId)).toBe(false)
+    await expect(api.conversations.messages(state.conversationId)).resolves.toEqual([])
+    expect((await api.artifacts.page(state.conversationId)).items).toEqual([])
+    expect((await api.suggestions.page(state.conversationId)).items).toEqual([])
   })
 })
 

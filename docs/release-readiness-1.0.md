@@ -15,7 +15,7 @@ claim that a stable release has been published.
 
 ## Automated coverage
 
-The current Vitest suite contains **324 tests** across 47 files. The relevant
+The current Vitest suite contains **332 tests** across 47 files. The relevant
 journeys are covered by:
 
 | Area | Evidence in the repository |

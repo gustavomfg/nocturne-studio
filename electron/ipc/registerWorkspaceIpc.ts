@@ -9,6 +9,7 @@ import { safeIpcMain } from './safeIpc'
 import { assertSafeWorkspaceScope, inspectWorkspaceScope } from '../security/WorkspaceTrust'
 import { WorkspaceChangeWatcher } from '../workspaces/WorkspaceChangeWatcher'
 import { IPC_CHANNELS } from '../../shared/ipc/channels'
+import { getAuthorizedConversation } from './conversationAccess'
 
 const execFileAsync = promisify(execFile)
 
@@ -109,7 +110,10 @@ export function registerWorkspaceIpc(win: BrowserWindow, database: LocalDatabase
     const data = z.object({ id: idSchema, offset: z.number().int().min(0).max(1_000_000), limit: z.number().int().min(1).max(200) }).strict().parse(value)
     return database.listMessagePage(data.id, data.offset, data.limit)
   })
-  ipcMain.handle('conversations:delete', (_event, value: unknown) => database.deleteConversation(idSchema.parse(value)))
+  ipcMain.handle('conversations:delete', (_event, value: unknown) => {
+    const conversation = getAuthorizedConversation(database, idSchema.parse(value))
+    database.deleteConversation(conversation.id)
+  })
   return () => {
     void changeWatcher.stop()
     ipcMain.dispose()
