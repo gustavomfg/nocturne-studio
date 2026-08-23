@@ -203,20 +203,46 @@ function packagedExecutable() {
 
 function assertIsolatedUserData(rootDirectory, userData) {
   const temporary = path.resolve(os.tmpdir())
-  const relative = path.relative(rootDirectory, userData)
   const forbidden = [
     path.join(os.homedir(), '.config', 'Nocturne Studio'),
     path.join(os.homedir(), 'AppData', 'Roaming', 'Nocturne Studio'),
     path.join(os.homedir(), 'Library', 'Application Support', 'Nocturne Studio'),
   ].map((candidate) => path.resolve(candidate))
-  if (!isInside(temporary, rootDirectory) || !isInside(rootDirectory, userData) || relative === '' || forbidden.some((candidate) => path.resolve(userData) === candidate)) {
+  const canonicalRoot = canonicalizePath(rootDirectory)
+  const canonicalUserData = canonicalizePath(userData)
+  if (!isInside(temporary, rootDirectory) || !isInside(rootDirectory, userData) || !canonicalRoot || canonicalRoot === canonicalUserData || forbidden.some((candidate) => canonicalizePath(candidate) === canonicalUserData)) {
     throw new Error('Guardrail de isolamento do userData falhou; o rehearsal foi abortado.')
   }
 }
 
 function isInside(parent, candidate) {
-  const relative = path.relative(parent, candidate)
+  const canonicalParent = canonicalizePath(parent)
+  const canonicalCandidate = canonicalizePath(candidate)
+  if (!canonicalParent || !canonicalCandidate) return false
+  const relative = path.relative(canonicalParent, canonicalCandidate)
   return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+}
+
+function canonicalizePath(value) {
+  const resolved = path.resolve(value)
+  let existing = resolved
+  while (!fs.existsSync(existing)) {
+    try {
+      if (fs.lstatSync(existing).isSymbolicLink()) return null
+    } catch (error) {
+      const code = error?.code
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') return null
+    }
+    const parent = path.dirname(existing)
+    if (parent === existing) return null
+    existing = parent
+  }
+  try {
+    const realExisting = fs.realpathSync.native(existing)
+    return path.resolve(realExisting, path.relative(existing, resolved))
+  } catch {
+    return null
+  }
 }
 
 async function cloneScenario(parent, name, sourceUserData, sourceWorkspace) {

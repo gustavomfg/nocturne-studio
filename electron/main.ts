@@ -20,6 +20,7 @@ import { hasDatabaseRecoveryArtifacts, inspectDatabaseFile, isRecoverableDatabas
 import packageMetadata from '../package.json'
 import { FatalShutdownController, type FatalShutdownEvent } from './runtime/FatalShutdown'
 import { isMainProcessOperational, markMainProcessFatal, markMainProcessTerminated } from './runtime/MainProcessState'
+import { canonicalizePackagedRecoveryPath, isPackagedRecoveryPathInside } from './security/PackagedRecoveryContainment'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const softwareRendering = process.env.NOCTURNE_DISABLE_GPU === '1' || process.argv.includes('--disable-gpu')
@@ -420,17 +421,17 @@ interface PackagedRecoveryContext {
   mode: PackagedRecoveryMode
 }
 
-function isPathInside(parent: string, candidate: string) {
-  const relative = path.relative(parent, candidate)
-  return relative === '' || (
-    relative !== '..' &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  )
-}
-
 function setPackagedRecoveryStage(stage: string) {
   packagedRecoveryStage = stage
+}
+
+function isLexicalPathInside(parent: string, candidate: string) {
+  const relative = path.relative(parent, candidate)
+  return relative === '' || (
+    relative !== '..'
+    && !relative.startsWith(`..${path.sep}`)
+    && !path.isAbsolute(relative)
+  )
 }
 
 function sanitizePackagedRecoveryText(value: string) {
@@ -448,7 +449,7 @@ function packagedRecoveryOutputContext() {
   const root = path.resolve(rootValue)
   const output = path.resolve(outputValue)
   const temporaryRoot = path.resolve(os.tmpdir())
-  if (!isPathInside(temporaryRoot, root) || !isPathInside(root, output)) return null
+  if (!isPackagedRecoveryPathInside(temporaryRoot, root) || !isPackagedRecoveryPathInside(root, output)) return null
   return { root, output }
 }
 
@@ -461,21 +462,21 @@ function inspectPackagedRecoveryPaths() {
   const userData = path.resolve(app.getPath('userData'))
   const canonical = (value: string | null) => {
     if (!value) return null
-    try { return path.resolve(fs.realpathSync.native(value)) } catch { return null }
+    return canonicalizePackagedRecoveryPath(value)
   }
   const canonicalTemporaryRoot = canonical(temporaryRoot)
   const canonicalRoot = canonical(root)
   const canonicalUserData = canonical(userData)
   return {
-    rootLexicalInsideTemporary: Boolean(root && isPathInside(temporaryRoot, root)),
-    outputLexicalInsideRoot: Boolean(root && output && isPathInside(root, output)),
+    rootLexicalInsideTemporary: Boolean(root && isLexicalPathInside(temporaryRoot, root)),
+    outputLexicalInsideRoot: Boolean(root && output && isLexicalPathInside(root, output)),
     userDataExists: fs.existsSync(userData),
-    userDataLexicalInsideTemporary: isPathInside(temporaryRoot, userData),
+    userDataLexicalInsideTemporary: isLexicalPathInside(temporaryRoot, userData),
     canonicalTemporaryAvailable: Boolean(canonicalTemporaryRoot),
     canonicalRootAvailable: Boolean(canonicalRoot),
     canonicalUserDataAvailable: Boolean(canonicalUserData),
-    canonicalRootInsideTemporary: Boolean(canonicalTemporaryRoot && canonicalRoot && isPathInside(canonicalTemporaryRoot, canonicalRoot)),
-    canonicalUserDataInsideTemporary: Boolean(canonicalTemporaryRoot && canonicalUserData && isPathInside(canonicalTemporaryRoot, canonicalUserData)),
+    canonicalRootInsideTemporary: Boolean(canonicalTemporaryRoot && canonicalRoot && isPackagedRecoveryPathInside(canonicalTemporaryRoot, canonicalRoot)),
+    canonicalUserDataInsideTemporary: Boolean(canonicalTemporaryRoot && canonicalUserData && isPackagedRecoveryPathInside(canonicalTemporaryRoot, canonicalUserData)),
     temporaryAliasChanged: Boolean(canonicalTemporaryRoot && canonicalTemporaryRoot !== temporaryRoot),
     rootAliasChanged: Boolean(canonicalRoot && root && canonicalRoot !== root),
     userDataAliasChanged: Boolean(canonicalUserData && canonicalUserData !== userData),
@@ -515,7 +516,7 @@ function packagedRecoveryContext(): PackagedRecoveryContext {
   const workspace = path.resolve(workspaceValue)
   const temporaryRoot = path.resolve(os.tmpdir())
   const userData = path.resolve(app.getPath('userData'))
-  if (!isPathInside(temporaryRoot, root) || !isPathInside(root, output) || !isPathInside(root, workspace) || !isPathInside(root, userData)) {
+  if (!isPackagedRecoveryPathInside(temporaryRoot, root) || !isPackagedRecoveryPathInside(root, output) || !isPackagedRecoveryPathInside(root, workspace) || !isPackagedRecoveryPathInside(root, userData)) {
     throw new Error('O harness empacotado exige userData, workspace e relatório dentro de um diretório temporário isolado.')
   }
   return { root, output, workspace, mode }
