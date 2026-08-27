@@ -353,7 +353,20 @@ function App() {
     store.setStatus('planning')
     store.addMessage({ id: fakeId(), conversationId, role: 'user', content, metadata: JSON.stringify({ attachments: selectedAttachments.map((item) => item.path) }), createdAt: now() })
     try { await window.nocturne.ai.send(conversationId, content, selectedAttachments.map((item) => item.path), mode); await refresh() }
-    catch (error) { activeTurnRef.current = null; applyingSuggestionRef.current = null; setRunRetryAvailable(true); store.setFinalizing(false); store.setStatus('failed'); store.setError(error instanceof Error ? error.message : String(error)) }
+    catch (error) {
+      activeTurnRef.current = null; applyingSuggestionRef.current = null; setRunRetryAvailable(true); store.setFinalizing(false); store.setStatus('failed'); store.setError(error instanceof Error ? error.message : String(error))
+      try {
+        const page = await window.nocturne.conversations.messagePage(conversationId)
+        if (useAppStore.getState().activeId === conversationId) {
+          store.setMessages(page.items)
+          historyOffsetRef.current = page.items.length
+          setHistoryHasMore(page.hasMore)
+          setHistoryHasNewer(false)
+        }
+      } catch {
+        // Keep the visible error when the post-failure refresh is unavailable.
+      }
+    }
   }
 
   function retryLastAttempt() {
@@ -471,9 +484,13 @@ function App() {
     if (interactionLocked()) { store.setError('Aguarde a resposta ser concluída antes de excluir conversas.'); return }
     const conversation = store.conversations.find((item) => item.id === id)
     if (!await confirmation.confirm({ title: 'Excluir conversa?', description: `"${conversation?.title || 'Esta conversa'}" e seu histórico local serão removidos. Esta ação não pode ser desfeita.`, confirmLabel: 'Excluir conversa', danger: true })) return
-    await window.nocturne.conversations.delete(id)
-    if (store.activeId === id) { store.setActive(null); store.setMessages([]); store.setArtifacts([]); historyOffsetRef.current = 0; setHistoryHasMore(false); setHistoryHasNewer(false); setPreview(null) }
-    await refresh()
+    try {
+      await window.nocturne.conversations.delete(id)
+      if (store.activeId === id) { store.setActive(null); store.setMessages([]); store.setArtifacts([]); historyOffsetRef.current = 0; setHistoryHasMore(false); setHistoryHasNewer(false); setPreview(null) }
+      await refresh()
+    } catch (error) {
+      store.setError(errorMessage(error))
+    }
   }
 
   function restoreMetadata(metadata: string) {
