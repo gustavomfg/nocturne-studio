@@ -19,7 +19,8 @@ export interface WorkspaceMemory { content: string; rules: string; project?: Pro
 export interface PlanStep { step: string; status: 'pending' | 'inProgress' | 'completed' }
 export interface GitChangedFile { path: string; status: string; originalPath?: string }
 export interface GitInfo { branch: string; status: string; diff: string; diffTruncated?: boolean; filesTruncated?: boolean; files: GitChangedFile[] }
-export interface AppSettings { model: string; sandbox: 'read-only' | 'workspace-write'; approvalPolicy: 'untrusted' | 'on-request'; diagnosticMode?: boolean; theme?: 'dark'; pandocVersion?: string }
+export type AppLanguage = 'pt-BR' | 'en'
+export interface AppSettings { model: string; sandbox: 'read-only' | 'workspace-write'; approvalPolicy: 'untrusted' | 'on-request'; diagnosticMode?: boolean; theme?: 'dark'; language?: AppLanguage; pandocVersion?: string }
 export interface BuildRollbackStatus { available: boolean; files: string[]; createdAt?: string; reason?: string }
 export interface DocumentUpdatePreview { target: string; name: string; existing: string; generated: string; expectedHash: string | null }
 export interface RendererPerformanceStats {

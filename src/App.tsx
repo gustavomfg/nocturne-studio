@@ -17,6 +17,7 @@ import { useResponsivePanels } from './shared/useResponsivePanels'
 import { AppOverlays } from './domains/settings/AppOverlays'
 import { loadSettingsDialog } from './domains/settings/loadSettingsDialog'
 import { usePagedCollections } from './domains/collections/usePagedCollections'
+import { translate, useI18n } from './shared/i18n'
 import './styles/components.css'
 import './domains/settings/settings.css'
 import './domains/agent/agent.css'
@@ -38,6 +39,7 @@ const AgentPanel = lazy(() => import('./domains/agent/AgentPanel').then((module)
 const BrainMemoryDialog = lazy(() => import('./domains/memory/BrainMemoryDialog').then((module) => ({ default: module.BrainMemoryDialog })))
 
 function App() {
+  const { setLanguage, t } = useI18n()
   const store = useAppStore(useShallow((state) => ({
     conversations: state.conversations, activeId: state.activeId, messages: state.messages, status: state.status, finalizing: state.finalizing, approvals: state.approvals, error: state.error,
     setConversations: state.setConversations, setActive: state.setActive, setMessages: state.setMessages, addMessage: state.addMessage, setStatus: state.setStatus, setFinalizing: state.setFinalizing,
@@ -52,7 +54,7 @@ function App() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [settings, setSettings] = useState<AppSettings>({ model: '', sandbox: 'workspace-write', approvalPolicy: 'on-request', diagnosticMode: false, theme: 'dark' })
+  const [settings, setSettings] = useState<AppSettings>({ model: '', sandbox: 'workspace-write', approvalPolicy: 'on-request', diagnosticMode: false, theme: 'dark', language: 'pt-BR' })
   const [gitInfo, setGitInfo] = useState<GitInfo | null>(null)
   const [preview, setPreview] = useState<FilePreview | null>(null)
   const [memory, setMemory] = useState<WorkspaceMemory>({ content: '', rules: '', updatedAt: '' })
@@ -102,8 +104,8 @@ function App() {
   useEffect(() => {
     void Promise.all([window.nocturne.conversations.page(), window.nocturne.workspace.list(), window.nocturne.settings.get()]).then(async ([conversationPage, savedWorkspaces, savedSettings]) => {
       const conversations = conversationPage.items
-      const normalized = { model: savedSettings.model || '', sandbox: savedSettings.sandbox || 'workspace-write', approvalPolicy: savedSettings.approvalPolicy === 'untrusted' ? 'untrusted' : 'on-request', diagnosticMode: savedSettings.diagnosticMode === true, theme: 'dark' } as AppSettings
-      store.setConversations(conversations); void collections.initializeConversationHasMore(conversationPage.hasMore); setWorkspaces(savedWorkspaces); setSettings(normalized)
+      const normalized = { model: savedSettings.model || '', sandbox: savedSettings.sandbox || 'workspace-write', approvalPolicy: savedSettings.approvalPolicy === 'untrusted' ? 'untrusted' : 'on-request', diagnosticMode: savedSettings.diagnosticMode === true, theme: 'dark', language: savedSettings.language === 'en' ? 'en' : 'pt-BR' } as AppSettings
+      store.setConversations(conversations); void collections.initializeConversationHasMore(conversationPage.hasMore); setWorkspaces(savedWorkspaces); setSettings(normalized); setLanguage(normalized.language ?? 'pt-BR')
       if (conversations[0]) await openConversation(conversations[0].id, conversations, savedWorkspaces)
       performanceRef.current.startupMs = performance.now()
       reportRendererPerformance()
@@ -208,13 +210,13 @@ function App() {
   }, [workspace, workspaceAuthorized])
 
   async function selectWorkspace() {
-    if (interactionLocked()) { store.setError('Aguarde a resposta ser concluída antes de trocar de workspace.'); return }
+    if (interactionLocked()) { store.setError(t('common.waitBeforeSwitch')); return }
     const selected = await window.nocturne.workspace.select()
     if (selected) { setWorkspace(selected); setWorkspaces(await window.nocturne.workspace.list()) }
   }
 
   async function createConversation() {
-    if (interactionLocked()) { store.setError('Aguarde a resposta ser concluída antes de criar outra conversa.'); return }
+    if (interactionLocked()) { store.setError(t('common.waitBeforeCreate')); return }
     let selected = workspace || active?.workspace
     if (!selected) selected = await window.nocturne.workspace.select() ?? ''
     if (!selected) return
@@ -223,7 +225,7 @@ function App() {
   }
 
   async function chooseSavedWorkspace(selected: string) {
-    if (interactionLocked()) { store.setError('Aguarde a resposta ser concluída antes de trocar de workspace.'); return }
+    if (interactionLocked()) { store.setError(t('common.waitBeforeSwitch')); return }
     setWorkspace(selected)
     const conversation = store.conversations.find((item) => item.workspace === selected)
     if (conversation) await openConversation(conversation.id)
@@ -232,7 +234,7 @@ function App() {
 
   async function openConversation(id: string, conversations = store.conversations, availableWorkspaces = workspaces) {
     const loadStartedAt = performance.now()
-    if (interactionLocked() && id !== useAppStore.getState().activeId) { store.setError('Cancele ou aguarde a execução atual antes de trocar de conversa.'); return }
+    if (interactionLocked() && id !== useAppStore.getState().activeId) { store.setError(t('common.waitBeforeConversation')); return }
     const requestId = ++conversationRequestRef.current
     stickToBottomRef.current = true; setNewContent(false)
     store.setActive(id); store.clearRun()
@@ -252,15 +254,15 @@ function App() {
       setMemory({ content: '', rules: '', updatedAt: '' }); setGitInfo(null)
       const missingWorkspace = workspaceEntry?.availability === 'missing'
       const accepted = await confirmation.confirm({
-        title: missingWorkspace ? 'Localizar projeto movido?' : 'Reautorizar workspace?',
-        description: `${missingWorkspace ? 'A pasta deste projeto não foi encontrada. Se ela foi movida ou renomeada, selecione a nova localização.' : 'Esta conversa veio de um backup. Para proteger seus arquivos, confirme novamente a pasta antes de usar memória, Git ou IA.'}\n\n${conversation.workspace}`,
-        confirmLabel: missingWorkspace ? 'Localizar pasta' : 'Selecionar pasta',
+        title: missingWorkspace ? t('common.movedWorkspace') : t('common.reauthorizeWorkspace'),
+        description: `${missingWorkspace ? t('common.movedWorkspaceDescription') : t('common.restoreWorkspaceDescription')}\n\n${conversation.workspace}`,
+        confirmLabel: missingWorkspace ? t('common.locateFolder') : t('common.selectFolder'),
       })
       if (requestId !== conversationRequestRef.current || useAppStore.getState().activeId !== id) return
-      if (!accepted) { store.setError('Workspace não autorizado. A conversa permanece disponível somente para leitura do histórico.'); return }
+      if (!accepted) { store.setError(t('common.workspaceUnauthorized')); return }
       try {
         const selected = await window.nocturne.workspace.select(conversation.workspace)
-        if (!selected) { store.setError('Reautorização cancelada. A conversa permanece disponível somente para leitura do histórico.'); return }
+        if (!selected) { store.setError(t('common.reauthCancelled')); return }
         const refreshedWorkspaces = await window.nocturne.workspace.list()
         setWorkspaces(refreshedWorkspaces); setWorkspace(selected)
         if (selected !== conversation.workspace) await refresh()
@@ -377,7 +379,7 @@ function App() {
   }
 
   function preparePrompt(value: string, mode: AgentMode = agentMode) {
-    if (interactionLocked()) { store.setError('Aguarde a execução atual antes de preparar outro pedido.'); return }
+    if (interactionLocked()) { store.setError(t('common.waitBeforePrepare')); return }
     setPrompt(value); setAgentMode(mode)
     window.requestAnimationFrame(() => { composerRef.current?.focus(); composerRef.current?.setSelectionRange(value.length, value.length) })
   }
@@ -405,7 +407,7 @@ function App() {
   }
 
   async function attachFiles() {
-    if (interactionLocked()) { store.setError('Aguarde a execução atual terminar antes de anexar arquivos.'); return }
+    if (interactionLocked()) { store.setError(t('common.waitBeforeAttach')); return }
     let conversationId = useAppStore.getState().activeId
     if (!conversationId) {
       await createConversation()
@@ -444,7 +446,7 @@ function App() {
       }
       return
     }
-    routeAgentEvent(event, { stream: queueStreamDelta, activityDetail: appendActivityDetail, diff: store.setDiff, plan: store.setPlan, hasPlan: () => Boolean(useAppStore.getState().plan.length), itemStarted: addItemActivity, itemCompleted: completeItem, fsChanged: (paths) => { if (paths.length) store.upsertActivity({ id: 'fs-summary', type: 'file', label: `${paths.length} arquivo(s) observado(s)`, detail: paths.slice(-50).join('\n'), status: 'completed' }) }, approval: (value) => store.addApproval({ ...value, status: 'pending' }), turnCompleted: (params) => { void finishTurn(params).catch((error) => { store.setStatus('failed'); store.setError(`Falha ao finalizar a resposta: ${errorMessage(error)}`) }) }, error: (message) => { setRunRetryAvailable(true); store.setError(message); store.upsertActivity({ id: `error-${Date.now()}`, type: 'error', label: 'Erro na execução', detail: message, status: 'failed' }) }, warning: (message) => store.upsertActivity({ id: `warning-${Date.now()}`, type: 'error', label: 'Aviso', detail: message, status: 'failed' }) })
+    routeAgentEvent(event, { stream: queueStreamDelta, activityDetail: appendActivityDetail, diff: store.setDiff, plan: store.setPlan, hasPlan: () => Boolean(useAppStore.getState().plan.length), itemStarted: addItemActivity, itemCompleted: completeItem, fsChanged: (paths) => { if (paths.length) store.upsertActivity({ id: 'fs-summary', type: 'file', label: t('common.filesObserved', { count: paths.length }), detail: paths.slice(-50).join('\n'), status: 'completed' }) }, approval: (value) => store.addApproval({ ...value, status: 'pending' }), turnCompleted: (params) => { void finishTurn(params).catch((error) => { store.setStatus('failed'); store.setError(`${t('common.failedToFinish')}: ${errorMessage(error)}`) }) }, error: (message) => { setRunRetryAvailable(true); store.setError(message); store.upsertActivity({ id: `error-${Date.now()}`, type: 'error', label: t('common.executionError'), detail: message, status: 'failed' }) }, warning: (message) => store.upsertActivity({ id: `warning-${Date.now()}`, type: 'error', label: t('common.warning'), detail: message, status: 'failed' }) })
   }
 
   async function decide(key: string, accepted: boolean) {
@@ -453,7 +455,7 @@ function App() {
   }
 
   async function persistSuggestionStatus(suggestion: Suggestion, status: SuggestionStatus) {
-    if (!store.activeId) throw new Error('Abra a conversa da sugestão antes de registrar a decisão.')
+    if (!store.activeId) throw new Error(t('common.openConversationForSuggestion'))
     await window.nocturne.suggestions.status(store.activeId, suggestion.id, status)
     await collections.refreshSuggestions(store.activeId)
   }
@@ -466,24 +468,24 @@ function App() {
   async function applySuggestion(suggestion: Suggestion) {
     if (!store.activeId || interactionLocked()) return
     const steps: PlanStep[] = [
-      { step: `Confirmar escopo em ${suggestion.affectedFiles.length || 1} arquivo(s)`, status: 'pending' },
-      { step: 'Aplicar somente a proposta aprovada', status: 'pending' },
-      { step: 'Executar typecheck, lint e testes relacionados quando disponíveis', status: 'pending' },
-      { step: 'Relatar alterações e validações', status: 'pending' },
+      { step: t('common.confirmScope', { count: suggestion.affectedFiles.length || 1 }), status: 'pending' },
+      { step: t('common.applyApprovedProposal'), status: 'pending' },
+      { step: t('common.runValidation'), status: 'pending' },
+      { step: t('common.reportChanges'), status: 'pending' },
     ]
-    const files = suggestion.affectedFiles.length ? suggestion.affectedFiles.join('\n• ') : 'arquivos a confirmar pelo agente'
-    if (!await confirmation.confirm({ title: 'Aplicar esta sugestão?', description: `${suggestion.title}\n\nArquivos:\n• ${files}\n\nO agente poderá modificar somente o escopo confirmado e executará validações.`, confirmLabel: 'Preparar aplicação' })) return
+    const files = suggestion.affectedFiles.length ? suggestion.affectedFiles.join('\n• ') : t('common.filesToConfirm')
+    if (!await confirmation.confirm({ title: t('common.applySuggestionConfirm'), description: `${suggestion.title}\n\n${t('common.filesLabel')}:\n• ${files}\n\n${t('common.approvedScopeDescription')}`, confirmLabel: t('common.prepareApplication') })) return
     try { await persistSuggestionStatus(suggestion, 'accepted') }
-    catch (error) { store.setError(`A sugestão não foi aceita: ${errorMessage(error)}`); return }
-    store.setPlan(steps, `Aplicação da sugestão: ${suggestion.title}`)
+    catch (error) { store.setError(`${t('common.suggestionNotAccepted')}: ${errorMessage(error)}`); return }
+    store.setPlan(steps, `${t('common.suggestionApplication')}: ${suggestion.title}`)
     applyingSuggestionRef.current = { id: suggestion.id, affectedFiles: suggestion.affectedFiles }
-    await submitPrompt(`Aplique a sugestão aprovada abaixo. Não amplie o escopo. Antes de editar, confirme os arquivos afetados; depois execute typecheck, lint e testes relacionados quando disponíveis.\n\nTítulo: ${suggestion.title}\nProblema: ${suggestion.description}\nJustificativa: ${suggestion.reasoning}\nArquivos: ${suggestion.affectedFiles.join(', ') || 'identificar antes de editar'}\nProposta:\n${suggestion.proposedChanges}`, 'build')
+    await submitPrompt(`${t('quick.applySuggestion')}\n\n${t('quick.title')}: ${suggestion.title}\n${t('quick.problem')}: ${suggestion.description}\n${t('quick.reasoning')}: ${suggestion.reasoning}\n${t('quick.files')}: ${suggestion.affectedFiles.join(', ') || t('common.identifyBeforeEditing')}\n${t('quick.proposal')}:\n${suggestion.proposedChanges}`, 'build')
   }
 
   async function removeConversation(id: string) {
-    if (interactionLocked()) { store.setError('Aguarde a resposta ser concluída antes de excluir conversas.'); return }
+    if (interactionLocked()) { store.setError(t('common.waitBeforeDelete')); return }
     const conversation = store.conversations.find((item) => item.id === id)
-    if (!await confirmation.confirm({ title: 'Excluir conversa?', description: `"${conversation?.title || 'Esta conversa'}" e seu histórico local serão removidos. Esta ação não pode ser desfeita.`, confirmLabel: 'Excluir conversa', danger: true })) return
+    if (!await confirmation.confirm({ title: t('common.deleteConversationConfirm'), description: `"${conversation?.title || t('common.thisConversation')}" ${t('common.conversationRemoved')}`, confirmLabel: t('common.deleteConversation'), danger: true })) return
     try {
       await window.nocturne.conversations.delete(id)
       if (store.activeId === id) { store.setActive(null); store.setMessages([]); store.setArtifacts([]); historyOffsetRef.current = 0; setHistoryHasMore(false); setHistoryHasNewer(false); setPreview(null) }
@@ -510,7 +512,7 @@ function App() {
   }
 
   async function saveSettings(next: AppSettings) {
-    try { const saved = await window.nocturne.settings.set(next); setSettings({ ...next, ...saved }); setSettingsOpen(false); notify('Configurações salvas.') }
+    try { const saved = await window.nocturne.settings.set(next); const updatedLanguage = saved.language === 'en' ? 'en' : 'pt-BR'; const updated = { ...next, ...saved, language: updatedLanguage } as AppSettings; setSettings(updated); setLanguage(updatedLanguage); setSettingsOpen(false); notify(translate(updatedLanguage, 'common.saved')) }
     catch (error) { throw new Error(errorMessage(error)) }
   }
 
@@ -540,7 +542,7 @@ function App() {
   async function deleteArtifact(artifactId: string) {
     const conversationId = useAppStore.getState().activeId
     if (!conversationId) return
-    if (!await confirmation.confirm({ title: 'Remover artefato?', description: 'O item será removido do painel. Arquivos existentes no workspace não serão apagados.', confirmLabel: 'Remover', danger: true })) return
+    if (!await confirmation.confirm({ title: t('common.removeArtifact'), description: t('common.artifactRemoved'), confirmLabel: t('common.remove'), danger: true })) return
     const previous = useAppStore.getState().artifacts
     store.setArtifacts(previous.filter((artifact) => artifact.id !== artifactId))
     try {
@@ -557,39 +559,39 @@ function App() {
 
   async function saveMemory(content: string, rules: string) {
     if (!store.activeId) return
-    try { setMemory(await window.nocturne.memory.set(store.activeId, content, rules)); setMemoryOpen(false); notify('Contexto do workspace salvo.') }
+    try { setMemory(await window.nocturne.memory.set(store.activeId, content, rules)); setMemoryOpen(false); notify(t('memory.saved')) }
     catch (error) { throw new Error(errorMessage(error)) }
   }
 
   async function openWorkspaceTool(tool: 'editor' | 'terminal') {
     if (!pathLabel) return
-    try { await window.nocturne.workspace.openTool(pathLabel, tool); notify(tool === 'editor' ? 'Workspace aberto no editor.' : 'Terminal aberto no workspace.') }
+    try { await window.nocturne.workspace.openTool(pathLabel, tool); notify(tool === 'editor' ? t('common.openWorkspace') : t('common.openTerminal')) }
     catch (error) { store.setError(errorMessage(error)) }
   }
 
   async function favoriteWorkspace(item: Workspace) {
-    try { await window.nocturne.workspace.favorite(item.path, !item.favorite); setWorkspaces(await window.nocturne.workspace.list()); notify(item.favorite ? 'Workspace removido dos favoritos.' : 'Workspace adicionado aos favoritos.') }
+    try { await window.nocturne.workspace.favorite(item.path, !item.favorite); setWorkspaces(await window.nocturne.workspace.list()); notify(item.favorite ? t('common.favoriteRemoved') : t('common.favoriteAdded')) }
     catch (error) { store.setError(errorMessage(error)) }
   }
 
-  const title = active?.title ?? 'Nova conversa'
+  const title = active?.title ?? t('common.newConversation')
   const pathLabel = active?.workspace ?? workspace
 
   return <div className="app-shell">
-    {compactLayout && sidebarOpen && <button tabIndex={-1} className="panel-backdrop sidebar-backdrop" aria-label="Fechar barra lateral" onClick={() => setSidebarVisibility(false)}/>}
+    {compactLayout && sidebarOpen && <button tabIndex={-1} className="panel-backdrop sidebar-backdrop" aria-label={t('nav.closeSidebar')} onClick={() => setSidebarVisibility(false)}/>}
     <Sidebar open={sidebarOpen} compact={compactLayout} triggerRef={sidebarTriggerRef} conversations={filtered} hasConversations={store.conversations.length > 0} hasMore={collections.conversationHasMore} loadingMore={collections.loading === 'conversations'} activeId={store.activeId} search={search} searchRef={searchRef} workspace={workspace} workspaces={workspaces} settings={settings} status={store.status} onClose={() => setSidebarVisibility(false)} onNew={() => void createConversation().finally(() => { if (compactLayout) setSidebarVisibility(false) })} onSearch={setSearch} onLoadMore={() => void collections.loadMoreConversations()} onConversation={(id) => void openConversation(id).finally(() => { if (compactLayout) setSidebarVisibility(false) })} onDelete={(id) => void removeConversation(id)} onWorkspace={() => void selectWorkspace().finally(() => { if (compactLayout) setSidebarVisibility(false) })} onSavedWorkspace={(path) => void chooseSavedWorkspace(path).finally(() => { if (compactLayout) setSidebarVisibility(false) })} onFavorite={(item) => void favoriteWorkspace(item)} onSettings={() => { if (compactLayout) setSidebarVisibility(false); setSettingsOpen(true) }}/>
 
     <main className="main-panel">
-      <WorkspaceTopbar title={title} pathLabel={pathLabel} gitInfo={gitInfo} status={store.status} sidebarOpen={sidebarOpen} inspectorOpen={rightOpen} compact={compactLayout} hasMemory={Boolean(memory.content)} sidebarTriggerRef={sidebarTriggerRef} inspectorTriggerRef={inspectorTriggerRef} onOpenSidebar={() => setSidebarVisibility(true)} onSelectWorkspace={() => void selectWorkspace()} onOpenTool={(tool) => void openWorkspaceTool(tool)} onMemory={() => store.activeId ? setMemoryOpen(true) : store.setError('Abra uma conversa para configurar a memória do workspace.')} onSettings={() => setSettingsOpen(true)} onToggleInspector={() => setInspectorVisibility(!rightOpen)}/>
+      <WorkspaceTopbar title={title} pathLabel={pathLabel} gitInfo={gitInfo} status={store.status} sidebarOpen={sidebarOpen} inspectorOpen={rightOpen} compact={compactLayout} hasMemory={Boolean(memory.content)} sidebarTriggerRef={sidebarTriggerRef} inspectorTriggerRef={inspectorTriggerRef} onOpenSidebar={() => setSidebarVisibility(true)} onSelectWorkspace={() => void selectWorkspace()} onOpenTool={(tool) => void openWorkspaceTool(tool)} onMemory={() => store.activeId ? setMemoryOpen(true) : store.setError(t('common.noWorkspace'))} onSettings={() => setSettingsOpen(true)} onToggleInspector={() => setInspectorVisibility(!rightOpen)}/>
 
       <ChatViewport active={Boolean(store.activeId)} messages={store.messages} error={store.error} historyHasMore={historyHasMore} historyHasNewer={historyHasNewer} historyLoading={historyLoading} newContent={newContent} chatScrollRef={chatScrollRef} endRef={endRef} stickToBottomRef={stickToBottomRef} onNew={() => void createConversation()} onWorkspace={() => void selectWorkspace()} onPrompt={preparePrompt} onLoadOlder={() => void loadOlderMessages()} onLoadLatest={() => void loadLatestMessages()} onScroll={handleChatScroll} onNewContent={setNewContent} onDismissError={() => store.setError(null)} onRetryError={runRetryAvailable && lastAttemptRef.current?.conversationId === store.activeId ? retryLastAttempt : undefined} onJumpLatest={jumpToLatest}/>
 
       <Composer agentMode={agentMode} attachments={attachments} prompt={prompt} status={store.status} finalizing={store.finalizing} active={Boolean(store.activeId)} pendingApprovals={store.approvals.filter((item) => item.status === 'pending').length} composerRef={composerRef} onMode={setAgentMode} onPrompt={setPrompt} onRemoveAttachment={(path) => setAttachments((current) => current.filter((file) => file.path !== path))} onAttach={attachFiles} onCancel={cancelRun} onSubmit={send} onQuick={preparePrompt}/>
     </main>
-    {compactLayout && rightOpen && <button tabIndex={-1} className="panel-backdrop inspector-backdrop" aria-label="Fechar painel do agente" onClick={() => setInspectorVisibility(false)}/>}
+    {compactLayout && rightOpen && <button tabIndex={-1} className="panel-backdrop inspector-backdrop" aria-label={t('topbar.closeAgent')} onClick={() => setInspectorVisibility(false)}/>}
 
-    <Suspense fallback={null}><AgentPanel open={rightOpen} compact={compactLayout} triggerRef={inspectorTriggerRef} gitInfo={gitInfo} artifactsHaveMore={collections.artifactHasMore} suggestionsHaveMore={collections.suggestionHasMore} loadingCollection={collections.loading} onClose={() => setInspectorVisibility(false)} onDecide={decide} onError={store.setError} onNotify={notify} onGitRefresh={refreshGit} onArtifactsRefresh={refreshArtifacts} onLoadMoreArtifacts={() => void collections.loadMoreArtifacts()} onLoadMoreSuggestions={() => void collections.loadMoreSuggestions()} onPreview={showFilePreview} onArtifact={showArtifact} onDeleteArtifact={deleteArtifact} onSuggestionStatus={updateSuggestion} onSuggestionApply={applySuggestion} onPlanChange={(plan) => store.setPlan(plan, useAppStore.getState().planExplanation)} onPlanExecute={(plan) => preparePrompt(`Execute o plano aprovado abaixo. Siga os passos na ordem, atualize o progresso e teste as alterações.\n\n${plan.map((item, index) => `${index + 1}. ${item.step}`).join('\n')}`, 'build')}/></Suspense>
-    {confirmation.dialog}<AppOverlays settingsOpen={settingsOpen} settings={settings} status={store.status} workspaces={workspaces} memoryOpen={memoryOpen} memory={memory} preview={preview} onboardingOpen={onboardingOpen} activeId={store.activeId} workspace={workspace} onSettingsClose={() => setSettingsOpen(false)} onSaveSettings={saveSettings} onCodexModelChange={saveCodexModel} onNotify={notify} onOpenOnboarding={() => { setSettingsOpen(false); setOnboardingOpen(true) }} onMemoryClose={() => setMemoryOpen(false)} onOpenBrain={() => { setMemoryOpen(false); setBrainOpen(true) }} onSaveMemory={saveMemory} onPreviewClose={() => setPreview(null)} onError={store.setError} onWorkspace={selectWorkspace} onOpenSettings={() => { setOnboardingOpen(false); setSettingsOpen(true) }} onDismissOnboarding={() => { setOnboardingOpen(false); composerRef.current?.focus() }} onCompleteOnboarding={() => { localStorage.setItem('nocturne.onboarding.completed', 'true'); setOnboardingOpen(false); notify('Nocturne pronto para trabalhar.'); composerRef.current?.focus() }}/><Suspense fallback={null}>{brainOpen && store.activeId && <BrainMemoryDialog conversationId={store.activeId} onClose={() => setBrainOpen(false)} onNotify={notify}/>}</Suspense>{notice && <div className="product-toast" role="status" aria-live="polite"><span>{notice}</span><button aria-label="Fechar notificação" onClick={() => setNotice(null)}><X size={14}/></button></div>}
+    <Suspense fallback={null}><AgentPanel open={rightOpen} compact={compactLayout} triggerRef={inspectorTriggerRef} gitInfo={gitInfo} artifactsHaveMore={collections.artifactHasMore} suggestionsHaveMore={collections.suggestionHasMore} loadingCollection={collections.loading} onClose={() => setInspectorVisibility(false)} onDecide={decide} onError={store.setError} onNotify={notify} onGitRefresh={refreshGit} onArtifactsRefresh={refreshArtifacts} onLoadMoreArtifacts={() => void collections.loadMoreArtifacts()} onLoadMoreSuggestions={() => void collections.loadMoreSuggestions()} onPreview={showFilePreview} onArtifact={showArtifact} onDeleteArtifact={deleteArtifact} onSuggestionStatus={updateSuggestion} onSuggestionApply={applySuggestion} onPlanChange={(plan) => store.setPlan(plan, useAppStore.getState().planExplanation)} onPlanExecute={(plan) => preparePrompt(`${t('quick.executePlan')}\n\n${plan.map((item, index) => `${index + 1}. ${item.step}`).join('\n')}`, 'build')}/></Suspense>
+    {confirmation.dialog}<AppOverlays settingsOpen={settingsOpen} settings={settings} status={store.status} workspaces={workspaces} memoryOpen={memoryOpen} memory={memory} preview={preview} onboardingOpen={onboardingOpen} activeId={store.activeId} workspace={workspace} onSettingsClose={() => setSettingsOpen(false)} onSaveSettings={saveSettings} onCodexModelChange={saveCodexModel} onNotify={notify} onOpenOnboarding={() => { setSettingsOpen(false); setOnboardingOpen(true) }} onMemoryClose={() => setMemoryOpen(false)} onOpenBrain={() => { setMemoryOpen(false); setBrainOpen(true) }} onSaveMemory={saveMemory} onPreviewClose={() => setPreview(null)} onError={store.setError} onWorkspace={selectWorkspace} onOpenSettings={() => { setOnboardingOpen(false); setSettingsOpen(true) }} onDismissOnboarding={() => { setOnboardingOpen(false); composerRef.current?.focus() }} onCompleteOnboarding={() => { localStorage.setItem('nocturne.onboarding.completed', 'true'); setOnboardingOpen(false); notify(t('common.reloaded')); composerRef.current?.focus() }}/><Suspense fallback={null}>{brainOpen && store.activeId && <BrainMemoryDialog conversationId={store.activeId} onClose={() => setBrainOpen(false)} onNotify={notify}/>}</Suspense>{notice && <div className="product-toast" role="status" aria-live="polite"><span>{notice}</span><button aria-label={t('common.close')} onClick={() => setNotice(null)}><X size={14}/></button></div>}
   </div>
 }
 

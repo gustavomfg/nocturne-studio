@@ -395,7 +395,7 @@ export function registerIpc(
   }
   ipcMain.handle('settings:get', () => readSettings())
   ipcMain.handle('settings:set', (_event, value: unknown) => {
-    const data = z.object({ model: z.string().max(100).optional(), sandbox: z.enum(['read-only', 'workspace-write']).optional(), approvalPolicy: z.enum(['untrusted', 'on-request']).optional(), diagnosticMode: z.boolean().optional(), theme: z.literal('dark').default('dark') }).parse(value)
+    const data = z.object({ model: z.string().max(100).optional(), sandbox: z.enum(['read-only', 'workspace-write']).optional(), approvalPolicy: z.enum(['untrusted', 'on-request']).optional(), diagnosticMode: z.boolean().optional(), theme: z.literal('dark').default('dark'), language: z.enum(['pt-BR', 'en']).optional() }).parse(value)
     if (data.diagnosticMode !== undefined) logger.setDiagnostic(data.diagnosticMode)
     const { diagnosticMode, ...rest } = data
     const updates: Record<string, string> = { ...rest }

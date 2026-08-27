@@ -1,4 +1,5 @@
 import { AIConnectionPage } from './AIConnectionPage'
+import { useI18n } from '../../shared/i18n'
 
 interface AISettingsPageProps {
   workspaceId: string
@@ -11,7 +12,8 @@ export function AISettingsPage({
   onNotify,
   onCodexModelChange,
 }: AISettingsPageProps) {
-  return <div className="ai-settings" role="region" aria-label="Configuração de IA">
+  const { t } = useI18n()
+  return <div className="ai-settings" role="region" aria-label={t('ai.configuration')}>
     <AIConnectionPage
       workspaceId={workspaceId}
       onNotify={onNotify}

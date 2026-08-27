@@ -23,6 +23,7 @@ import type { ModelDescriptor, ModelReference } from '../../../shared/ai/model'
 import type { CodexAccountStatus } from '../../../shared/types'
 import type { CodexModel } from '../../../shared/codexModels'
 import { errorMessage } from '../../shared/format'
+import { useI18n } from '../../shared/i18n'
 
 type Step = 'list' | 'service' | 'auth' | 'model' | 'codex-model'
 
@@ -53,6 +54,7 @@ export function AIConnectionPage({
   onNotify,
   onCodexModelChange,
 }: AIConnectionPageProps) {
+  const { t } = useI18n()
   const [services, setServices] = useState<ProviderConfigurationSummary[]>([])
   const [codexAccount, setCodexAccount] = useState<CodexAccountStatus | null>(null)
   const [codexModels, setCodexModels] = useState<CodexModel[]>([])
@@ -118,7 +120,7 @@ export function AIConnectionPage({
         ?? null,
       )
       if (available.length === 0) {
-        setError('A conta ChatGPT não retornou modelos disponíveis.')
+        setError(t('ai.noAccountModels'))
       }
     } catch (failure) {
       setError(errorMessage(failure))
@@ -144,19 +146,19 @@ export function AIConnectionPage({
       if (selectedPreset.authType === 'account') {
         const account = await window.nocturne.codex.login()
         setCodexAccount(account)
-        onNotify('Conta ChatGPT conectada pelo Codex CLI.')
+        onNotify(t('ai.connectedChatGpt'))
         setConnecting(false)
         await openCodexModels()
         return
       }
       const effectiveUrl = customUrl.trim() || selectedPreset.baseUrl
       if (selectedPreset.authType === 'api-key' && !credential.trim()) {
-        setError('Informe a chave de API.')
+        setError(t('ai.enterApiKey'))
         setConnecting(false)
         return
       }
       if (selectedPreset.id === 'other' && !effectiveUrl) {
-        setError('Informe o endereço do serviço.')
+        setError(t('ai.enterServiceUrl'))
         setConnecting(false)
         return
       }
@@ -192,7 +194,7 @@ export function AIConnectionPage({
     setError(null)
     try {
       setCodexAccount(await window.nocturne.codex.logout())
-      onNotify('Conta ChatGPT desconectada do Codex CLI.')
+      onNotify(t('ai.disconnectedChatGpt'))
     } catch (failure) {
       setError(errorMessage(failure))
     } finally {
@@ -203,7 +205,7 @@ export function AIConnectionPage({
   const saveAndBind = async () => {
     if (!selectedPreset || !selectedModel || saving) return
     if (!workspaceId) {
-      setError('Selecione um workspace antes de ativar este modelo.')
+      setError(t('ai.selectWorkspace'))
       return
     }
     setSaving(true)
@@ -213,7 +215,7 @@ export function AIConnectionPage({
         workspaceId,
         defaultBinding: selectedModel,
       })
-      onNotify(`Usando ${selectedModel.modelId}.`)
+      onNotify(t('ai.usingModel', { model: selectedModel.modelId }))
       resetWizard()
     } catch (failure) {
       setError(errorMessage(failure))
@@ -229,7 +231,7 @@ export function AIConnectionPage({
     try {
       await onCodexModelChange(selectedCodexModel.model)
       setCodexModelId(selectedCodexModel.model)
-      onNotify(`Usando ${selectedCodexModel.displayName} pela conta ChatGPT.`)
+      onNotify(t('ai.usingCodexModel', { model: selectedCodexModel.displayName }))
       resetWizard()
     } catch (failure) {
       setError(errorMessage(failure))
@@ -246,7 +248,7 @@ export function AIConnectionPage({
       await window.nocturne.providers.remove(id)
       setServices((current) => current.filter((item) => item.id !== id))
       setConfirmRemove(null)
-      onNotify('Conexão removida.')
+      onNotify(t('ai.connectionRemoved'))
     } catch (failure) {
       setError(errorMessage(failure))
     } finally {
@@ -273,8 +275,8 @@ export function AIConnectionPage({
 
     {step === 'list' && <>
       <div className="ai-list-header">
-        <h4 className="ai-list-heading">Conectar IA</h4>
-        <p className="ai-list-sub">Use sua conta ChatGPT pelo Codex CLI, uma chave de API ou um modelo local.</p>
+        <h4 className="ai-list-heading">{t('ai.connect')}</h4>
+        <p className="ai-list-sub">{t('ai.connectHint')}</p>
       </div>
 
       {codexAccount && codexAccount.state !== 'ready' && <CodexStatusSummary value={codexAccount}/>}
@@ -283,18 +285,18 @@ export function AIConnectionPage({
         {codexAccount?.authenticated && <div className="ai-list-row">
           <div className="ai-list-row-info">
             <span className="ai-list-dot"/>
-            <span><strong>Conta ChatGPT</strong><small>Codex CLI {codexAccount.version}{codexModelId ? ` · ${codexModelId}` : ''}</small></span>
+            <span><strong>{t('ai.chatGptAccount')}</strong><small>Codex CLI {codexAccount.version}{codexModelId ? ` · ${codexModelId}` : ''}</small></span>
           </div>
           <div className="ai-list-row-actions">
             <button
               className="ai-list-config"
-              aria-label="Escolher modelo da conta ChatGPT"
+              aria-label={t('ai.chooseCodexModel')}
               disabled={loadingCodexModels || connecting}
               onClick={() => void openCodexModels()}
             >{loadingCodexModels ? <LoaderCircle className="spin" size={13}/> : <Bot size={13}/>}</button>
             <button
               className="ai-list-remove"
-              aria-label="Desconectar conta ChatGPT"
+              aria-label={t('ai.disconnectChatGpt')}
               disabled={connecting}
               onClick={() => void disconnectCodex()}
             >{connecting ? <LoaderCircle className="spin" size={13}/> : <Trash2 size={13}/>}</button>
@@ -311,13 +313,13 @@ export function AIConnectionPage({
               <div className="ai-list-row-actions">
                 <button
                   className="ai-list-config"
-                  aria-label={`Diagnosticar ${service.displayName}`}
+                  aria-label={`${t('ai.diagnose')} ${service.displayName}`}
                   disabled={Boolean(diagnosingId)}
                   onClick={() => void diagnose(service.id)}
                 >{diagnosingId === service.id ? <LoaderCircle className="spin" size={13}/> : <Activity size={13}/>}</button>
                 <button
                   className="ai-list-remove"
-                  aria-label={`Remover ${service.displayName}`}
+                  aria-label={`${t('common.remove')} ${service.displayName}`}
                   disabled={removingId === service.id}
                   onClick={() => void remove(service.id)}
                 >{removingId === service.id ? <LoaderCircle className="spin" size={13}/> : <Trash2 size={13}/>}</button>
@@ -329,21 +331,21 @@ export function AIConnectionPage({
       </div>}
 
       <button className="ai-add-btn" onClick={() => setStep('service')}>
-        <Plus size={16}/> Adicionar conta, API ou modelo local
+        <Plus size={16}/> {t('ai.addConnection')}
       </button>
     </>}
 
     {step === 'service' && <div className="ai-step-box">
       <div className="ai-step-top">
-        <button className="ai-step-back" aria-label="Voltar" onClick={() => setStep('list')}><ArrowLeft size={16}/></button>
-        <div className="ai-step-copy"><strong>Escolher acesso</strong><small>Assinatura ChatGPT e APIs são conexões diferentes.</small></div>
+        <button className="ai-step-back" aria-label={t('ai.back')} onClick={() => setStep('list')}><ArrowLeft size={16}/></button>
+        <div className="ai-step-copy"><strong>{t('ai.chooseAccess')}</strong><small>{t('ai.chooseAccessHint')}</small></div>
       </div>
       <div className="ai-service-list">
         {presets.map((preset) => {
           const Icon = preset.icon
           return <button key={preset.id} className="ai-service-opt" onClick={() => pickService(preset)}>
             <span className="ai-service-mark"><Icon size={17}/></span>
-            <span className="ai-service-name">{preset.name}</span>
+            <span className="ai-service-name">{presetName(preset, t)}</span>
             <ArrowLeft className="ai-service-arrow" size={14}/>
           </button>
         })}
@@ -352,24 +354,24 @@ export function AIConnectionPage({
 
     {step === 'auth' && selectedPreset && <div className="ai-auth">
       <button type="button" className="ai-auth-back" onClick={() => setStep('service')}>
-        <ArrowLeft size={14}/> {selectedPreset.name}
+        <ArrowLeft size={14}/> {presetName(selectedPreset, t)}
       </button>
       <p className="ai-auth-desc">{
         selectedPreset.authType === 'account'
-          ? 'O navegador será aberto pelo Codex CLI. Uma assinatura ChatGPT compatível pode ser usada aqui, sem expor credenciais ao aplicativo.'
+          ? t('ai.accountBrowser')
           : selectedPreset.authType === 'local'
-          ? `Conecte seu servidor ${selectedPreset.name} local.`
+          ? t('ai.connectLocal', { service: presetName(selectedPreset, t) })
           : selectedPreset.id === 'other'
-            ? 'Informe a chave de API e o endereço do serviço.'
-            : `Cole sua chave de ${selectedPreset.name}. A cobrança da API é separada de planos mensais de chat.`
+            ? t('ai.enterKeyAndUrl')
+            : t('ai.pasteProviderKey', { service: presetName(selectedPreset, t) })
       }</p>
 
       {selectedPreset.authType === 'account' && codexAccount && !codexAccount.installed && (
-        <p className="ai-local-note">Instale o Codex CLI (mínimo {codexAccount.minimumVersion}; recomendado {codexAccount.recommendedVersion}) para usar uma conta ChatGPT.</p>
+        <p className="ai-local-note">{t('ai.installCodex', { minimum: codexAccount.minimumVersion, recommended: codexAccount.recommendedVersion })}</p>
       )}
       {selectedPreset.authType === 'account' && codexAccount?.installed && !codexAccount.compatible && (
         <p className="ai-local-note">
-          Codex CLI {codexAccount.version || 'desconhecido'} está abaixo do mínimo suportado ({codexAccount.minimumVersion}).
+          {t('ai.codexIncompatible', { version: codexAccount.version || t('common.unknown'), minimum: codexAccount.minimumVersion })}
         </p>
       )}
       {selectedPreset.authType === 'account' && codexAccount?.state === 'internal-error' && (
@@ -391,8 +393,8 @@ export function AIConnectionPage({
                 : selectedPreset.id === 'openrouter'
                   ? 'Ex.: sk-or-v1-...'
                   : selectedPreset.id === 'other'
-                    ? 'Cole sua chave de API'
-                    : 'Chave de API'
+              ? t('ai.pasteApiKey')
+              : t('ai.apiKey')
           }
         />
         {selectedPreset.id === 'other' && (
@@ -401,14 +403,14 @@ export function AIConnectionPage({
             type="url"
             value={customUrl}
             onChange={(e) => setCustomUrl(e.target.value)}
-            placeholder="https://api.exemplo.com/v1"
+            placeholder={t('ai.customUrlExample')}
           />
         )}
         {selectedPreset.id !== 'other' && (
           <div className="ai-advanced">
             <button type="button" className="ai-advanced-toggle" onClick={() => setShowAdvanced(!showAdvanced)}>
               <ChevronDown size={11} className={`ai-chevron${showAdvanced ? ' open' : ''}`}/>
-              Configuração avançada
+              {t('ai.advanced')}
             </button>
             {showAdvanced && (
               <input
@@ -416,7 +418,7 @@ export function AIConnectionPage({
                 type="url"
                 value={customUrl}
                 onChange={(e) => setCustomUrl(e.target.value)}
-                placeholder="URL personalizada (opcional)"
+                placeholder={t('ai.customUrl')}
               />
             )}
           </div>
@@ -425,7 +427,7 @@ export function AIConnectionPage({
 
       {selectedPreset.authType === 'local' && (
         <p className="ai-local-note">
-          Certifique-se de que o {selectedPreset.name} está em execução e tente conectar.
+          {t('ai.localRunning', { service: presetName(selectedPreset, t) })}
         </p>
       )}
 
@@ -435,22 +437,22 @@ export function AIConnectionPage({
         onClick={() => void connect()}
       >
         {connecting
-          ? <><LoaderCircle className="spin" size={15}/> Conectando…</>
-          : selectedPreset.authType === 'account' ? 'Entrar com ChatGPT' : 'Conectar'}
+          ? <><LoaderCircle className="spin" size={15}/> {t('ai.connecting')}</>
+          : selectedPreset.authType === 'account' ? t('ai.signInChatGpt') : t('ai.connect')}
       </button>
     </div>}
 
     {step === 'model' && selectedPreset && <div className="ai-step-box">
       <div className="ai-step-top">
-        <button className="ai-step-back" aria-label="Voltar" onClick={() => setStep('auth')}><ArrowLeft size={16}/></button>
-        <div className="ai-step-copy"><strong>Escolher modelo</strong><small>Selecione qual modelo utilizar.</small></div>
+        <button className="ai-step-back" aria-label={t('ai.back')} onClick={() => setStep('auth')}><ArrowLeft size={16}/></button>
+        <div className="ai-step-copy"><strong>{t('ai.chooseModel')}</strong><small>{t('ai.chooseModelHint')}</small></div>
       </div>
       <div className="ai-step-body">
         {connecting
-          ? <div className="ai-searching"><LoaderCircle className="spin" size={20}/><span>Buscando modelos…</span></div>
+          ? <div className="ai-searching"><LoaderCircle className="spin" size={20}/><span>{t('ai.searchingModels')}</span></div>
           : <>
               {models.length === 0
-                ? <p className="ai-no-models">Nenhum modelo encontrado.</p>
+                ? <p className="ai-no-models">{t('ai.noModels')}</p>
                 : <div className="ai-model-list">{models.map((m) => (
                     <button
                       key={`${m.providerId}/${m.modelId}`}
@@ -465,23 +467,23 @@ export function AIConnectionPage({
             </>}
       </div>
       <div className="ai-step-foot">
-        {!workspaceId && <span className="ai-workspace-required">Selecione um workspace para ativar o modelo.</span>}
+        {!workspaceId && <span className="ai-workspace-required">{t('ai.selectWorkspace')}</span>}
         <button disabled={saving || !selectedModel || !workspaceId} className="ai-use-btn" onClick={() => void saveAndBind()}>
-          {saving ? 'Salvando…' : 'Usar este modelo'}
+          {saving ? t('settings.saving') : t('ai.useModel')}
         </button>
       </div>
     </div>}
 
     {step === 'codex-model' && <div className="ai-step-box">
       <div className="ai-step-top">
-        <button className="ai-step-back" aria-label="Voltar" onClick={() => setStep('list')}><ArrowLeft size={16}/></button>
-        <div className="ai-step-copy"><strong>Modelo da conta ChatGPT</strong><small>Modelos disponibilizados pelo Codex CLI para sua conta.</small></div>
+        <button className="ai-step-back" aria-label={t('ai.back')} onClick={() => setStep('list')}><ArrowLeft size={16}/></button>
+        <div className="ai-step-copy"><strong>{t('ai.codexModel')}</strong><small>{t('ai.codexModelHint')}</small></div>
       </div>
       <div className="ai-step-body">
         {loadingCodexModels
-          ? <div className="ai-searching"><LoaderCircle className="spin" size={20}/><span>Buscando modelos…</span></div>
+          ? <div className="ai-searching"><LoaderCircle className="spin" size={20}/><span>{t('ai.searchingModels')}</span></div>
           : codexModels.length === 0
-            ? <p className="ai-no-models">Nenhum modelo disponível para esta conta.</p>
+            ? <p className="ai-no-models">{t('ai.noAccountModels')}</p>
             : <div className="ai-model-list">{codexModels.map((model) => (
                 <button
                   key={model.model}
@@ -490,35 +492,40 @@ export function AIConnectionPage({
                 >
                   <Check size={14} className="ai-model-check"/>
                   <span className="ai-model-name">{model.displayName}</span>
-                  {model.isDefault && <small>Recomendado</small>}
+                  {model.isDefault && <small>{t('ai.recommended')}</small>}
                 </button>
               ))}</div>}
       </div>
       <div className="ai-step-foot">
         <button disabled={saving || !selectedCodexModel} className="ai-use-btn" onClick={() => void saveCodexModel()}>
-          {saving ? 'Salvando…' : 'Usar este modelo'}
+          {saving ? t('settings.saving') : t('ai.useModel')}
         </button>
       </div>
     </div>}
 
     {confirmRemove && <div className="modal-backdrop" onMouseDown={() => setConfirmRemove(null)}>
-      <div className="confirm-dialog" role="alertdialog" aria-modal="true" aria-label="Confirmar remoção" onMouseDown={(event) => event.stopPropagation()}>
-        <p>Remover esta conexão?</p>
+      <div className="confirm-dialog" role="alertdialog" aria-modal="true" aria-label={t('ai.confirmRemoval')} onMouseDown={(event) => event.stopPropagation()}>
+        <p>{t('ai.confirmRemove')}</p>
         <div className="modal-actions">
-          <button onClick={() => setConfirmRemove(null)}>Cancelar</button>
-          <button className="danger" onClick={() => void remove(confirmRemove)}>Remover</button>
+          <button onClick={() => setConfirmRemove(null)}>{t('settings.cancel')}</button>
+          <button className="danger" onClick={() => void remove(confirmRemove)}>{t('common.remove')}</button>
         </div>
       </div>
     </div>}
   </div>
 }
 
+function presetName(preset: ServicePreset, t: (key: string) => string) {
+  return preset.id === 'codex' ? t('ai.chatGptAccount') : preset.id === 'other' ? t('ai.other') : preset.name
+}
+
 function CodexStatusSummary({ value }: { value: CodexAccountStatus }) {
+  const { t } = useI18n()
   const message = {
-    'not-installed': `Codex CLI não instalado. Instale ${value.recommendedVersion}.`,
-    'not-authenticated': 'Codex CLI disponível, mas nenhuma conta ChatGPT está autenticada.',
-    incompatible: `Codex CLI ${value.version ?? 'desconhecido'} está abaixo do mínimo suportado (${value.minimumVersion}).`,
-    'internal-error': value.error ?? 'O Codex CLI encontrou um erro interno.',
+    'not-installed': t('ai.codexNotInstalled', { version: value.recommendedVersion }),
+    'not-authenticated': t('ai.codexNotAuthenticated'),
+    incompatible: t('ai.codexIncompatible', { version: value.version ?? t('common.unknown'), minimum: value.minimumVersion }),
+    'internal-error': value.error ?? t('ai.codexInternalError'),
     ready: '',
   }[value.state]
   return <div
@@ -530,33 +537,34 @@ function CodexStatusSummary({ value }: { value: CodexAccountStatus }) {
 }
 
 function ProviderDiagnosticSummary({ value }: { value: ProviderDiagnostic }) {
+  const { t } = useI18n()
   const authentication = {
-    'not-required': 'Não exigida',
-    configured: 'Configurada',
-    missing: 'Ausente',
-    rejected: 'Recusada',
+    'not-required': t('ai.notRequired'),
+    configured: t('ai.configured'),
+    missing: t('ai.missing'),
+    rejected: t('ai.rejected'),
   }[value.authentication]
   const compatibility = {
-    compatible: 'Compatível',
-    incompatible: 'Incompatível',
-    unknown: 'Não verificada',
+    compatible: t('ai.compatible'),
+    incompatible: t('ai.incompatible'),
+    unknown: t('ai.notChecked'),
   }[value.compatibility]
   return <div className="provider-diagnostic" role="status">
     <div className="provider-diagnostic-grid">
-      <span><small>Status</small><strong>{value.availability.status}</strong></span>
-      <span><small>Conectividade</small><strong>{value.connectivity === 'connected' ? 'Conectado' : value.connectivity === 'unreachable' ? 'Inacessível' : 'Não verificada'}</strong></span>
-      <span><small>Autenticação</small><strong>{authentication}</strong></span>
-      <span><small>Compatibilidade</small><strong>{compatibility}</strong></span>
-      <span><small>Protocolo</small><strong>{value.definition.protocol} {value.definition.version ?? ''}</strong></span>
-      <span><small>Resposta</small><strong>{value.latencyMs} ms</strong></span>
+      <span><small>{t('ai.status')}</small><strong>{value.availability.status}</strong></span>
+      <span><small>{t('ai.connectivity')}</small><strong>{value.connectivity === 'connected' ? t('ai.connected') : value.connectivity === 'unreachable' ? t('ai.unreachable') : t('ai.notChecked')}</strong></span>
+      <span><small>{t('ai.authentication')}</small><strong>{authentication}</strong></span>
+      <span><small>{t('ai.compatibility')}</small><strong>{compatibility}</strong></span>
+      <span><small>{t('ai.protocol')}</small><strong>{value.definition.protocol} {value.definition.version ?? ''}</strong></span>
+      <span><small>{t('ai.response')}</small><strong>{value.latencyMs} ms</strong></span>
     </div>
-    <div className="provider-capabilities" aria-label="Capacidades do Provider">
-      {value.definition.capabilities.modelDiscovery && <small>modelos</small>}
-      {value.definition.capabilities.streaming && <small>streaming</small>}
-      {value.definition.capabilities.toolCalling && <small>ferramentas</small>}
-      {value.definition.capabilities.cancellation && <small>cancelamento</small>}
+    <div className="provider-capabilities" aria-label={t('ai.providerCapabilities')}>
+      {value.definition.capabilities.modelDiscovery && <small>{t('ai.models')}</small>}
+      {value.definition.capabilities.streaming && <small>{t('ai.streaming')}</small>}
+      {value.definition.capabilities.toolCalling && <small>{t('ai.tools')}</small>}
+      {value.definition.capabilities.cancellation && <small>{t('ai.cancellation')}</small>}
     </div>
     {value.definition.limitations.notes.length > 0 && <p>{value.definition.limitations.notes.join(' ')}</p>}
-    {value.recentErrors.length > 0 && <details><summary>Erros recentes ({value.recentErrors.length})</summary><ul>{value.recentErrors.map((error) => <li key={`${error.occurredAt}-${error.message}`}>{error.message}</li>)}</ul></details>}
+    {value.recentErrors.length > 0 && <details><summary>{t('ai.recentErrors', { count: value.recentErrors.length })}</summary><ul>{value.recentErrors.map((error) => <li key={`${error.occurredAt}-${error.message}`}>{error.message}</li>)}</ul></details>}
   </div>
 }

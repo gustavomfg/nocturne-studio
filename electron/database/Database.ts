@@ -201,6 +201,7 @@ export class LocalDatabase {
     const settings = Object.fromEntries(rows.map((row) => [row.key, row.value]))
     if (settings.approvalPolicy !== 'untrusted') settings.approvalPolicy = 'on-request'
     settings.theme = 'dark'
+    if (settings.language !== 'en') settings.language = 'pt-BR'
     return settings
   }
 

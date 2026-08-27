@@ -4,10 +4,12 @@ import { useAppStore } from '../../store'
 import { useShallow } from 'zustand/react/shallow'
 import { PERSISTENCE_LIMITS } from '../../../shared/constants'
 import { isJsonValueWithinLimit } from '../../../shared/json'
+import { useI18n } from '../../shared/i18n'
 
 export interface ActiveTurnContext { conversationId: string; mode: AgentMode; suggestionId: string | null; suggestionFiles: string[] }
 
 export function useTurnLifecycle({ flushStream, activeTurnRef, refreshGit }: { flushStream(): void; activeTurnRef: MutableRefObject<ActiveTurnContext | null>; refreshGit(conversationId: string): Promise<void> }) {
+  const { t } = useI18n()
   const processingTurnsRef = useRef(new Set<string>())
   const persistedTurnsRef = useRef(new Set<string>())
   const store = useAppStore(useShallow((state) => ({
@@ -29,9 +31,9 @@ export function useTurnLifecycle({ flushStream, activeTurnRef, refreshGit }: { f
       const persistedMessage = persistedAssistantMessage(params.persistedMessage, context.conversationId)
       let persistenceRejected = false
       const persistenceWarning = typeof params.persistenceWarning === 'string' ? params.persistenceWarning : ''
-      if (error) store.setError(String(error.message ?? 'A execução não foi concluída.'))
+      if (error) store.setError(String(error.message ?? t('common.runNotCompleted')))
       if (persistenceWarning) store.setError(persistenceWarning)
-      store.upsertActivity({ id: `completion-${String(turn?.id ?? Date.now())}`, type: 'completion', label: error ? 'Execução encerrada com erro' : cancelled ? 'Execução cancelada' : 'Execução concluída', status: error ? 'failed' : 'completed' })
+      store.upsertActivity({ id: `completion-${String(turn?.id ?? Date.now())}`, type: 'completion', label: error ? t('agent.executionErrorEnded') : cancelled ? t('agent.executionCancelled') : t('agent.executionCompleted'), status: error ? 'failed' : 'completed' })
       if (persistedMessage) {
         if (useAppStore.getState().activeId === context.conversationId && !useAppStore.getState().messages.some((message) => message.id === persistedMessage.id)) store.addMessage(persistedMessage)
         useAppStore.setState({ streaming: '' })
@@ -51,12 +53,12 @@ export function useTurnLifecycle({ flushStream, activeTurnRef, refreshGit }: { f
       }
       if (!isJsonValueWithinLimit(metadata, PERSISTENCE_LIMITS.metadataCharacters)) {
         persistenceRejected = true
-        store.setError('A resposta excedeu o limite de metadata persistível e não foi salva.')
+        store.setError(t('common.metadataLimitExceeded'))
         useAppStore.setState({ streaming: '' })
       } else {
         let assistantContent = state.streaming
         const memoryExtraction = await window.nocturne.brain.extract(context.conversationId, assistantContent)
-        assistantContent = memoryExtraction.content || (memoryExtraction.memories.length ? `${memoryExtraction.memories.length} candidata(s) foram enviadas ao Segundo Cérebro para sua revisão.` : 'A resposta do agente não continha conteúdo persistível.')
+        assistantContent = memoryExtraction.content || (memoryExtraction.memories.length ? t('memory.candidatesSent', { count: memoryExtraction.memories.length }) : t('common.noPersistableContent'))
         if (memoryExtraction.warning) store.setError(memoryExtraction.warning)
         if (context.mode === 'review') {
           const extracted = await window.nocturne.suggestions.create(context.conversationId, assistantContent)
@@ -72,7 +74,7 @@ export function useTurnLifecycle({ flushStream, activeTurnRef, refreshGit }: { f
     }
     if (context.suggestionId && !persistenceRejected) {
       const changedInApprovedScope = hasAppliedSuggestionChanges(context.suggestionFiles, useAppStore.getState().files.map((file) => file.path))
-      if (!error && !cancelled && changedInApprovedScope) await window.nocturne.suggestions.status(context.conversationId, context.suggestionId, 'resolved', 'Turno concluído com alterações observadas no escopo aprovado; consulte a resposta do agente para os resultados de validação.')
+      if (!error && !cancelled && changedInApprovedScope) await window.nocturne.suggestions.status(context.conversationId, context.suggestionId, 'resolved', t('common.completedWithChanges'))
       if (useAppStore.getState().activeId === context.conversationId) store.setSuggestions((await window.nocturne.suggestions.page(context.conversationId)).items)
     }
       await refreshGit(context.conversationId)

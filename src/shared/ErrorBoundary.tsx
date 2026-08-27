@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from 'react'
+import { translate, type Language } from './i18n'
 
 interface ErrorBoundaryProps {
   children: ReactNode
@@ -29,12 +30,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   render() {
     if (!this.state.error) return this.props.children
+    const language: Language = document.documentElement.lang === 'en' ? 'en' : 'pt-BR'
     return <main className="renderer-error" role="alert" aria-labelledby="renderer-error-title">
       <div className="renderer-error-panel">
         <p className="renderer-error-kicker">Nocturne Studio</p>
-        <h1 id="renderer-error-title">A interface encontrou um erro</h1>
-        <p>O estado salvo continua no dispositivo. Recarregue a interface para tentar novamente.</p>
-        <button className="primary" type="button" onClick={this.reload}>Recarregar interface</button>
+        <h1 id="renderer-error-title">{translate(language, 'errorBoundary.title')}</h1>
+        <p>{translate(language, 'errorBoundary.description')}</p>
+        <button className="primary" type="button" onClick={this.reload}>{translate(language, 'errorBoundary.reload')}</button>
       </div>
     </main>
   }
