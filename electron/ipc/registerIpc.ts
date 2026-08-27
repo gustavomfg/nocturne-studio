@@ -38,6 +38,7 @@ import { buildBrainMemoryContext } from '../memory/BrainMemoryContext'
 import { CodexAccountService } from '../codex/CodexAccountService'
 import { BuildRollbackService } from '../ai/BuildRollbackService'
 import { DocumentUpdateService } from '../documents/DocumentUpdateService'
+import { resolveExecutable } from '../runtime/resolveExecutable'
 import type { AwarenessSnapshot } from '../../shared/awareness'
 import packageMetadata from '../../package.json'
 import { RENDERER_PERFORMANCE_BUDGETS, WORKSPACE_READ_LIMITS } from '../../shared/constants'
@@ -432,7 +433,7 @@ export function registerIpc(
   ipcMain.handle('documents:export', async (_event, value: unknown) => {
     const data = exportDocumentSchema.parse(value)
     const conversation = getAuthorizedConversation(database, data.conversationId)
-    const pandocPath = await resolveBinary('pandoc')
+    const pandocPath = await resolveExecutable('pandoc')
     if (!pandocPath) throw new Error('Pandoc não foi encontrado no PATH.')
     const result = await dialog.showSaveDialog(win, { title: `Exportar ${data.format.toUpperCase()}`, defaultPath: path.join(conversation.workspace, `documento.${data.format}`), filters: [{ name: data.format.toUpperCase(), extensions: [data.format] }] })
     if (result.canceled || !result.filePath) return null
@@ -521,16 +522,6 @@ function artifactType(filePath: string) {
 async function run(command: string, args: string[], cwd: string) {
   try { return await execFileAsync(command, args, { cwd, timeout: 20_000, maxBuffer: 5_000_000 }) }
   catch (error) { throw new Error(error instanceof Error ? redactLogText(error.message.slice(0, 2_000)) : String(error)) }
-}
-
-async function resolveBinary(name: string): Promise<string | null> {
-  try {
-    const { stdout } = await execFileAsync('which', [name], { timeout: 5_000 })
-    const resolved = stdout.trim()
-    if (!resolved || !path.isAbsolute(resolved)) return null
-    await fs.promises.access(resolved, fs.constants.X_OK)
-    return resolved
-  } catch { return null }
 }
 
 function safeName(name: string, extension: string) {
