@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
+import { ErrorBoundary } from './shared/ErrorBoundary'
 import './index.css'
 
 let reportingRendererError = false
@@ -14,6 +15,6 @@ window.addEventListener('unhandledrejection', (event) => { const error = event.r
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary><App /></ErrorBoundary>
   </React.StrictMode>,
 )

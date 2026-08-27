@@ -17,3 +17,39 @@ button:not(:disabled), [role='button']:not([aria-disabled='true']) { cursor: poi
 ::-webkit-scrollbar-thumb { min-height: 36px; background: #393740; background-clip: padding-box; border: 3px solid transparent; border-radius: 999px; }
 ::-webkit-scrollbar-thumb:hover { background-color: #4b4854; }
 .sr-only { position: absolute!important; width: 1px!important; height: 1px!important; padding: 0!important; margin: -1px!important; overflow: hidden!important; clip: rect(0, 0, 0, 0)!important; white-space: nowrap!important; border: 0!important; }
+
+.renderer-error {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--spacing-xl);
+  color: var(--color-text);
+  background: var(--color-canvas);
+}
+
+.renderer-error-panel {
+  width: min(480px, 100%);
+  padding: var(--spacing-2xl);
+  text-align: center;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.renderer-error-kicker {
+  margin: 0 0 var(--spacing-sm);
+  color: var(--color-accent);
+  font-size: var(--font-small);
+  font-weight: 650;
+}
+
+.renderer-error h1 {
+  margin: 0 0 var(--spacing-md);
+  font-size: var(--font-heading);
+}
+
+.renderer-error p:not(.renderer-error-kicker) {
+  margin: 0 0 var(--spacing-xl);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-body);
+}
