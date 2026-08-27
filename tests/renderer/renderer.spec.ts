@@ -805,6 +805,7 @@ test.describe('renderer do produto', () => {
     await expect(architecture).toHaveClass(/improved/)
     await expect(architecture.locator('.health-score s')).toHaveText('7/10')
     await expect(architecture.locator('.health-score strong')).toHaveText('8/10')
+    await page.locator('#agent-inspector .inspector-scroll').evaluate((element) => { element.scrollTop = 0 })
     await expect(page.locator('#agent-inspector')).toHaveScreenshot('project-health-updated.png', { animations: 'disabled', caret: 'hide' })
   })
 
