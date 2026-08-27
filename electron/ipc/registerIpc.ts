@@ -39,6 +39,7 @@ import { CodexAccountService } from '../codex/CodexAccountService'
 import { BuildRollbackService } from '../ai/BuildRollbackService'
 import { DocumentUpdateService } from '../documents/DocumentUpdateService'
 import { resolveExecutable } from '../runtime/resolveExecutable'
+import { enqueueSerializedWrite } from '../persistence/SerializedWriteQueue'
 import type { AwarenessSnapshot } from '../../shared/awareness'
 import packageMetadata from '../../package.json'
 import { RENDERER_PERFORMANCE_BUDGETS, WORKSPACE_READ_LIMITS } from '../../shared/constants'
@@ -607,15 +608,17 @@ async function readWorkspaceContext(workspace: string) {
 }
 
 async function writeWorkspaceContext(workspace: string, content: string, rules: string) {
-  await ensureNocturneWorkspace(workspace)
-  const directory = path.join(workspace, '.nocturne')
-  const project = await detectProject(workspace)
-  await Promise.all([
-    atomicWrite(path.join(directory, 'memory.md'), content),
-    atomicWrite(path.join(directory, 'rules.md'), rules),
-    atomicWrite(path.join(directory, 'project.json'), `${JSON.stringify(project, null, 2)}\n`),
-  ])
-  return { content, rules, project, updatedAt: new Date().toISOString() }
+  return enqueueSerializedWrite(workspace, async () => {
+    await ensureNocturneWorkspace(workspace)
+    const directory = path.join(workspace, '.nocturne')
+    const project = await detectProject(workspace)
+    await Promise.all([
+      atomicWrite(path.join(directory, 'memory.md'), content),
+      atomicWrite(path.join(directory, 'rules.md'), rules),
+      atomicWrite(path.join(directory, 'project.json'), `${JSON.stringify(project, null, 2)}\n`),
+    ])
+    return { content, rules, project, updatedAt: new Date().toISOString() }
+  })
 }
 
 async function readWorkspaceContextFile(filePath: string, workspace: string) {
