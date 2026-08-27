@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { LocalDatabase } from '../electron/database/Database'
 import Sqlite from 'better-sqlite3'
 import { migrateDatabase, migrations } from '../electron/database/migrations'
@@ -402,6 +402,25 @@ describe('persistência SQLite', () => {
     expect(reopened.pragma('user_version', { simple: true })).toBe(1)
     expect(reopened.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='migration_probe'").get()).toBeUndefined()
     reopened.close()
+  })
+
+  it('remove cópia pré-migração parcial quando a criação do backup falha', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-migration-backup-failure-'))
+    directories.push(directory)
+    const file = path.join(directory, 'nocturne.db')
+    const legacy = new Sqlite(file)
+    legacy.exec('CREATE TABLE conversations (id TEXT PRIMARY KEY, title TEXT NOT NULL, workspace TEXT NOT NULL, codex_thread_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL); PRAGMA user_version = 1;')
+    legacy.close()
+    const copy = vi.spyOn(fs, 'copyFileSync').mockImplementation((_source, destination) => {
+      fs.writeFileSync(destination, 'cópia parcial')
+      const error = new Error('disco cheio') as NodeJS.ErrnoException
+      error.code = 'ENOSPC'
+      throw error
+    })
+
+    expect(() => new LocalDatabase(directory)).toThrow('disco cheio')
+    expect(fs.readdirSync(directory).filter((name) => name.startsWith('nocturne.db.backup-'))).toEqual([])
+    copy.mockRestore()
   })
   it('mantém índices de navegação e relacionamentos após a migração', () => {
     const db = create(); db.close()

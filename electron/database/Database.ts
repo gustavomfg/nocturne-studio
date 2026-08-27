@@ -624,8 +624,19 @@ export class LocalDatabase {
     if (checkpoint[0]?.busy) throw new Error('O WAL está ocupado; a cópia pré-migração não foi concluída com segurança.')
     const directory = path.dirname(this.databasePath)
     const backupPath = path.join(directory, `${MIGRATION_BACKUP_PREFIX}${Date.now()}.db`)
-    fs.copyFileSync(this.databasePath, backupPath)
-    fs.chmodSync(backupPath, 0o600)
+    const cleanupBackupArtifacts = (removeDatabase: boolean) => {
+      const files = removeDatabase ? [backupPath, `${backupPath}-wal`, `${backupPath}-shm`] : [`${backupPath}-wal`, `${backupPath}-shm`]
+      for (const filePath of files) {
+        try { fs.rmSync(filePath, { force: true }) } catch { /* preserve the original persistence error */ }
+      }
+    }
+    try {
+      fs.copyFileSync(this.databasePath, backupPath)
+      fs.chmodSync(backupPath, 0o600)
+    } catch (error) {
+      cleanupBackupArtifacts(true)
+      throw error
+    }
     let backup: Database.Database | null = null
     try {
       backup = new Database(backupPath, { readonly: true, fileMustExist: true })
@@ -634,12 +645,11 @@ export class LocalDatabase {
     } catch (error) {
       backup?.close()
       backup = null
-      fs.rmSync(backupPath, { force: true })
+      cleanupBackupArtifacts(true)
       throw new Error(`Não foi possível verificar o backup pré-migração: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       backup?.close()
-      fs.rmSync(`${backupPath}-wal`, { force: true })
-      fs.rmSync(`${backupPath}-shm`, { force: true })
+      cleanupBackupArtifacts(false)
     }
     const backups = fs.readdirSync(directory).filter((name) => name.startsWith(MIGRATION_BACKUP_PREFIX) && name.endsWith('.db')).sort().reverse()
     for (const name of backups.slice(MIGRATION_BACKUP_RETENTION)) fs.rmSync(path.join(directory, name), { force: true })
