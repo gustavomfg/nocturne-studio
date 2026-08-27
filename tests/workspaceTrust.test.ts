@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { assertSafeWorkspaceScope, inspectWorkspaceScope } from '../electron/security/WorkspaceTrust'
+import { assertSafeWorkspaceScope, inspectWorkspaceScope, isBlockedWorkspacePath } from '../electron/security/WorkspaceTrust'
 
 const directories: string[] = []
 afterEach(() => { for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }) })
@@ -21,6 +21,19 @@ describe('confiança de workspace', () => {
     fs.mkdirSync(project)
     fs.symlinkSync(project, link, 'dir')
     expect(assertSafeWorkspaceScope(link)).toBe(fs.realpathSync.native(project))
+  })
+
+  it('trata aliases físicos de raízes bloqueadas sem bloquear filhos válidos', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-workspace-'))
+    directories.push(root)
+    const alias = `${root}-alias`
+    fs.symlinkSync(root, alias, 'dir')
+
+    expect(isBlockedWorkspacePath(alias, [root])).toBe(true)
+    expect(isBlockedWorkspacePath(path.join(alias, 'project'), [root])).toBe(false)
+    expect(isBlockedWorkspacePath(path.join(root, '..', path.basename(root)), [root])).toBe(true)
+    expect(isBlockedWorkspacePath(`${root}-evil`, [root])).toBe(false)
+    expect(isBlockedWorkspacePath(path.join(alias, 'new', 'project'), [root])).toBe(false)
   })
 
   it('distingue workspace ausente sem autorizar o caminho', () => {

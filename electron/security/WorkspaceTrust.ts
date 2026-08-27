@@ -16,10 +16,25 @@ export interface WorkspaceInspection {
 }
 
 function isBlocked(candidate: string) {
-  const blocked = [path.parse(candidate).root, os.homedir(), ...systemRoots]
+  return isBlockedWorkspacePath(candidate, [path.parse(candidate).root, os.homedir(), ...systemRoots])
+}
+
+export function isBlockedWorkspacePath(candidate: string, roots: readonly (string | undefined)[]) {
+  const canonicalCandidate = canonicalizeExistingPath(candidate)
+  const blocked = roots
     .filter((entry): entry is string => Boolean(entry))
-    .map((entry) => path.resolve(entry))
-  return blocked.includes(candidate)
+    .map(canonicalizeExistingPath)
+  return blocked.includes(canonicalCandidate)
+}
+
+function canonicalizeExistingPath(value: string) {
+  const resolved = path.resolve(value)
+  try {
+    return fs.realpathSync.native(resolved)
+  } catch {
+    // Missing paths cannot be realpathed yet; keep their normalized lexical form.
+    return resolved
+  }
 }
 
 function unavailable(availability: Exclude<WorkspaceAvailability, 'available'>, candidate: string | null, message: string): WorkspaceInspection {
