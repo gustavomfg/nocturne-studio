@@ -73,7 +73,7 @@ describe('políticas de execução', () => {
     const topbar = fs.readFileSync(path.join(process.cwd(), 'src/domains/workspaces/WorkspaceTopbar.tsx'), 'utf8')
     expect(workspaceIpc).toContain("dependencies.run('webstorm', [workspace], workspace)")
     expect(workspaceIpc).toContain('Não foi possível abrir o WebStorm.')
-    expect(topbar).toContain('aria-label="Abrir no WebStorm"')
+    expect(topbar).toContain("aria-label={t('topbar.openWebstorm')}")
   })
   it.each(['sudo apt update', 'git reset --hard HEAD', 'git clean -fd', 'rm -rf build', 'npm run rebuild:native', 'npm run package'])('marca comando perigoso: %s', (command) => expect(assessCommand(command)).toMatchObject({ risk: 'dangerous', requiresApproval: true, blockedAutomatic: true }))
   it('não usa substring ingênua para classificar nomes de arquivo', () => expect(assessCommand(['cat', 'sudo-notes.md']).risk).toBe('safe'))

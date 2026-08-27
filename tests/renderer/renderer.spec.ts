@@ -21,6 +21,26 @@ test.describe('renderer do produto', () => {
     await expect(page.getByRole('button', { name: 'Abrir no WebStorm' })).toBeVisible()
   })
 
+  test('permite selecionar English e mantém a preferência após reabrir configurações', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await ready(page)
+    await page.getByRole('button', { name: 'Abrir configurações' }).first().click()
+    const dialog = page.getByRole('dialog', { name: 'Configurações' })
+    await dialog.getByRole('button', { name: 'Aplicativo' }).click()
+    await dialog.getByLabel('Idioma').selectOption('en')
+    await dialog.getByRole('button', { name: 'Salvar alterações' }).click()
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+    await expect(page.getByRole('button', { name: 'New conversation' })).toBeVisible()
+    await page.getByRole('button', { name: 'Open settings' }).first().click()
+    const englishDialog = page.getByRole('dialog', { name: 'Settings' })
+    await englishDialog.getByRole('button', { name: 'Application' }).click()
+    await expect(englishDialog.getByLabel('Language')).toHaveValue('en')
+    await englishDialog.getByLabel('Language').selectOption('pt-BR')
+    await englishDialog.getByRole('button', { name: 'Save changes' }).click()
+    await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR')
+    await expect(page.getByRole('button', { name: 'Nova conversa' })).toBeVisible()
+  })
+
   test('publica somente métricas agregadas de desempenho', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await ready(page)
