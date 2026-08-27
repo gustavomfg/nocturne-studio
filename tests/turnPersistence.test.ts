@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { persistCompletedTurn } from '../electron/ai/TurnPersistence'
 import { LocalDatabase } from '../electron/database/Database'
 import { PERSISTENCE_LIMITS } from '../shared/constants'
@@ -72,6 +72,29 @@ describe('persistCompletedTurn', () => {
     expect(database.listSuggestions(conversation.id)).toEqual([])
     expect(database.listBrainMemoryPage(conversation.workspace).items).toEqual([])
     expect(database.listArtifacts(conversation.id)).toEqual([])
+    database.close()
+  })
+
+  it('desfaz dados derivados quando a persistência final do turno falha', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-turn-rollback-')); directories.push(directory)
+    const database = new LocalDatabase(directory)
+    const conversation = database.createConversation('/tmp/turn-rollback-workspace')
+    const memory = '```nocturne-memories\n[{"kind":"learning","scope":"conversation","content":"Não deixar estado parcial.","confidence":90}]\n```'
+    const suggestion = '```nocturne-suggestions\n[{"title":"Persistência atômica","description":"Manter o turno consistente.","reasoning":"A mensagem final pode falhar.","category":"bug","severity":"high","affectedFiles":["electron/database/Database.ts"],"proposedChanges":"Usar uma transação única.","expectedBenefits":["Sem estado parcial"],"complexity":"medium","risk":"low"}]\n```'
+    const saveAssistantTurn = vi.spyOn(database, 'saveAssistantTurn').mockImplementation(() => {
+      throw new Error('falha final simulada')
+    })
+
+    expect(() => persistCompletedTurn(database, {
+      conversationId: conversation.id, workspace: conversation.workspace, mode: 'review',
+      content: `Resposta.\n\n${memory}\n\n${suggestion}`, diff: 'diff', files: ['Database.ts'], plan: [], planExplanation: '',
+    })).toThrow('falha final simulada')
+    expect(database.listMessages(conversation.id)).toEqual([])
+    expect(database.listArtifacts(conversation.id)).toEqual([])
+    expect(database.listBrainMemoryPage(conversation.workspace).items).toEqual([])
+    expect(database.listSuggestions(conversation.id)).toEqual([])
+
+    saveAssistantTurn.mockRestore()
     database.close()
   })
 })

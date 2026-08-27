@@ -36,33 +36,35 @@ export function persistCompletedTurn(database: LocalDatabase, snapshot: Complete
     return { message: null, warning: 'A resposta excedeu o limite de metadata persistível e não foi salva.' }
   }
 
-  const memoryExtraction = extractBrainMemoryCandidates(assistantContent)
-  try {
-    database.createBrainMemoryCandidates(snapshot.workspace, snapshot.conversationId, memoryExtraction.candidates)
-    assistantContent = memoryExtraction.content || (memoryExtraction.candidates.length ? `${memoryExtraction.candidates.length} candidata(s) foram enviadas ao Segundo Cérebro para sua revisão.` : 'A resposta do agente não continha conteúdo persistível.')
-  } catch {
-    warnings.push('As candidatas do Segundo Cérebro não puderam ser salvas.')
-  }
-
-  if (snapshot.mode === 'review') {
-    const suggestionExtraction = extractSuggestions(assistantContent)
+  return database.runInTransaction(() => {
+    const memoryExtraction = extractBrainMemoryCandidates(assistantContent)
     try {
-      if (suggestionExtraction.structured) {
-        const reconciliation = database.reconcileSuggestions(snapshot.conversationId, snapshot.workspace, suggestionExtraction.suggestions)
-        assistantContent = [suggestionExtraction.content, reviewComparisonMarkdown(reconciliation.comparison)].filter(Boolean).join('\n\n')
-      } else {
-        assistantContent = suggestionExtraction.content || assistantContent
-        warnings.push('A resposta não trouxe um snapshot estruturado; sugestões anteriores foram preservadas.')
-      }
+      database.createBrainMemoryCandidates(snapshot.workspace, snapshot.conversationId, memoryExtraction.candidates)
+      assistantContent = memoryExtraction.content || (memoryExtraction.candidates.length ? `${memoryExtraction.candidates.length} candidata(s) foram enviadas ao Segundo Cérebro para sua revisão.` : 'A resposta do agente não continha conteúdo persistível.')
     } catch {
-      warnings.push('As sugestões da análise não puderam ser salvas.')
+      warnings.push('As candidatas do Segundo Cérebro não puderam ser salvas.')
     }
-  }
 
-  const artifacts: Array<{ type: string; title: string; filePath?: string; content?: string }> = files.map((filePath) => ({ type: artifactType(filePath), title: path.basename(filePath), filePath }))
-  if (snapshot.diff) artifacts.push({ type: 'report', title: 'Alterações do turno', filePath: undefined, content: snapshot.diff.slice(-PERSISTENCE_LIMITS.metadataCharacters) })
-  const message = database.saveAssistantTurn(snapshot.conversationId, snapshot.workspace, assistantContent, metadata, artifacts)
-  return { message, ...(warnings.length ? { warning: warnings.join(' ') } : {}) }
+    if (snapshot.mode === 'review') {
+      const suggestionExtraction = extractSuggestions(assistantContent)
+      try {
+        if (suggestionExtraction.structured) {
+          const reconciliation = database.reconcileSuggestions(snapshot.conversationId, snapshot.workspace, suggestionExtraction.suggestions)
+          assistantContent = [suggestionExtraction.content, reviewComparisonMarkdown(reconciliation.comparison)].filter(Boolean).join('\n\n')
+        } else {
+          assistantContent = suggestionExtraction.content || assistantContent
+          warnings.push('A resposta não trouxe um snapshot estruturado; sugestões anteriores foram preservadas.')
+        }
+      } catch {
+        warnings.push('As sugestões da análise não puderam ser salvas.')
+      }
+    }
+
+    const artifacts: Array<{ type: string; title: string; filePath?: string; content?: string }> = files.map((filePath) => ({ type: artifactType(filePath), title: path.basename(filePath), filePath }))
+    if (snapshot.diff) artifacts.push({ type: 'report', title: 'Alterações do turno', filePath: undefined, content: snapshot.diff.slice(-PERSISTENCE_LIMITS.metadataCharacters) })
+    const message = database.saveAssistantTurn(snapshot.conversationId, snapshot.workspace, assistantContent, metadata, artifacts)
+    return { message, ...(warnings.length ? { warning: warnings.join(' ') } : {}) }
+  })
 }
 
 function artifactType(filePath: string) {

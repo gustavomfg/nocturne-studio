@@ -97,6 +97,10 @@ export class LocalDatabase {
     this.cleanupOrphans()
   }
 
+  runInTransaction<T>(operation: () => T): T {
+    return this.db.transaction(operation)()
+  }
+
   listConversations(): ConversationRow[] {
     return this.db.prepare(`SELECT id, title, workspace,
       codex_thread_id codexThreadId, created_at createdAt, updated_at updatedAt FROM conversations ORDER BY updated_at DESC`).all() as ConversationRow[]
