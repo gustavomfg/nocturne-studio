@@ -26,6 +26,7 @@ export class CodexProcess extends EventEmitter {
       else this.emit('stdout', line)
     })
     child.stderr.on('data', (chunk) => this.emit('stderr', chunk.toString().slice(-64_000)))
+    child.stdin.on('error', (error) => this.emit('error', error))
     child.on('error', (error) => this.emit('error', error))
     child.on('exit', (code, signal) => {
       if (this.child === child) this.child = null

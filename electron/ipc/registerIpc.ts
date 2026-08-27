@@ -534,17 +534,30 @@ function pipeCommand(command: string, args: string[], input: string, cwd: string
     const child = spawn(command, args, { cwd, stdio: ['pipe', 'ignore', 'pipe'] })
     let error = ''
     let settled = false
+    let timedOut = false
+    let killTimer: NodeJS.Timeout | undefined
     const finish = (failure?: Error) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
+      if (killTimer) clearTimeout(killTimer)
       if (failure) reject(failure)
       else resolve()
     }
-    const timer = setTimeout(() => { child.kill(); finish(new Error('A exportação excedeu o limite de 60 segundos.')) }, 60_000)
+    const timeoutError = new Error('A exportação excedeu o limite de 60 segundos.')
+    const timer = setTimeout(() => {
+      timedOut = true
+      child.kill()
+      killTimer = setTimeout(() => finish(timeoutError), 5_000)
+    }, 60_000)
     child.stderr.on('data', (chunk) => { error = `${error}${chunk.toString()}`.slice(-64_000) })
-    child.on('error', (failure) => finish(failure))
-    child.on('exit', (code) => code === 0 ? finish() : finish(new Error(error || `Pandoc encerrou com código ${code}.`)))
+    child.stdin.on('error', (failure) => finish(timedOut ? timeoutError : failure))
+    child.on('error', (failure) => finish(timedOut ? timeoutError : failure))
+    child.on('close', (code) => {
+      if (timedOut) finish(timeoutError)
+      else if (code === 0) finish()
+      else finish(new Error(error || `Pandoc encerrou com código ${code}.`))
+    })
     child.stdin.end(input)
   })
 }

@@ -73,8 +73,24 @@ function readDiff(workspace: string, args: string[]) {
 function readGitOutput(workspace: string, args: string[], limit: number) {
   return new Promise<{ stdout: string; truncated: boolean }>((resolve, reject) => {
     const child = spawn('git', args, { cwd: workspace, stdio: ['ignore', 'pipe', 'pipe'] })
-    const timeout = setTimeout(() => child.kill('SIGKILL'), 30_000)
     let stdout = ''; let stderr = ''; let truncated = false
+    let settled = false
+    let timedOut = false
+    let killTimer: NodeJS.Timeout | undefined
+    const timeoutError = new Error('A leitura do Git excedeu o limite de 30 segundos.')
+    const finish = (failure?: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      if (killTimer) clearTimeout(killTimer)
+      if (failure) reject(failure)
+      else resolve({ stdout, truncated })
+    }
+    const timeout = setTimeout(() => {
+      timedOut = true
+      child.kill('SIGKILL')
+      killTimer = setTimeout(() => finish(timeoutError), 5_000)
+    }, 30_000)
     child.stdout.on('data', (chunk: Buffer) => {
       if (stdout.length >= limit) { truncated = true; return }
       const remaining = limit - stdout.length
@@ -83,11 +99,13 @@ function readGitOutput(workspace: string, args: string[], limit: number) {
       if (text.length > remaining) truncated = true
     })
     child.stderr.on('data', (chunk: Buffer) => { stderr = `${stderr}${chunk.toString()}`.slice(-64_000) })
-    child.on('error', (error) => { clearTimeout(timeout); reject(error) })
+    child.stdout.on('error', (error) => finish(timedOut ? timeoutError : error))
+    child.stderr.on('error', (error) => finish(timedOut ? timeoutError : error))
+    child.on('error', (error) => finish(timedOut ? timeoutError : error))
     child.on('close', (code) => {
-      clearTimeout(timeout)
-      if (code === 0) resolve({ stdout, truncated })
-      else reject(new Error(redactLogText(stderr.slice(0, 2_000)) || `Git encerrou com código ${code ?? 'desconhecido'}.`))
+      if (timedOut) finish(timeoutError)
+      else if (code === 0) finish()
+      else finish(new Error(redactLogText(stderr.slice(0, 2_000)) || `Git encerrou com código ${code ?? 'desconhecido'}.`))
     })
   })
 }
