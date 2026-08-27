@@ -43,10 +43,17 @@ export function Sidebar({ open, compact, triggerRef, conversations, hasConversat
     <div className="sidebar-footer">
       {workspaces.slice(0, 4).map((item) => {
         const unavailable = item.availability !== 'available'
+        const availabilityMessage = item.availability === 'missing'
+          ? t('nav.workspaceMissing')
+          : item.availability === 'permission-denied'
+            ? t('nav.workspacePermissionDenied')
+            : item.availability === 'invalid'
+              ? t('nav.workspaceInvalid')
+              : item.availabilityMessage
         return <div key={item.path} className={`workspace-mini ${workspace === item.path ? 'active' : ''} ${unavailable ? 'unavailable' : ''}`}>
-          <button className="workspace-open" onClick={() => onSavedWorkspace(item.path)} title={item.availabilityMessage}>
+          <button className="workspace-open" onClick={() => onSavedWorkspace(item.path)} title={availabilityMessage}>
             {unavailable ? <AlertTriangle size={13}/> : <Folder size={13}/>}
-            <span className="workspace-mini-copy"><span>{item.name}</span>{unavailable && <small>{item.availabilityMessage}</small>}</span>
+            <span className="workspace-mini-copy"><span>{item.name}</span>{unavailable && <small>{availabilityMessage}</small>}</span>
           </button>
           <button className="workspace-favorite" aria-label={item.favorite ? `${t('nav.removeFavorite')} ${item.name}` : `${t('nav.favorite')} ${item.name}`} aria-pressed={item.favorite} title={item.favorite ? t('nav.removeFavorite') : t('nav.favorite')} onClick={() => onFavorite(item)}><Star size={12} fill={item.favorite ? 'currentColor' : 'none'}/></button>
         </div>
