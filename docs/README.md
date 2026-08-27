@@ -38,6 +38,10 @@ performance budgets, product identity, security audit, plans and historical
 release notes are kept in the repository for engineering traceability. They are
 not user support promises and do not all require translation.
 
+The [model strategy](model-strategy.md) is a design guideline. It does not
+describe automatic model routing or a reasoning-effort control available in
+the current release.
+
 The [release-readiness checklist](release-readiness-1.0.md) is the current
 source for open release gates. Do not treat a plan or historical release note as
 evidence that a feature is present in the current build.

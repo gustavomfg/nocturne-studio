@@ -39,6 +39,10 @@ planos e notas históricas de release permanecem no repositório para rastreio d
 engenharia. Não são promessas de suporte ao usuário e nem todos precisam de
 tradução.
 
+A [estratégia de modelos](model-strategy.pt-BR.md) é uma orientação de design.
+Ela não descreve roteamento automático de modelos nem um controle de nível de
+raciocínio disponível na release atual.
+
 O [checklist de prontidão](release-readiness-1.0.md) é a fonte atual dos gates
 abertos. Não trate plano ou nota histórica como evidência de que uma
 funcionalidade existe no build atual.
