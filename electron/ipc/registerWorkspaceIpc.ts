@@ -108,8 +108,8 @@ export function registerWorkspaceIpc(win: BrowserWindow, database: LocalDatabase
     const conversation = getAuthorizedConversation(database, idSchema.parse(value))
     database.deleteConversation(conversation.id)
   })
-  return () => {
-    void changeWatcher.stop()
+  return async () => {
     ipcMain.dispose()
+    await changeWatcher.stop()
   }
 }

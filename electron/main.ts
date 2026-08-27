@@ -19,6 +19,7 @@ import productIdentity from '../shared/product-identity.json'
 import { hasDatabaseRecoveryArtifacts, inspectDatabaseFile, isRecoverableDatabaseCorruption, listDatabaseRecoveryCandidates, restoreDatabaseFile } from './database/recovery'
 import packageMetadata from '../package.json'
 import { FatalShutdownController, type FatalShutdownEvent } from './runtime/FatalShutdown'
+import { createNormalShutdownHandler } from './runtime/NormalShutdown'
 import { isMainProcessOperational, markMainProcessFatal, markMainProcessTerminated } from './runtime/MainProcessState'
 import { canonicalizePackagedRecoveryPath, isPackagedRecoveryPathInside } from './security/PackagedRecoveryContainment'
 
@@ -45,7 +46,7 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock()
 let win: BrowserWindow | null = null
 let database: LocalDatabase | null = null
 let logger: Logger | null = null
-let disposeIpc: (() => void) | null = null
+let disposeIpc: (() => void | Promise<void>) | null = null
 let packageSmokeScheduled = false
 let packagedRecoveryScheduled = false
 let packagedRecoveryStage = 'bootstrap'
@@ -56,8 +57,8 @@ let modelRegistry: ModelRegistry | null = null
 let modelCatalog: ModelCatalogService | null = null
 let shutdownResourcesPromise: Promise<void> | null = null
 
-function disposeWindowIpc() {
-  disposeIpc?.()
+async function disposeWindowIpc() {
+  await disposeIpc?.()
   disposeIpc = null
 }
 
@@ -73,7 +74,7 @@ async function shutdownResources() {
       disposeUpdates = null
     }
     try {
-      disposeWindowIpc()
+      await disposeWindowIpc()
     } catch (error) {
       failures.push(error)
     }
@@ -93,6 +94,12 @@ async function shutdownResources() {
     modelRegistry = null
     try {
       await currentProviders?.dispose()
+    } catch (error) {
+      failures.push(error)
+    }
+
+    try {
+      await logger?.flush()
     } catch (error) {
       failures.push(error)
     }
@@ -168,6 +175,16 @@ const fatalShutdown = new FatalShutdownController({
   },
 })
 
+const normalShutdown = createNormalShutdownHandler({
+  shutdown: shutdownResources,
+  quit: () => app.quit(),
+  exit: (code) => app.exit(code),
+  onFailure: async (error) => {
+    logger?.error('app', 'O cleanup do encerramento normal encontrou uma falha.', error)
+    await logger?.flush()
+  },
+})
+
 process.on('uncaughtException', (error) => { void fatalShutdown.handle('uncaughtException', error) })
 process.on('unhandledRejection', (reason) => { void fatalShutdown.handle('unhandledRejection', reason) })
 
@@ -175,7 +192,7 @@ function createWindow() {
   if (!isMainProcessOperational()) return
   if (!database || !logger || !providerConfigurations || !modelRegistry || !providerRegistry || !modelCatalog) throw new Error('Serviços do Nocturne não foram inicializados.')
   if (win?.isDestroyed()) {
-    disposeWindowIpc()
+    void disposeWindowIpc().catch((error) => logger?.error('app', 'O cleanup da janela anterior encontrou uma falha.', error))
     win = null
   }
   const rendererUrl = VITE_DEV_SERVER_URL || new URL(`file://${path.join(RENDERER_DIST, 'index.html')}`).toString()
@@ -271,7 +288,7 @@ function createWindow() {
   currentWindow.webContents.on('responsive', () => logger?.info('app', 'Renderer voltou a responder'))
   currentWindow.on('closed', () => {
     if (win !== currentWindow) return
-    disposeWindowIpc()
+    void disposeWindowIpc().catch((error) => logger?.error('app', 'O cleanup da janela encerrada encontrou uma falha.', error))
     win = null
   })
   if (VITE_DEV_SERVER_URL) {
@@ -719,9 +736,9 @@ app.on('second-instance', () => {
   win.show()
   win.focus()
 })
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   logger?.info('app', 'Encerrando aplicação')
-  void shutdownResources().catch((error) => logger?.error('app', 'O cleanup do encerramento normal encontrou uma falha.', error))
+  normalShutdown(event)
 })
 app.on('child-process-gone', (_event, details) => logger?.error('app', 'Processo filho do Electron encerrado', details))
 if (!hasSingleInstanceLock) app.quit()

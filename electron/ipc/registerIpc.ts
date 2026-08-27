@@ -457,12 +457,14 @@ export function registerIpc(
   return () => {
     aiExecutions.dispose()
     ipcMain.dispose()
-    disposeKnowledge()
-    disposeWorkspace()
-    disposeGit()
-    disposeData()
-    disposeProviders()
-    disposeModels()
+    return Promise.all([
+      disposeKnowledge(),
+      disposeWorkspace(),
+      disposeGit(),
+      disposeData(),
+      disposeProviders(),
+      disposeModels(),
+    ]).then(() => undefined)
   }
 }
 
