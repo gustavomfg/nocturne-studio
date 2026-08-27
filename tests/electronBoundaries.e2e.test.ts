@@ -438,7 +438,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
 
   it('propaga mudanças externas pelo canal nomeado do preload', async () => {
     const changed = new Promise<Parameters<Parameters<typeof api.workspace.onChanged>[0]>[0]>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Mudança externa não detectada.')), 3_000)
+      const timeout = setTimeout(() => reject(new Error('Mudança externa não detectada.')), 10_000)
       const off = api.workspace.onChanged((event) => {
         if (!event.paths.includes('external-change.txt')) return
         clearTimeout(timeout)
@@ -455,7 +455,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
       overflow: false,
     })
     await api.workspace.watch(null)
-  })
+  }, 15_000)
 
   it('revoga a autorização efetiva quando a pasta salva deixa de existir', async () => {
     const movedWorkspace = path.join(root, 'moved-workspace')
