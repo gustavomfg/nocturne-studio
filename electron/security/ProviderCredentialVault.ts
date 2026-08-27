@@ -171,19 +171,26 @@ export class ProviderCredentialVault {
   }
 
   private async readStore(): Promise<CredentialStore> {
+    let handle: fs.promises.FileHandle | undefined
     try {
-      const metadata = await fs.promises.lstat(this.filePath)
-      if (!metadata.isFile() || metadata.isSymbolicLink()) throw new Error()
-      const content = await fs.promises.readFile(this.filePath, 'utf8')
+      const noFollow = process.platform === 'win32' ? 0 : fs.constants.O_NOFOLLOW
+      handle = await fs.promises.open(this.filePath, fs.constants.O_RDONLY | noFollow)
+      const opened = await handle.stat()
+      if (!opened.isFile()) throw new Error()
+      const content = await handle.readFile({ encoding: 'utf8' })
+      const current = await fs.promises.lstat(this.filePath)
+      if (!current.isFile() || current.isSymbolicLink() || !sameFileIdentity(opened, current)) throw new Error()
       return storeSchema.parse(JSON.parse(content)) as CredentialStore
     } catch (error) {
-      if (isNodeError(error) && error.code === 'ENOENT') {
+      if (!handle && isNodeError(error) && error.code === 'ENOENT') {
         return { version: STORE_VERSION, entries: {} }
       }
       throw new ProviderCredentialVaultError(
         'corrupt-store',
         'O cofre de credenciais está inválido ou inacessível.',
       )
+    } finally {
+      await handle?.close().catch(() => undefined)
     }
   }
 
@@ -241,4 +248,8 @@ function validateSecret(value: string) {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error
+}
+
+function sameFileIdentity(left: fs.Stats, right: fs.Stats) {
+  return left.dev === right.dev && left.ino === right.ino
 }

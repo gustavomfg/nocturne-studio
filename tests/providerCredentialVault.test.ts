@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   ProviderCredentialVault,
   ProviderCredentialVaultError,
@@ -148,6 +148,27 @@ describe('ProviderCredentialVault', () => {
     await expect(linked.vault.create('nova-chave')).rejects.toMatchObject({
       code: 'corrupt-store',
     })
+  })
+
+  it('não trata como cofre novo uma remoção depois da abertura', async () => {
+    const { vault } = await setup()
+    const reference = await vault.create('credencial-preservada')
+    const originalLstat = fs.promises.lstat.bind(fs.promises)
+    let injected = false
+    const lstat = vi.spyOn(fs.promises, 'lstat').mockImplementation(async (filePath) => {
+      if (!injected && filePath === vault.filePath) {
+        injected = true
+        await fs.promises.rename(vault.filePath, `${vault.filePath}.moved`)
+      }
+      return originalLstat(filePath)
+    })
+
+    try {
+      await expect(vault.resolve(reference)).rejects.toMatchObject({ code: 'corrupt-store' })
+      await expect(fs.promises.stat(`${vault.filePath}.moved`)).resolves.toBeDefined()
+    } finally {
+      lstat.mockRestore()
+    }
   })
 
   it('preserva o ciphertext anterior quando a rotação não pode criptografar', async () => {
