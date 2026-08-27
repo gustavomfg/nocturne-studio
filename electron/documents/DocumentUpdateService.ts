@@ -19,11 +19,7 @@ export interface DocumentUpdatePreview {
 export class DocumentUpdateService {
   async preview(workspace: string, target: string, generated: string): Promise<DocumentUpdatePreview> {
     const resolved = resolveDocumentTarget(workspace, target)
-    const existing = await readWorkspaceFile(resolved, workspace, MAX_DOCUMENT_BYTES).catch((error: NodeJS.ErrnoException) => {
-      if (error.code === 'ENOENT') return null
-      if (error.code === 'EFBIG') throw new Error('Documentação existente excede o limite de 2 MB.')
-      throw error
-    })
+    const existing = await readExistingDocument(resolved, workspace)
     const existingContent = existing?.content.toString('utf8') ?? ''
     return {
       target: existing?.path ?? resolved,
@@ -54,6 +50,11 @@ export class DocumentUpdateService {
       await handle.sync()
       await handle.close()
       handle = null
+      const latest = await readExistingDocument(current.target, workspace)
+      const latestHash = latest ? digest(latest.content.toString('utf8')) : null
+      if (latestHash !== expectedHash) {
+        throw new Error('O documento mudou depois do preview. Gere uma nova comparação antes de aplicar.')
+      }
       await fs.promises.rename(temporary, current.target)
       await fs.promises.chmod(current.target, 0o600)
     } catch (error) {
@@ -63,6 +64,14 @@ export class DocumentUpdateService {
     }
     return { target: current.target, content, strategy }
   }
+}
+
+async function readExistingDocument(filePath: string, workspace: string) {
+  return await readWorkspaceFile(filePath, workspace, MAX_DOCUMENT_BYTES).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return null
+    if (error.code === 'EFBIG') throw new Error('Documentação existente excede o limite de 2 MB.')
+    throw error
+  })
 }
 
 export function mergeMarkdown(existing: string, generated: string, strategy: DocumentUpdateStrategy) {

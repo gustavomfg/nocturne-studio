@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DocumentUpdateService } from '../electron/documents/DocumentUpdateService'
 import { removeTestDirectory } from './helpers/platform'
 
@@ -58,6 +58,32 @@ describe('DocumentUpdateService', () => {
     await expect(service.apply(root, target, preview.generated, 'replace', preview.expectedHash))
       .rejects.toThrow(/mudou depois do preview/)
     expect(fs.readFileSync(target, 'utf8')).toBe('# Alteração externa\n')
+  })
+
+  it('bloqueia a substituição se o arquivo mudar durante a preparação', async () => {
+    const root = workspace()
+    const target = path.join(root, 'README.md')
+    fs.writeFileSync(target, '# Antes\n')
+    const service = new DocumentUpdateService()
+    const preview = await service.preview(root, target, '# Proposta')
+    const originalPreview = service.preview.bind(service)
+    let injected = false
+    vi.spyOn(service, 'preview').mockImplementation(async (previewWorkspace, previewTarget, generated) => {
+      const result = await originalPreview(previewWorkspace, previewTarget, generated)
+      if (!injected) {
+        injected = true
+        fs.writeFileSync(target, '# Alteração concorrente\n')
+      }
+      return result
+    })
+
+    try {
+      await expect(service.apply(root, target, preview.generated, 'replace', preview.expectedHash))
+        .rejects.toThrow(/mudou depois do preview/)
+      expect(fs.readFileSync(target, 'utf8')).toBe('# Alteração concorrente\n')
+    } finally {
+      vi.restoreAllMocks()
+    }
   })
 
   it('recusa destinos externos e formatos que não sejam Markdown', async () => {
