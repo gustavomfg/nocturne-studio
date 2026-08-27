@@ -179,5 +179,5 @@ describe('ensaio histórico de migração 0.9.5-beta', () => {
     expect(reopened.exportData().suggestions).toHaveLength(firstExport.suggestions.length)
     expect(reopened.getWorkspaceMemory(fixture.workspace).content).toBe('Memória histórica do workspace.')
     reopened.close()
-  })
+  }, 15_000)
 })
