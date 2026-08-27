@@ -10,6 +10,8 @@ export class Logger {
   private readonly sessionId = randomUUID()
   private readonly startedAt = new Date().toISOString()
   private readonly counters: Record<LogLevel, number> = { debug: 0, info: 0, warn: 0, error: 0 }
+  private writeFailures = 0
+  private lastWriteFailureFingerprint: string | null = null
   private writes = Promise.resolve()
   constructor(private readonly directory: string, private diagnostic = false, private readonly maxBytes = 2_000_000) {
     fs.mkdirSync(directory, { recursive: true })
@@ -21,11 +23,24 @@ export class Logger {
   warn(category: LogCategory, message: string, data?: unknown) { this.write('warn', category, message, data) }
   error(category: LogCategory, message: string, error?: unknown) { this.write('error', category, message, serializeError(error)) }
   get path() { return this.directory }
-  snapshot() { return { sessionId: this.sessionId, startedAt: this.startedAt, diagnosticMode: this.diagnostic, entries: { ...this.counters } } }
+  snapshot() {
+    return {
+      sessionId: this.sessionId,
+      startedAt: this.startedAt,
+      diagnosticMode: this.diagnostic,
+      entries: { ...this.counters },
+      writeFailures: this.writeFailures,
+      ...(this.lastWriteFailureFingerprint ? { lastWriteFailureFingerprint: this.lastWriteFailureFingerprint } : {}),
+    }
+  }
   private write(level: LogLevel, category: LogCategory, message: string, data?: unknown) {
     this.counters[level] += 1
     const entry = { timestamp: new Date().toISOString(), sessionId: this.sessionId, level, category, message: redactLogText(message), data: redactLogValue(data) }
-    this.writes = this.writes.then(async () => { await this.rotate(); await fs.promises.appendFile(this.file, `${JSON.stringify(entry)}\n`, { encoding: 'utf8', mode: 0o600 }) }).catch((error) => console.error('Falha ao gravar log do Nocturne:', error))
+    this.writes = this.writes.then(async () => { await this.rotate(); await fs.promises.appendFile(this.file, `${JSON.stringify(entry)}\n`, { encoding: 'utf8', mode: 0o600 }) }).catch((error) => {
+      this.writeFailures += 1
+      this.lastWriteFailureFingerprint = diagnosticFingerprint(error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error))
+      console.error('Falha ao gravar log do Nocturne:', this.lastWriteFailureFingerprint)
+    })
   }
   flush() { return this.writes }
   private async rotate() {
