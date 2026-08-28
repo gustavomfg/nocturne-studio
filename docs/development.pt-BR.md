@@ -32,6 +32,12 @@ npm run benchmark:sqlite
 `npm run test:renderer` executa Playwright. `npm run test:abi` verifica o módulo
 SQLite nativo dentro do runtime Electron adotado.
 
+O renderer depende da ponte de preload do Electron (`window.nocturne`). Use
+`npm run dev` para abrir o shell desktop suportado; acessar a URL do Vite em um
+navegador independente não fornece as capacidades nativas e cai
+intencionalmente na tela de recuperação. O Playwright usa um mock local da
+ponte para a cobertura exclusiva do renderer.
+
 ## Empacotamento e smoke checks
 
 ```bash
