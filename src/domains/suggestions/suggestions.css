@@ -23,10 +23,10 @@
 }
 
 .suggestion-list { display: flex; flex-direction: column; gap: var(--spacing-md); }
-.suggestion-card { border: 1px solid var(--color-border); border-left: 3px solid var(--color-text-subtle); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); }
-.suggestion-card.high, .suggestion-card.critical { border-left-color: var(--color-danger); }
-.suggestion-card.medium { border-left-color: var(--color-warning); }
-.suggestion-card.low { border-left-color: var(--color-info); }
+.suggestion-card { border: 1px solid var(--color-text-subtle); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); }
+.suggestion-card.high, .suggestion-card.critical { border-color: var(--color-danger); }
+.suggestion-card.medium { border-color: var(--color-warning); }
+.suggestion-card.low { border-color: var(--color-info); }
 .suggestion-card header { display: flex; align-items: center; gap: var(--spacing-xs); text-transform: uppercase; letter-spacing: .04em; }
 .suggestion-card header b { color: var(--color-text-secondary); font-size: var(--font-label); font-weight: 650; }
 .suggestion-card header small { margin-left: auto; color: var(--color-text-muted); font-size: var(--font-caption); }
@@ -77,7 +77,7 @@
 .health-metric { transition: background-color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard); }
 .health-metric:hover { background: var(--color-surface-raised); border-color: var(--color-border); }
 .suggestion-card { padding: var(--spacing-lg); transition: background-color var(--motion-card) var(--ease-standard), border-color var(--motion-card) var(--ease-standard), box-shadow var(--motion-card) var(--ease-standard); }
-.suggestion-card:hover { background: #17171c; border-top-color: var(--color-border-strong); border-right-color: var(--color-border-strong); border-bottom-color: var(--color-border-strong); box-shadow: 0 8px 24px rgb(0 0 0 / 16%); }
+.suggestion-card:hover { background: #17171c; border-color: var(--color-border-strong); box-shadow: 0 8px 24px rgb(0 0 0 / 16%); }
 .suggestion-card header::before { content: ''; width: 7px; height: 7px; flex: 0 0 7px; background: var(--color-text-subtle); border-radius: 50%; }
 .suggestion-card.high header::before, .suggestion-card.critical header::before { background: var(--color-danger); }
 .suggestion-card.medium header::before { background: var(--color-warning); }

@@ -283,11 +283,11 @@ html[data-theme='light'] .approval-card {
 }
 
 html[data-theme='light'] .approval-card.accepted {
-  border-left-color: var(--color-success);
+  border-color: var(--color-success);
 }
 
 html[data-theme='light'] .approval-card.declined {
-  border-left-color: var(--color-danger);
+  border-color: var(--color-danger);
 }
 
 html[data-theme='light'] .diff-panel,

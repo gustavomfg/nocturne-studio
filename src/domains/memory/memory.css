@@ -175,8 +175,7 @@
   display: grid;
   gap: var(--spacing-md);
   padding: var(--spacing-lg);
-  border: 1px solid var(--color-border);
-  border-left: 3px solid var(--color-text-muted);
+  border: 1px solid var(--color-text-muted);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   box-shadow: var(--shadow-sm);
@@ -184,10 +183,10 @@
 }
 
 .brain-card:hover { border-color: var(--color-border-strong); background: var(--color-surface-raised); }
-.brain-card.active { border-left-color: var(--color-success); }
-.brain-card.candidate { border-left-color: var(--color-warning); }
-.brain-card.outdated { border-left-color: var(--color-info); }
-.brain-card.archived { border-left-color: var(--color-text-subtle); }
+.brain-card.active { border-color: var(--color-success); }
+.brain-card.candidate { border-color: var(--color-warning); }
+.brain-card.outdated { border-color: var(--color-info); }
+.brain-card.archived { border-color: var(--color-text-subtle); }
 .brain-card-top { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); }
 .brain-card-meta { display: flex; flex-wrap: wrap; gap: var(--spacing-xs); }
 .brain-card-meta span {

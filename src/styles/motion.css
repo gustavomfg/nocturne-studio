@@ -9,7 +9,7 @@
   --motion-fade: 100ms;
   --ease-standard: cubic-bezier(.2, .8, .2, 1);
   --transition-interactive: color var(--motion-fast) var(--ease-standard), background-color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard), opacity var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
-  --transition-panel: width var(--motion-panel) var(--ease-standard), flex-basis var(--motion-panel) var(--ease-standard), opacity var(--motion-fade) var(--ease-standard);
+  --transition-panel: opacity var(--motion-fade) var(--ease-standard);
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
