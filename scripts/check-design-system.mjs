@@ -1,13 +1,31 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import postcss from 'postcss'
 
-const files = [
+const roots = [
+  'src/index.css',
   'src/styles/components.css',
   'src/styles/product-constraints.css',
   'src/domains/agent/agent.css',
   'src/domains/settings/settings.css',
   'src/domains/suggestions/suggestions.css',
+  'src/domains/memory/memory.css',
 ]
+const files = []
+const seenFiles = new Set()
+
+function collectCss(file) {
+  const normalized = path.normalize(file)
+  if (seenFiles.has(normalized) || !fs.existsSync(normalized)) return
+  seenFiles.add(normalized)
+  files.push(normalized)
+  const source = fs.readFileSync(normalized, 'utf8')
+  for (const match of source.matchAll(/@import\s+["']([^"']+\.css)["']/g)) {
+    collectCss(path.resolve(path.dirname(normalized), match[1]))
+  }
+}
+
+roots.forEach(collectCss)
 const allowedBreakpoints = new Set([520, 720, 980, 981, 1120, 1320])
 const failures = []
 
@@ -23,6 +41,23 @@ for (const file of files) {
   }
   const root = postcss.parse(source, { from: file })
   auditShadowedDeclarations(root, file)
+  auditInteractionPatterns(root, file)
+}
+
+function auditInteractionPatterns(container, file) {
+  for (const node of container.nodes ?? []) {
+    if (node.type === 'atrule') auditInteractionPatterns(node, file)
+    if (node.type !== 'rule') continue
+    for (const declaration of node.nodes ?? []) {
+      if (declaration.type !== 'decl') continue
+      if ((declaration.prop === 'border-left' || declaration.prop === 'border-right') && /(^|\s)(?:[2-9]|\d{2,})px\b/.test(declaration.value) && !node.selector.includes('checkbox')) {
+        failures.push(`${file}:${declaration.source.start.line}: faixas laterais coloridas devem usar borda completa ou indicador semântico (${node.selector})`)
+      }
+      if (declaration.prop.startsWith('transition') && /\b(width|height|padding|margin|top|right|bottom|left|flex-basis)\b/.test(declaration.value)) {
+        failures.push(`${file}:${declaration.source.start.line}: transição de layout pode causar reflow (${node.selector})`)
+      }
+    }
+  }
 }
 
 function auditShadowedDeclarations(container, file) {
