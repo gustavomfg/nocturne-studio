@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { describe, expect, it } from 'vitest'
 import { CodexClient, type CodexProcessAdapter } from '../electron/codex/CodexClient'
+import { buildCodexEnvironment } from '../electron/codex/CodexProcess'
 import type { RpcMessage, RpcRequest } from '../electron/codex/protocol'
 
 class FakeCodexProcess extends EventEmitter implements CodexProcessAdapter {
@@ -92,6 +93,34 @@ async function createThread(client: CodexClient, process: FakeCodexProcess) {
 }
 
 describe('CodexClient', () => {
+  it('passa ao App Server apenas o ambiente permitido e preserva a autenticação persistida', () => {
+    const environment = buildCodexEnvironment({
+      PATH: '/usr/bin',
+      HOME: '/home/codex',
+      CODEX_HOME: '/home/codex/.codex',
+      TMPDIR: '/tmp',
+      LANG: 'pt_BR.UTF-8',
+      USERPROFILE: 'C:\\Users\\codex',
+      OPENAI_API_KEY: 'test-openai-key',
+      CODEX_ACCESS_TOKEN: 'test-codex-token',
+      HTTPS_PROXY: 'https://user:test-password@proxy.example',
+      GITHUB_TOKEN: 'test-github-token',
+      NODE_OPTIONS: '--require ./inject.js',
+      ELECTRON_RUN_AS_NODE: '1',
+      SERVICE_API_KEY: 'test-service-key',
+      CI: 'true',
+    })
+
+    expect(environment).toEqual({
+      PATH: '/usr/bin',
+      HOME: '/home/codex',
+      CODEX_HOME: '/home/codex/.codex',
+      TMPDIR: '/tmp',
+      LANG: 'pt_BR.UTF-8',
+      USERPROFILE: 'C:\\Users\\codex',
+    })
+  })
+
   it('valida o handshake do protocolo antes de declarar o App Server compatível', async () => {
     const { client, process } = await readyClient()
     const checked = client.checkProtocol()
@@ -210,6 +239,8 @@ describe('CodexClient', () => {
         type: 'workspaceWrite',
         writableRoots: ['/workspace'],
         networkAccess: false,
+        excludeTmpdirEnvVar: false,
+        excludeSlashTmp: false,
       },
       additionalContext: {
         'nocturne.agent-mode': {
@@ -318,5 +349,25 @@ describe('CodexClient', () => {
     })
     process.respond('turn/interrupt')
     await interrupted
+  })
+
+  it('limpa o turno Build ativo quando o transporte é encerrado', async () => {
+    const { client, process } = await readyClient()
+    await createThread(client, process)
+    const turn = client.sendTurn(
+      'thread-1',
+      '/workspace',
+      'Execute',
+      { sandbox: 'workspace-write', approvalPolicy: 'on-request' },
+    )
+    await waitForRequest(process, 'turn/start')
+    process.respond('turn/start', { turn: { id: 'turn-1' } })
+    await turn
+
+    client.stop()
+
+    expect(process.running).toBe(false)
+    expect(client.status).toBe('disconnected')
+    await expect(client.interrupt('thread-1')).rejects.toThrow('Nenhuma execução ativa')
   })
 })

@@ -4,6 +4,69 @@ import readline from 'node:readline'
 import type { RpcMessage } from './protocol'
 import { parseRpcLine } from './RpcTransport'
 
+const CODEX_ENVIRONMENT_ALLOWLIST = new Set([
+  'PATH',
+  'SHELL',
+  'COMSPEC',
+  'SYSTEMROOT',
+  'WINDIR',
+  'PATHEXT',
+  'HOME',
+  'USERPROFILE',
+  'HOMEDRIVE',
+  'HOMEPATH',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'XDG_CONFIG_HOME',
+  'XDG_DATA_HOME',
+  'XDG_CACHE_HOME',
+  'CODEX_HOME',
+  'TMPDIR',
+  'TMP',
+  'TEMP',
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+  'TERM',
+  'COLORTERM',
+  'NO_COLOR',
+  'SSL_CERT_FILE',
+  'SSL_CERT_DIR',
+])
+
+const CODEX_ENVIRONMENT_DENYLIST = new Set([
+  'OPENAI_API_KEY',
+  'CODEX_ACCESS_TOKEN',
+  'NODE_OPTIONS',
+  'NODE_DEBUG',
+  'NODE_EXTRA_CA_CERTS',
+  'ELECTRON_RUN_AS_NODE',
+  'ELECTRON_ENABLE_LOGGING',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'ALL_PROXY',
+  'NO_PROXY',
+  'SSH_AUTH_SOCK',
+  'SSH_AGENT_PID',
+  'SSH_ASKPASS',
+  'GIT_ASKPASS',
+  'GIT_SSH_COMMAND',
+])
+
+const SENSITIVE_ENVIRONMENT_KEY = /(?:^|_)(?:API_?KEY|ACCESS_TOKEN|AUTH_TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE_KEY|CREDENTIALS?)(?:_|$)/i
+
+export function buildCodexEnvironment(source: Record<string, string | undefined> = process.env): NodeJS.ProcessEnv {
+  const environment = {} as NodeJS.ProcessEnv
+  for (const [key, value] of Object.entries(source)) {
+    if (value === undefined) continue
+    const normalizedKey = key.toUpperCase()
+    if (!CODEX_ENVIRONMENT_ALLOWLIST.has(normalizedKey)) continue
+    if (CODEX_ENVIRONMENT_DENYLIST.has(normalizedKey) || SENSITIVE_ENVIRONMENT_KEY.test(normalizedKey)) continue
+    environment[key] = value
+  }
+  return environment
+}
+
 export class CodexProcess extends EventEmitter {
   private child: ChildProcessWithoutNullStreams | null = null
   private stopping = false
@@ -15,7 +78,7 @@ export class CodexProcess extends EventEmitter {
     this.stopping = false
     this.child = spawn(executable, ['app-server', '--stdio'], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: process.env,
+      env: buildCodexEnvironment(),
     })
 
     const child = this.child
