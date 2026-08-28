@@ -379,32 +379,40 @@ export function AIConnectionPage({
       )}
 
       {selectedPreset.authType === 'api-key' && <>
-        <input
-          className="ai-input"
-          type="password"
-          autoComplete="new-password"
-          value={credential}
-          onChange={(e) => setCredential(e.target.value)}
-          placeholder={
-            selectedPreset.id === 'openai'
-              ? 'Ex.: sk-proj-...'
-              : selectedPreset.id === 'deepseek'
-                ? 'Ex.: sk-...'
-                : selectedPreset.id === 'openrouter'
-                  ? 'Ex.: sk-or-v1-...'
-                  : selectedPreset.id === 'other'
-              ? t('ai.pasteApiKey')
-              : t('ai.apiKey')
-          }
-        />
-        {selectedPreset.id === 'other' && (
+        <label className="ai-field-label" htmlFor="ai-credential">
+          <span>{t('ai.apiKey')}</span>
           <input
+            id="ai-credential"
             className="ai-input"
-            type="url"
-            value={customUrl}
-            onChange={(e) => setCustomUrl(e.target.value)}
-            placeholder={t('ai.customUrlExample')}
+            type="password"
+            autoComplete="new-password"
+            value={credential}
+            onChange={(e) => setCredential(e.target.value)}
+            placeholder={
+              selectedPreset.id === 'openai'
+                ? 'Ex.: sk-proj-...'
+                : selectedPreset.id === 'deepseek'
+                  ? 'Ex.: sk-...'
+                  : selectedPreset.id === 'openrouter'
+                    ? 'Ex.: sk-or-v1-...'
+                    : selectedPreset.id === 'other'
+                ? t('ai.pasteApiKey')
+                : t('ai.apiKey')
+            }
           />
+        </label>
+        {selectedPreset.id === 'other' && (
+          <label className="ai-field-label" htmlFor="ai-custom-url">
+            <span>{t('ai.customUrl')}</span>
+            <input
+              id="ai-custom-url"
+              className="ai-input"
+              type="url"
+              value={customUrl}
+              onChange={(e) => setCustomUrl(e.target.value)}
+              placeholder={t('ai.customUrlExample')}
+            />
+          </label>
         )}
         {selectedPreset.id !== 'other' && (
           <div className="ai-advanced">
@@ -413,13 +421,17 @@ export function AIConnectionPage({
               {t('ai.advanced')}
             </button>
             {showAdvanced && (
-              <input
-                className="ai-input"
-                type="url"
-                value={customUrl}
-                onChange={(e) => setCustomUrl(e.target.value)}
-                placeholder={t('ai.customUrl')}
-              />
+              <label className="ai-field-label" htmlFor="ai-custom-url-advanced">
+                <span>{t('ai.customUrl')}</span>
+                <input
+                  id="ai-custom-url-advanced"
+                  className="ai-input"
+                  type="url"
+                  value={customUrl}
+                  onChange={(e) => setCustomUrl(e.target.value)}
+                  placeholder={t('ai.customUrlExample')}
+                />
+              </label>
             )}
           </div>
         )}

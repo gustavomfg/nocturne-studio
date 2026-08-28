@@ -61,7 +61,7 @@ export function SettingsDialog({ value, workspace, workspaces, onClose, onSave, 
       <header className="settings-header"><div className="settings-heading"><span><Settings size={17}/></span><div><strong id="settings-title">{t('settings.title')}</strong><small>{t('settings.subtitle')}</small></div></div><button className="settings-close" aria-label={t('settings.close')} title={t('common.close')} onClick={() => requestExit()}><X size={17}/></button></header>
       <div className="settings-layout">
         <nav className="settings-navigation" aria-label={t('settings.sections')}>
-          {settingsPages.map((item) => { const Icon = item.icon; return <button key={item.id} className={page === item.id ? 'active' : ''} aria-label={t(item.labelKey)} aria-current={page === item.id ? 'page' : undefined} onClick={() => setPage(item.id)}><Icon size={17}/><span><strong>{t(item.labelKey)}</strong><small>{t(item.descriptionKey)}</small></span></button> })}
+          {settingsPages.map((item) => { const Icon = item.icon; return <button key={item.id} className={page === item.id ? 'active' : ''} aria-label={t(item.labelKey)} title={t(item.labelKey)} aria-current={page === item.id ? 'page' : undefined} onClick={() => setPage(item.id)}><Icon size={17}/><span><strong>{t(item.labelKey)}</strong><small>{t(item.descriptionKey)}</small></span></button> })}
         </nav>
         <main className="settings-content">
           <div className="settings-page-title"><span><currentPage.icon size={19}/></span><div><h2>{t(currentPage.labelKey)}</h2><p>{t(currentPage.descriptionKey)}</p></div></div>

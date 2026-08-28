@@ -368,6 +368,91 @@
 .confirm-dialog .modal-actions { display: flex; justify-content: flex-end; gap: var(--spacing-sm); }
 .confirm-dialog .modal-actions .danger { color: #fff; background: #a44751; border: 1px solid #bd5964; }
 
+.ai-field-label {
+  align-items: stretch;
+  margin: var(--spacing-md) 0;
+}
+
+.ai-field-label > span {
+  color: var(--color-text-secondary);
+  font-size: var(--font-small);
+  font-weight: 600;
+}
+
+.shortcuts-dialog {
+  width: min(520px, calc(100vw - 32px));
+  padding: var(--spacing-xl);
+  background: var(--color-panel);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.shortcuts-dialog .modal-title {
+  align-items: flex-start;
+  display: flex;
+}
+
+.shortcuts-dialog .modal-title > span {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2xs);
+}
+
+.shortcuts-dialog .modal-title small {
+  color: var(--color-text-muted);
+  font-size: var(--font-small);
+  line-height: var(--leading-ui);
+}
+
+.shortcut-list {
+  display: grid;
+  gap: var(--spacing-xs);
+}
+
+.shortcut-row {
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  min-height: 42px;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  display: flex;
+}
+
+.shortcut-row kbd {
+  min-width: 76px;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  color: var(--color-text);
+  text-align: center;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-bottom-color: var(--color-border-strong);
+  border-radius: var(--radius-xs);
+  font: 600 var(--font-caption)/1 var(--font-mono);
+}
+
+.shortcut-footer {
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-xl);
+  color: var(--color-text-muted);
+  font-size: var(--font-caption);
+  display: flex;
+}
+
+.shortcut-footer button {
+  min-height: var(--control-md);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-radius: var(--radius-sm);
+}
+
 @media (width <= 720px) {
   .ai-step-box { max-width: none; }
   .ai-model-list { max-height: none; }
