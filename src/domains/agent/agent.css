@@ -7,6 +7,22 @@
   position: sticky;
 }
 
+.agent-priority-block > h2 {
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin: 0 0 var(--spacing-sm);
+  color: var(--color-text);
+  font-size: var(--font-small);
+  display: flex;
+}
+
+.priority-hint {
+  margin: 0 0 var(--spacing-md);
+  color: var(--color-text-muted);
+  font-size: var(--font-caption);
+  line-height: var(--leading-ui);
+}
+
 .current-operation {
   align-items: center;
   gap: var(--spacing-md);

@@ -1,5 +1,5 @@
 import type { RefObject } from 'react'
-import { AlertTriangle, Brain, Check, ChevronRight, Code2, Folder, GitBranch, LoaderCircle, Menu, PanelRight, Settings, Terminal, X } from 'lucide-react'
+import { AlertTriangle, Brain, Check, ChevronRight, Code2, Folder, GitBranch, HelpCircle, LoaderCircle, Menu, PanelRight, Settings, Terminal, X } from 'lucide-react'
 import type { GitInfo } from '../../types'
 import { useI18n } from '../../shared/i18n'
 
@@ -19,6 +19,7 @@ interface WorkspaceTopbarProps {
   onOpenTool(tool: 'editor' | 'terminal'): void
   onMemory(): void
   onSettings(): void
+  onHelp(): void
   onToggleInspector(): void
 }
 
@@ -34,7 +35,7 @@ const statusMeta = {
   failed: { key: 'status.failed', symbol: 'unavailable' as const },
 }
 
-export function WorkspaceTopbar({ title, pathLabel, gitInfo, status, sidebarOpen, inspectorOpen, compact, hasMemory, sidebarTriggerRef, inspectorTriggerRef, onOpenSidebar, onSelectWorkspace, onOpenTool, onMemory, onSettings, onToggleInspector }: WorkspaceTopbarProps) {
+export function WorkspaceTopbar({ title, pathLabel, gitInfo, status, sidebarOpen, inspectorOpen, compact, hasMemory, sidebarTriggerRef, inspectorTriggerRef, onOpenSidebar, onSelectWorkspace, onOpenTool, onMemory, onSettings, onHelp, onToggleInspector }: WorkspaceTopbarProps) {
   const { t } = useI18n()
   const meta = statusMeta[status as keyof typeof statusMeta] ?? { key: '', symbol: 'unavailable' as const }
   const statusLabel = meta.key ? t(meta.key) : status
@@ -45,9 +46,10 @@ export function WorkspaceTopbar({ title, pathLabel, gitInfo, status, sidebarOpen
     <div className="top-actions">
       {gitInfo && <span className="branch-pill top-action-branch"><GitBranch size={12}/>{gitInfo.branch}</span>}
       {pathLabel && <><button className="icon-button top-action-workspace" aria-label={t('topbar.openWebstorm')} title={t('topbar.openWebstorm')} onClick={() => onOpenTool('editor')}><Code2 size={16}/></button><button className="icon-button top-action-workspace" aria-label={t('topbar.openTerminal')} title={t('topbar.openTerminal')} onClick={() => onOpenTool('terminal')}><Terminal size={16}/></button></>}
-      <span className={`connection top-action-essential ${status}`}><span/><i className={`connection-symbol ${meta.symbol}`} data-symbol={meta.symbol} aria-hidden="true"><SymbolIcon size={meta.symbol === 'ready' ? 16 : meta.symbol === 'attention' ? 15 : 16}/></i>{statusLabel}</span>
+      <span className={`connection top-action-essential ${status}`} role="status" aria-label={statusLabel} title={statusLabel}><span/><i className={`connection-symbol ${meta.symbol}`} data-symbol={meta.symbol} aria-hidden="true"><SymbolIcon size={meta.symbol === 'ready' ? 16 : meta.symbol === 'attention' ? 15 : 16}/></i>{statusLabel}</span>
       <button className={`icon-button top-action-essential ${hasMemory ? 'has-memory' : ''}`} aria-label={t('topbar.workspaceMemory')} onClick={onMemory} title={t('topbar.workspaceMemory')}><Brain size={17}/></button>
       <button className="icon-button top-action-secondary" aria-label={t('nav.openSettings')} title={t('nav.openSettings')} onClick={onSettings}><Settings size={17}/></button>
+      <button className="icon-button top-action-help" aria-label={t('topbar.openHelp')} title={`${t('topbar.openHelp')} (?)`} onClick={onHelp}><HelpCircle size={17}/></button>
       {(!compact || !inspectorOpen) && <button ref={inspectorTriggerRef} className={`icon-button top-action-essential ${inspectorOpen ? 'selected' : ''}`} aria-label={inspectorOpen ? t('topbar.hideAgent') : t('topbar.showAgent')} title={inspectorOpen ? t('topbar.hideAgent') : t('topbar.showAgent')} aria-controls="agent-inspector" aria-expanded={inspectorOpen} onClick={onToggleInspector}><PanelRight size={18}/></button>}
     </div>
   </header>

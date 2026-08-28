@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Brain, Check, Copy, ExternalLink, Eye, FolderOpen, MoonStar, Settings, X } from 'lucide-react'
+import { Brain, Check, Copy, ExternalLink, Eye, FolderOpen, Keyboard, MoonStar, Settings, X } from 'lucide-react'
 import type { AppSettings, FilePreview, WorkspaceMemory } from '../../types'
 import { errorMessage, formatBytes, relativeTime } from '../../shared/format'
 import { useDialogA11y } from '../../shared/useDialogA11y'
@@ -90,5 +90,25 @@ export function PreviewDialog({ preview, activeId, onClose, onError, onNotify }:
   return <div className="preview-backdrop" onMouseDown={onClose}><section ref={dialogRef} className="preview-dialog" role="dialog" aria-modal="true" aria-labelledby="preview-title" tabIndex={-1} onMouseDown={(event) => event.stopPropagation()}>
     <header><div><Eye size={16}/><span><strong id="preview-title">{preview.name}</strong><small>{formatBytes(preview.size)}{preview.filePath && ` · ${preview.filePath}`}</small></span></div><div>{preview.kind !== 'image' && <button disabled={copying} onClick={() => void copy()} aria-label={copying ? t('common.copying') : t('common.copy')} title={t('common.copy')}><Copy size={15}/></button>}{preview.filePath && <><button onClick={() => void open('folder')} aria-label={t('common.openFolderAction')} title={t('common.openFolderAction')}><FolderOpen size={15}/></button><button onClick={() => void open('editor')} aria-label={t('common.openFileAction')} title={t('common.openFileAction')}><ExternalLink size={15}/></button></>}<button onClick={onClose} aria-label={t('common.closePreview')} title={t('common.close')}><X size={17}/></button></div></header>
     <div className={`preview-content ${preview.kind}`}>{preview.kind === 'image' ? <img src={preview.content} alt={preview.name}/> : preview.kind === 'markdown' ? <SafeMarkdown>{preview.content}</SafeMarkdown> : <pre><code>{preview.content}</code></pre>}</div>
+  </section></div>
+}
+
+export function ShortcutsDialog({ onClose }: { onClose(): void }) {
+  const { t } = useI18n()
+  const dialogRef = useDialogA11y<HTMLElement>(onClose)
+  const modifier = navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl'
+  const shortcuts = [
+    { keys: `${modifier} N`, label: t('shortcuts.newConversation') },
+    { keys: `${modifier} O`, label: t('shortcuts.selectWorkspace') },
+    { keys: `${modifier} K`, label: t('shortcuts.focusSearch') },
+    { keys: `${modifier} Enter`, label: t('shortcuts.submitPrompt') },
+    { keys: 'Escape', label: t('shortcuts.cancelExecution') },
+    { keys: '← / →', label: t('shortcuts.navigateModes') },
+    { keys: '?', label: t('shortcuts.openHelp') },
+  ]
+  return <div className="modal-backdrop" onMouseDown={onClose}><section ref={dialogRef} className="shortcuts-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title" aria-describedby="shortcuts-description" tabIndex={-1} onMouseDown={(event) => event.stopPropagation()}>
+    <header className="modal-title"><Keyboard size={18}/><span><strong id="shortcuts-title">{t('shortcuts.title')}</strong><small id="shortcuts-description">{t('shortcuts.subtitle')}</small></span><button aria-label={t('shortcuts.close')} title={t('common.close')} onClick={onClose}><X size={16}/></button></header>
+    <div className="shortcut-list">{shortcuts.map((shortcut) => <div className="shortcut-row" key={shortcut.label}><kbd>{shortcut.keys}</kbd><span>{shortcut.label}</span></div>)}</div>
+    <footer className="shortcut-footer"><span>{t('composer.enterHint')}</span><button className="primary" onClick={onClose}>{t('shortcuts.close')}</button></footer>
   </section></div>
 }

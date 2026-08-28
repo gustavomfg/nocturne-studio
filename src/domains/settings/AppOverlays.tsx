@@ -6,6 +6,7 @@ const SettingsDialog = lazy(loadSettingsDialog)
 const MemoryDialog = lazy(() => import('./Dialogs').then((module) => ({ default: module.MemoryDialog })))
 const OnboardingDialog = lazy(() => import('./Dialogs').then((module) => ({ default: module.OnboardingDialog })))
 const PreviewDialog = lazy(() => import('./Dialogs').then((module) => ({ default: module.PreviewDialog })))
+const ShortcutsDialog = lazy(() => import('./Dialogs').then((module) => ({ default: module.ShortcutsDialog })))
 
 interface AppOverlaysProps {
   settingsOpen: boolean
@@ -16,6 +17,7 @@ interface AppOverlaysProps {
   memory: WorkspaceMemory
   preview: FilePreview | null
   onboardingOpen: boolean
+  helpOpen: boolean
   activeId: string | null
   workspace: string
   onSettingsClose(): void
@@ -32,13 +34,15 @@ interface AppOverlaysProps {
   onOpenSettings(): void
   onDismissOnboarding(): void
   onCompleteOnboarding(): void
+  onHelpClose(): void
 }
 
-export function AppOverlays({ settingsOpen, settings, status, workspaces, memoryOpen, memory, preview, onboardingOpen, activeId, workspace, onSettingsClose, onSaveSettings, onCodexModelChange, onNotify, onOpenOnboarding, onMemoryClose, onOpenBrain, onSaveMemory, onPreviewClose, onError, onWorkspace, onOpenSettings, onDismissOnboarding, onCompleteOnboarding }: AppOverlaysProps) {
+export function AppOverlays({ settingsOpen, settings, status, workspaces, memoryOpen, memory, preview, onboardingOpen, helpOpen, activeId, workspace, onSettingsClose, onSaveSettings, onCodexModelChange, onNotify, onOpenOnboarding, onMemoryClose, onOpenBrain, onSaveMemory, onPreviewClose, onError, onWorkspace, onOpenSettings, onDismissOnboarding, onCompleteOnboarding, onHelpClose }: AppOverlaysProps) {
   return <Suspense fallback={null}>
     {settingsOpen && <SettingsDialog value={settings} status={status} workspace={workspace} workspaces={workspaces} onClose={onSettingsClose} onSave={onSaveSettings} onCodexModelChange={onCodexModelChange} onNotify={onNotify} onOnboarding={onOpenOnboarding}/>}
     {memoryOpen && <MemoryDialog value={memory} onClose={onMemoryClose} onOpenBrain={onOpenBrain} onSave={onSaveMemory}/>}
     {preview && <PreviewDialog preview={preview} activeId={activeId} onClose={onPreviewClose} onError={onError} onNotify={onNotify}/>}
     {onboardingOpen && <OnboardingDialog settings={settings} status={status} workspace={workspace} onWorkspace={onWorkspace} onSettings={onOpenSettings} onDismiss={onDismissOnboarding} onComplete={onCompleteOnboarding}/>}
+    {helpOpen && <ShortcutsDialog onClose={onHelpClose}/>}
   </Suspense>
 }
