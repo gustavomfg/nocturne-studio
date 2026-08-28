@@ -54,7 +54,7 @@ npm run lint
 npm test
 npm run build
 npm run test:renderer
-npm run verify:release-assets -- release-assets
+npm run verify:release-assets -- --linux-only release-assets
 ```
 
 Falha em qualquer barreira de escrita, credencial, migração, atualização ou

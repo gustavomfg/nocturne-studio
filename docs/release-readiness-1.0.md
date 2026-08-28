@@ -81,8 +81,10 @@ smoke jobs.
 4. Run the authenticated Codex smoke from the exact candidate SHA and pass its
    run ID and SHA to `stable-release.yml`; the report must match the tag SHA and
    `1.0.0`.
-5. Complete the protected signed-package matrix: Windows signing, macOS signing
-   and notarization, and Linux GPG checksum signing.
+5. Complete the protected Linux signed-package job with GPG checksum signing.
+   Windows signing and macOS signing/notarization remain deferred until trusted
+   platform certificates are available; they are not part of the current stable
+   publication pipeline.
 6. Run the short [manual RC checklist](release-rc-checklist.md), including the
    native recovery-consent dialog, first startup and install/update checks.
 7. Verify checksums, release-asset inventory and the protected stable approval

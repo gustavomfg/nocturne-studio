@@ -49,16 +49,19 @@ describe('políticas de execução', () => {
     }
     expect(redactLogValue({ authorization: 'Bearer segredo', prompt: 'pedido privado', content: 'arquivo completo', error: 'falha com dados privados', nested: { password: 'senha', safe: 'ok' } })).toEqual({ nested: { safe: 'ok' } })
   })
-  it('publica uma release estável somente após reunir e verificar as três plataformas', () => {
+  it('publica uma release estável somente após verificar os artefatos Linux assinados', () => {
     const workflow = fs.readFileSync(path.join(process.cwd(), '.github/workflows/stable-release.yml'), 'utf8')
     expect(workflow).toContain('pattern: nocturne-signed-*')
-    expect(workflow).toContain('npm run verify:release-assets -- release-assets')
+    expect(workflow).toContain('npm run verify:release-assets -- --linux-only release-assets')
     expect(workflow).toContain('gh release create "$RELEASE_TAG"')
     expect(workflow).toContain('tag !== \'v\'+v')
     expect(workflow).toContain('git rev-list -n 1 "$RELEASE_TAG"')
     expect(workflow).not.toContain('${{ runner.os ==')
-    expect(workflow).toContain("matrix.os == 'macos-latest'")
-    expect(workflow).toContain("matrix.os == 'windows-latest' && secrets.WIN_CSC_LINK")
+    expect(workflow).toContain('os: [ubuntu-latest]')
+    expect(workflow).not.toContain('macos-latest')
+    expect(workflow).not.toContain('windows-latest')
+    expect(workflow).not.toContain('APPLE_ID')
+    expect(workflow).not.toContain('WIN_CSC_LINK')
     expect(workflow).toContain('environment: stable-release')
   })
   it('não registra o smoke manual do Codex como deployment', () => {

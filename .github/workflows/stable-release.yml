@@ -117,17 +117,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest]
     env:
       RELEASE_TAG: ${{ inputs.release_tag }}
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-      CSC_LINK: ${{ (matrix.os == 'macos-latest' && secrets.MAC_CSC_LINK) || (matrix.os == 'windows-latest' && secrets.WIN_CSC_LINK) || '' }}
-      CSC_KEY_PASSWORD: ${{ (matrix.os == 'macos-latest' && secrets.MAC_CSC_KEY_PASSWORD) || (matrix.os == 'windows-latest' && secrets.WIN_CSC_KEY_PASSWORD) || '' }}
-      APPLE_ID: ${{ matrix.os == 'macos-latest' && secrets.APPLE_ID || '' }}
-      APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.os == 'macos-latest' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
-      APPLE_TEAM_ID: ${{ matrix.os == 'macos-latest' && secrets.APPLE_TEAM_ID || '' }}
-      GPG_PRIVATE_KEY: ${{ matrix.os == 'ubuntu-latest' && secrets.GPG_PRIVATE_KEY || '' }}
-      GPG_PASSPHRASE: ${{ matrix.os == 'ubuntu-latest' && secrets.GPG_PASSPHRASE || '' }}
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -146,23 +141,8 @@ jobs:
       - name: Require platform signing credentials
         shell: bash
         run: |
-          case "$RUNNER_OS" in
-            Linux)
-              test -n "$GPG_PRIVATE_KEY"
-              test -n "$GPG_PASSPHRASE"
-              ;;
-            macOS)
-              test -n "$CSC_LINK"
-              test -n "$CSC_KEY_PASSWORD"
-              test -n "$APPLE_ID"
-              test -n "$APPLE_APP_SPECIFIC_PASSWORD"
-              test -n "$APPLE_TEAM_ID"
-              ;;
-            Windows)
-              test -n "$CSC_LINK"
-              test -n "$CSC_KEY_PASSWORD"
-              ;;
-          esac
+          test -n "$GPG_PRIVATE_KEY"
+          test -n "$GPG_PASSPHRASE"
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
@@ -170,19 +150,13 @@ jobs:
       - run: npm run test:abi
       - run: npm run benchmark:sqlite
       - name: Import Linux release key
-        if: runner.os == 'Linux'
         shell: bash
         run: echo "$GPG_PRIVATE_KEY" | gpg --batch --import
       - run: npm run package -- --publish never
       - name: Smoke test signed package (Linux)
-        if: runner.os == 'Linux'
         run: xvfb-run -a npm run smoke:package
-      - name: Smoke test signed package
-        if: runner.os != 'Linux'
-        run: npm run smoke:package
       - run: npm run checksums
       - name: Sign Linux checksums
-        if: runner.os == 'Linux'
         shell: bash
         run: |
           version="$(node -p "require('./package.json').version")"
@@ -200,10 +174,6 @@ jobs:
           path: |
             release/*/*.AppImage
             release/*/*.tar.gz
-            release/*/*.dmg
-            release/*/*.exe
-            release/*/*.zip
-            release/*/*.blockmap
             release/*/*.yml
             release/*/SHA256SUMS-*
           if-no-files-found: error
@@ -236,7 +206,7 @@ jobs:
           pattern: nocturne-signed-*
           path: release-assets
           merge-multiple: true
-      - run: npm run verify:release-assets -- release-assets
+      - run: npm run verify:release-assets -- --linux-only release-assets
       - name: Publish verified assets
         shell: bash
         run: |

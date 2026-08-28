@@ -10,7 +10,7 @@ claramente qual parte do processo precisa de atenção.
 | `CI · source, renderer and packages` | pull request, `main`, tags e execução manual | valida workflows, código, testes de renderer e pacotes multiplataforma |
 | `Security · dependencies` | alterações de dependências em PR ou `main`, agenda semanal e execução manual | audita dependências de produção e gera um SBOM |
 | `Compatibility · Codex CLI` | somente execução manual | exercita o contrato experimental do App Server em uma instalação autenticada |
-| `Release · stable` | somente execução manual | valida a origem, assina as três plataformas e publica uma GitHub Release estável |
+| `Release · stable` | somente execução manual | valida a origem, assina o artefato Linux e publica uma GitHub Release estável |
 
 Execuções substituídas no mesmo pull request ou branch são canceladas. Builds de
 tag e releases estáveis nunca são cancelados automaticamente.
@@ -52,8 +52,7 @@ Configure estes secrets no environment `stable-release`:
 | Plataforma | Secrets |
 | --- | --- |
 | Linux | `GPG_PRIVATE_KEY`, `GPG_PASSPHRASE` |
-| macOS | `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` |
-| Windows | `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` |
+| macOS/Windows | mantidos cadastrados para ativação futura; não são lidos pelo workflow Linux-only |
 
 O environment é deliberado aqui: ele limita o acesso às chaves e permite
 proteção por aprovação. Os jobs de assinatura falham antes do empacotamento se
@@ -62,8 +61,10 @@ alguma credencial obrigatória estiver ausente.
 Para publicar, abra `Release · stable` na branch padrão e informe a tag e o ID
 da execução do smoke. O workflow faz checkout da tag e confirma que ela aponta
 para o commit efetivamente validado. O gate final só cria ou atualiza a GitHub
-Release depois que os artifacts, checksums e assinaturas das três plataformas
-forem reunidos e verificados.
+Release depois que o artefato Linux, seus checksums e sua assinatura GPG forem
+reunidos e verificados. O suporte de build e validação para macOS e Windows
+permanece configurado em outros workflows, mas a publicação estável dessas
+plataformas fica adiada até que certificados confiáveis estejam disponíveis.
 
 Recomenda-se configurar no environment:
 
