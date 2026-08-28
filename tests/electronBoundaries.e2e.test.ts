@@ -551,14 +551,18 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     await api.settings.set({ diagnosticMode: true })
     const english = await api.settings.set({ language: 'en' })
     expect(english.language).toBe('en')
+    const light = await api.settings.set({ theme: 'light' })
+    expect(light.theme).toBe('light')
     const saved = await api.settings.set({ model: 'gpt-5' })
     expect(saved.model).toBe('gpt-5')
     expect(saved.diagnosticMode).toBe(true)
     expect(saved.language).toBe('en')
+    expect(saved.theme).toBe('light')
     const current = await api.settings.get()
     expect(current.model).toBe('gpt-5')
     expect(current.diagnosticMode).toBe(true)
     expect(current.language).toBe('en')
+    expect(current.theme).toBe('light')
   })
 
   it('exporta backup atômico com formato e checksum verificáveis', async () => {

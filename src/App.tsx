@@ -38,6 +38,10 @@ const visibleMessageAnchor = (scroller: HTMLElement) => {
 const AgentPanel = lazy(() => import('./domains/agent/AgentPanel').then((module) => ({ default: module.AgentPanel })))
 const BrainMemoryDialog = lazy(() => import('./domains/memory/BrainMemoryDialog').then((module) => ({ default: module.BrainMemoryDialog })))
 
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (update: () => void) => { finished: Promise<void> }
+}
+
 function App() {
   const { setLanguage, t } = useI18n()
   const store = useAppStore(useShallow((state) => ({
@@ -104,7 +108,7 @@ function App() {
   useEffect(() => {
     void Promise.all([window.nocturne.conversations.page(), window.nocturne.workspace.list(), window.nocturne.settings.get()]).then(async ([conversationPage, savedWorkspaces, savedSettings]) => {
       const conversations = conversationPage.items
-      const normalized = { model: savedSettings.model || '', sandbox: savedSettings.sandbox || 'workspace-write', approvalPolicy: savedSettings.approvalPolicy === 'untrusted' ? 'untrusted' : 'on-request', diagnosticMode: savedSettings.diagnosticMode === true, theme: 'dark', language: savedSettings.language === 'en' ? 'en' : 'pt-BR' } as AppSettings
+      const normalized = { model: savedSettings.model || '', sandbox: savedSettings.sandbox || 'workspace-write', approvalPolicy: savedSettings.approvalPolicy === 'untrusted' ? 'untrusted' : 'on-request', diagnosticMode: savedSettings.diagnosticMode === true, theme: savedSettings.theme === 'light' ? 'light' : 'dark', language: savedSettings.language === 'en' ? 'en' : 'pt-BR' } as AppSettings
       store.setConversations(conversations); void collections.initializeConversationHasMore(conversationPage.hasMore); setWorkspaces(savedWorkspaces); setSettings(normalized); setLanguage(normalized.language ?? 'pt-BR')
       if (conversations[0]) await openConversation(conversations[0].id, conversations, savedWorkspaces)
       performanceRef.current.startupMs = performance.now()
@@ -145,7 +149,23 @@ function App() {
     }
   }, [store.messages])
   useEffect(() => () => { if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current) }, [])
-  useEffect(() => { document.documentElement.dataset.theme = settings.theme || 'dark' }, [settings.theme])
+  useEffect(() => {
+    const root = document.documentElement
+    const nextTheme = settings.theme === 'light' ? 'light' : 'dark'
+    const currentTheme = root.dataset.theme || 'dark'
+    if (currentTheme === nextTheme) { root.dataset.theme = nextTheme; return }
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    const transitionDocument = document as ViewTransitionDocument
+    const applyTheme = () => { root.dataset.theme = nextTheme }
+    if (!reducedMotion && typeof transitionDocument.startViewTransition === 'function') {
+      try {
+        const transition = transitionDocument.startViewTransition(applyTheme)
+        void transition.finished.catch(() => undefined)
+        return
+      } catch { /* fallback for engines that expose but cannot start a transition */ }
+    }
+    applyTheme()
+  }, [settings.theme])
   useEffect(() => {
     const preload = () => { void loadSettingsDialog() }
     const idle = window.requestIdleCallback?.(preload, { timeout: 1_500 })
@@ -512,7 +532,7 @@ function App() {
   }
 
   async function saveSettings(next: AppSettings) {
-    try { const saved = await window.nocturne.settings.set(next); const updatedLanguage = saved.language === 'en' ? 'en' : 'pt-BR'; const updated = { ...next, ...saved, language: updatedLanguage } as AppSettings; setSettings(updated); setLanguage(updatedLanguage); setSettingsOpen(false); notify(translate(updatedLanguage, 'common.saved')) }
+    try { const saved = await window.nocturne.settings.set(next); const updatedLanguage = saved.language === 'en' ? 'en' : 'pt-BR'; const updated = { ...next, ...saved, theme: saved.theme === 'light' ? 'light' : 'dark', language: updatedLanguage } as AppSettings; setSettings(updated); setLanguage(updatedLanguage); setSettingsOpen(false); notify(translate(updatedLanguage, 'common.saved')) }
     catch (error) { throw new Error(errorMessage(error)) }
   }
 

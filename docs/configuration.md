@@ -3,8 +3,8 @@
 [Português do Brasil](configuration.pt-BR.md)
 
 Open **Settings** to configure the selected model, Codex sandbox and approval
-policy, diagnostic logging and provider connections. The interface keeps the
-theme dark in the current release.
+policy, diagnostic logging, provider connections and the interface theme. Dark
+is the default; a light theme is also available under Application.
 
 ## Providers and model bindings
 

@@ -1,0 +1,866 @@
+/*
+ * The light theme remaps the shared semantic tokens and only overrides the
+ * legacy dark-only surfaces that predate the token layer. Dark remains the
+ * default when no data-theme attribute is present.
+ */
+html[data-theme='light'] {
+  color-scheme: light;
+}
+
+/* Theme changes use the browser's captured old/new document layers when the
+ * runtime supports View Transitions. The fallback remains an immediate change,
+ * and reduced-motion users never receive the crossfade. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-timing-function: cubic-bezier(.16, 1, .3, 1);
+}
+
+::view-transition-old(root) {
+  animation: nocturne-theme-out 180ms ease-out both;
+}
+
+::view-transition-new(root) {
+  animation: nocturne-theme-in 280ms cubic-bezier(.16, 1, .3, 1) both;
+}
+
+@keyframes nocturne-theme-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.012); }
+}
+
+@keyframes nocturne-theme-in {
+  from { opacity: 0; transform: scale(1.012); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+html[data-theme='light'] ::selection {
+  color: #fff;
+  background: var(--color-accent-strong);
+}
+
+html[data-theme='light'] ::-webkit-scrollbar-thumb {
+  background: #c5cbd7;
+}
+
+html[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
+  background: #aeb6c6;
+}
+
+html[data-theme='light'] .main-panel {
+  background: radial-gradient(circle at 50% 4%, rgb(105 72 211 / 8%) 0, transparent 31%), var(--color-canvas);
+}
+
+html[data-theme='light'] .sidebar,
+html[data-theme='light'] .inspector,
+html[data-theme='light'] .settings-navigation,
+html[data-theme='light'] .settings-footer {
+  background: var(--color-panel);
+}
+
+html[data-theme='light'] .topbar,
+html[data-theme='light'] .inspector-header,
+html[data-theme='light'] .settings-header {
+  background: rgb(255 255 255 / 94%);
+}
+
+html[data-theme='light'] .brand-mark,
+html[data-theme='light'] .conversation-icon,
+html[data-theme='light'] .workspace-icon,
+html[data-theme='light'] .assistant-avatar,
+html[data-theme='light'] .artifact-icon,
+html[data-theme='light'] .inspector-tabs b,
+html[data-theme='light'] .agent-mode-switch button span {
+  color: var(--color-accent-strong);
+  background: var(--color-accent-surface);
+  border-color: color-mix(in srgb, var(--color-accent) 24%, var(--color-border));
+}
+
+html[data-theme='light'] .brand b {
+  color: var(--color-accent-strong);
+}
+
+html[data-theme='light'] .new-chat,
+html[data-theme='light'] .welcome-actions button:first-child {
+  color: #fff;
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-strong));
+  border-color: var(--color-accent-strong);
+}
+
+html[data-theme='light'] .new-chat:hover,
+html[data-theme='light'] .welcome-actions button:first-child:hover,
+html[data-theme='light'] .send-button:hover:not(:disabled),
+html[data-theme='light'] .settings-footer .modal-actions .primary:hover {
+  color: #fff;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+html[data-theme='light'] .new-chat kbd {
+  color: #fff;
+  background: rgb(255 255 255 / 20%);
+  border-color: rgb(255 255 255 / 32%);
+}
+
+html[data-theme='light'] .search-box,
+html[data-theme='light'] .composer,
+html[data-theme='light'] .path-pill,
+html[data-theme='light'] .branch-pill,
+html[data-theme='light'] .connection,
+html[data-theme='light'] .attachment-list > span,
+html[data-theme='light'] .message-attachments span,
+html[data-theme='light'] .quick-actions button,
+html[data-theme='light'] .agent-mode-switch button {
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .search-box:focus-within,
+html[data-theme='light'] .composer:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: var(--focus-ring);
+}
+
+html[data-theme='light'] .composer-wrap {
+  background: linear-gradient(#0000, var(--color-canvas) 25%);
+}
+
+html[data-theme='light'] .composer {
+  box-shadow: var(--shadow-md);
+}
+
+html[data-theme='light'] .composer:focus-within {
+  background: var(--color-panel);
+}
+
+html[data-theme='light'] .composer textarea::placeholder {
+  color: var(--color-text-subtle);
+}
+
+html[data-theme='light'] .conversation-item:hover,
+html[data-theme='light'] .conversation-item:focus-within,
+html[data-theme='light'] .workspace-card:hover,
+html[data-theme='light'] .workspace-mini:hover,
+html[data-theme='light'] .icon-button:hover,
+html[data-theme='light'] .icon-button.selected,
+html[data-theme='light'] .settings-button:hover,
+html[data-theme='light'] .inspector-close:hover,
+html[data-theme='light'] .path-pill:hover,
+html[data-theme='light'] .branch-pill:hover,
+html[data-theme='light'] .quick-actions button:hover,
+html[data-theme='light'] .agent-mode-switch button:hover,
+html[data-theme='light'] .secondary-setting:hover,
+html[data-theme='light'] .diagnostic-actions button:hover {
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+}
+
+html[data-theme='light'] .conversation-item.active {
+  color: var(--color-text);
+  background: linear-gradient(90deg, var(--color-accent-surface), var(--color-surface-raised) 74%);
+  box-shadow: inset 2px 0 var(--color-accent), inset 0 0 0 1px rgb(105 72 211 / 12%);
+}
+
+html[data-theme='light'] .conversation-item.active .conversation-icon {
+  color: var(--color-accent-strong);
+  background: #e3defb;
+}
+
+html[data-theme='light'] .workspace-mini.active,
+html[data-theme='light'] .agent-mode-switch button.active {
+  color: var(--color-accent-strong);
+  background: var(--color-accent-surface);
+  border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-border));
+}
+
+html[data-theme='light'] .avatar,
+html[data-theme='light'] .mini-avatar {
+  color: #fff;
+  background: linear-gradient(145deg, var(--color-accent), #3d2a91);
+}
+
+html[data-theme='light'] .user-message {
+  color: var(--color-text);
+  background: var(--color-accent-surface);
+  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
+}
+
+html[data-theme='light'] .assistant-avatar {
+  color: var(--color-accent-strong);
+  background: var(--color-accent-surface);
+  border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+}
+
+html[data-theme='light'] .assistant-content code {
+  color: var(--color-accent-strong);
+  background: var(--color-surface-raised);
+}
+
+html[data-theme='light'] .assistant-content pre code {
+  color: var(--color-text-secondary);
+  background: transparent;
+}
+
+html[data-theme='light'] .assistant-content pre,
+html[data-theme='light'] .approval-card pre,
+html[data-theme='light'] .timeline-item pre,
+html[data-theme='light'] .diff-panel pre,
+html[data-theme='light'] .git-panel > pre,
+html[data-theme='light'] .commit-row input,
+html[data-theme='light'] .diagnostic-summary {
+  color: var(--color-text-secondary);
+  background: var(--color-surface-raised);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .welcome-orb {
+  color: var(--color-accent-strong);
+  background: radial-gradient(circle at 35% 30%, #dcd5fb, var(--color-accent-surface) 65%);
+  border-color: color-mix(in srgb, var(--color-accent) 34%, var(--color-border));
+  box-shadow: var(--shadow-md);
+}
+
+html[data-theme='light'] .welcome-actions button:not(:first-child),
+html[data-theme='light'] .suggestions button {
+  color: var(--color-text-secondary);
+  background: linear-gradient(145deg, var(--color-panel), var(--color-surface-raised));
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .welcome-actions button:hover:not(:first-child),
+html[data-theme='light'] .suggestions button:hover {
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+html[data-theme='light'] .suggestions button > svg {
+  color: var(--color-accent-strong);
+  background: var(--color-accent-surface);
+  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
+}
+
+html[data-theme='light'] .inspector-tabs {
+  background: var(--color-panel);
+}
+
+html[data-theme='light'] .inspector-tabs button:hover,
+html[data-theme='light'] .inspector-tabs button.active {
+  color: var(--color-accent-strong);
+  background: linear-gradient(#0000 65%, rgb(105 72 211 / 10%));
+}
+
+html[data-theme='light'] .timeline-dot.running {
+  color: var(--color-accent-strong);
+  background: var(--color-accent-surface);
+  border-color: color-mix(in srgb, var(--color-accent) 34%, var(--color-border));
+}
+
+html[data-theme='light'] .timeline-dot.completed {
+  color: var(--color-success);
+  background: #e6f5ed;
+  border-color: #9ccdb2;
+}
+
+html[data-theme='light'] .timeline-dot.failed {
+  color: var(--color-danger);
+  background: #fcebed;
+  border-color: #e5a9b3;
+}
+
+html[data-theme='light'] .approval-card {
+  background: linear-gradient(135deg, var(--color-surface-raised), var(--color-panel));
+  border-color: color-mix(in srgb, var(--color-warning) 42%, var(--color-border));
+}
+
+html[data-theme='light'] .approval-card.accepted {
+  border-left-color: var(--color-success);
+}
+
+html[data-theme='light'] .approval-card.declined {
+  border-left-color: var(--color-danger);
+}
+
+html[data-theme='light'] .diff-panel,
+html[data-theme='light'] .files-panel,
+html[data-theme='light'] .git-panel,
+html[data-theme='light'] .document-panel,
+html[data-theme='light'] .artifact-card,
+html[data-theme='light'] .plan-progress {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .diff-title {
+  color: var(--color-text-secondary);
+  background: var(--color-surface-raised);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .diff-panel .added {
+  color: var(--color-success);
+  background: rgb(36 122 79 / 10%);
+}
+
+html[data-theme='light'] .diff-panel .removed {
+  color: var(--color-danger);
+  background: rgb(181 45 67 / 10%);
+}
+
+html[data-theme='light'] .connection.ready,
+html[data-theme='light'] .connection.completed {
+  color: var(--color-success);
+  background: #eaf7f0;
+  border-color: #a9d5bb;
+}
+
+html[data-theme='light'] .connection.running,
+html[data-theme='light'] .connection.starting {
+  color: var(--color-accent-strong);
+  background: var(--color-accent-surface);
+  border-color: #c5b9f0;
+}
+
+html[data-theme='light'] .connection.planning,
+html[data-theme='light'] .connection.waiting-approval,
+html[data-theme='light'] .connection.cancelling,
+html[data-theme='light'] .approval-notice {
+  color: var(--color-warning);
+  background: #fff7e8;
+  border-color: #e5c58f;
+}
+
+html[data-theme='light'] .connection.failed,
+html[data-theme='light'] .error-card {
+  color: var(--color-danger);
+  background: #fcebed;
+  border-color: #e5a9b3;
+}
+
+html[data-theme='light'] .connection.disconnected {
+  color: var(--color-text-muted);
+  background: var(--color-surface-raised);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .mode-build .agent-mode-switch button.active {
+  color: var(--color-warning);
+  background: #fff7e8;
+  border-color: #e5c58f;
+}
+
+html[data-theme='light'] .agent-mode-switch button span {
+  background: var(--color-border-strong);
+}
+
+html[data-theme='light'] .agent-mode-switch button.active span {
+  background: var(--color-accent);
+  box-shadow: 0 0 6px rgb(105 72 211 / 35%);
+}
+
+html[data-theme='light'] .agent-mode-switch button:first-child.active span {
+  background: var(--color-warning);
+}
+
+html[data-theme='light'] .agent-mode-switch button:nth-child(2).active span {
+  background: var(--color-success);
+}
+
+html[data-theme='light'] .agent-mode-switch button:nth-child(3).active span {
+  background: var(--color-info);
+}
+
+html[data-theme='light'] .modal-backdrop,
+html[data-theme='light'] .preview-backdrop,
+html[data-theme='light'] .settings-backdrop,
+html[data-theme='light'] .confirmation-backdrop,
+html[data-theme='light'] .panel-backdrop {
+  background: rgb(31 37 50 / 42%);
+}
+
+html[data-theme='light'] .settings-dialog,
+html[data-theme='light'] .beta-settings,
+html[data-theme='light'] .preview-dialog,
+html[data-theme='light'] .suggestion-dialog,
+html[data-theme='light'] .confirmation-dialog,
+html[data-theme='light'] .memory-dialog {
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+}
+
+html[data-theme='light'] .settings-navigation button:hover:not(.active) {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .settings-navigation button.active {
+  color: var(--color-accent-strong);
+  background: linear-gradient(90deg, var(--color-accent-surface), var(--color-surface-raised) 82%);
+  border-color: color-mix(in srgb, var(--color-accent) 34%, var(--color-border));
+}
+
+html[data-theme='light'] .settings-heading > span,
+html[data-theme='light'] .settings-page-title > span,
+html[data-theme='light'] .workspace-setting-icon,
+html[data-theme='light'] .ai-service-mark {
+  color: var(--color-accent-strong);
+  background: var(--color-accent-surface);
+  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
+}
+
+html[data-theme='light'] .settings-section h3 {
+  color: var(--color-accent-strong);
+}
+
+html[data-theme='light'] .beta-settings input,
+html[data-theme='light'] .beta-settings select,
+html[data-theme='light'] .memory-dialog textarea,
+html[data-theme='light'] .brain-create select,
+html[data-theme='light'] .brain-create textarea,
+html[data-theme='light'] .brain-search select,
+html[data-theme='light'] .brain-edit textarea {
+  color: var(--color-text);
+  background: var(--color-panel);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .beta-settings input:hover:not(:focus),
+html[data-theme='light'] .beta-settings select:hover:not(:focus) {
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+}
+
+html[data-theme='light'] .beta-settings .check-label input[type='checkbox'] {
+  color: #fff;
+  background: var(--color-surface-raised);
+  border-color: var(--color-border-strong);
+  box-shadow: none;
+}
+
+html[data-theme='light'] .beta-settings .check-label input[type='checkbox']:hover:not(:focus) {
+  background: var(--color-surface-hover);
+}
+
+html[data-theme='light'] .beta-settings .check-label input[type='checkbox']:checked {
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
+  box-shadow: 0 0 0 3px rgb(105 72 211 / 18%);
+}
+
+html[data-theme='light'] .diagnostic-summary {
+  background: var(--color-surface-raised);
+}
+
+html[data-theme='light'] .git-diff-warning {
+  color: var(--color-warning);
+  background: #fff7e8;
+  border-color: #e5c58f;
+}
+
+html[data-theme='light'] .file-kind {
+  background: var(--color-surface-raised);
+}
+
+html[data-theme='light'] .commit-row button:disabled {
+  color: var(--color-text-subtle);
+  background: var(--color-surface-raised);
+}
+
+html[data-theme='light'] .export-actions button {
+  color: var(--color-text-secondary);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .export-actions button:hover {
+  color: var(--color-accent-strong);
+  border-color: var(--color-accent);
+}
+
+html[data-theme='light'] .settings-footer.confirm-discard,
+html[data-theme='light'] .memory-footer.confirm-discard,
+html[data-theme='light'] .provider-feedback.error {
+  color: var(--color-danger);
+  background: #fcebed;
+  border-color: #e5a9b3;
+}
+
+html[data-theme='light'] .memory-description b,
+html[data-theme='light'] .workspace-mini-copy small,
+html[data-theme='light'] .workspace-mini > button:last-child {
+  color: var(--color-accent-strong);
+}
+
+html[data-theme='light'] .onboarding-check.ok {
+  color: var(--color-success);
+  background: #e6f5ed;
+}
+
+html[data-theme='light'] .onboarding-check.failed {
+  color: var(--color-danger);
+  background: #fcebed;
+}
+
+html[data-theme='light'] .confirmation-icon {
+  color: var(--color-warning);
+  background: #fff7e8;
+  border-color: #e5c58f;
+}
+
+html[data-theme='light'] .confirmation-icon.danger {
+  color: var(--color-danger);
+  background: #fcebed;
+  border-color: #e5a9b3;
+}
+
+html[data-theme='light'] .jump-latest {
+  color: #fff;
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
+  box-shadow: var(--shadow-md);
+}
+
+html[data-theme='light'] .jump-latest:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+html[data-theme='light'] .product-toast {
+  color: #145234;
+  background: #eaf7f0;
+  border-color: #a9d5bb;
+}
+
+html[data-theme='light'] .product-toast button:hover {
+  color: #145234;
+  background: rgb(36 122 79 / 10%);
+}
+
+/* Legacy surfaces that intentionally keep a dedicated visual treatment. */
+html[data-theme='light'] .brand-mark {
+  box-shadow: inset 0 0 0 1px #c8bff0, 0 6px 20px rgb(82 50 180 / 14%);
+}
+
+html[data-theme='light'] .sidebar-footer {
+  border-color: var(--color-border-subtle);
+}
+
+html[data-theme='light'] .conversation-item:hover {
+  box-shadow: inset 0 0 0 1px rgb(82 50 180 / 10%);
+}
+
+html[data-theme='light'] .workspace-mini.active {
+  border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+}
+
+html[data-theme='light'] .profile {
+  background: var(--color-surface-raised);
+}
+
+html[data-theme='light'] .date-divider::before,
+html[data-theme='light'] .date-divider::after {
+  background: var(--color-border-subtle);
+}
+
+html[data-theme='light'] .assistant-name span {
+  color: var(--color-accent-strong);
+}
+
+html[data-theme='light'] .error-card button {
+  color: var(--color-danger);
+}
+
+html[data-theme='light'] .composer:hover {
+  border-color: var(--color-border-strong);
+}
+
+html[data-theme='light'] .composer:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: var(--focus-ring), var(--shadow-md);
+}
+
+html[data-theme='light'] .send-button {
+  color: #fff;
+  background: var(--color-accent-strong);
+  box-shadow: 0 5px 16px rgb(82 50 180 / 24%);
+}
+
+html[data-theme='light'] .send-button.stop {
+  color: #fff;
+  background: var(--color-danger);
+}
+
+html[data-theme='light'] .send-button:disabled {
+  color: var(--color-text-subtle);
+  background: var(--color-surface-raised);
+}
+
+html[data-theme='light'] .welcome-actions button {
+  color: var(--color-text-secondary);
+  background: var(--color-panel);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .welcome-actions button:hover:not(:first-child) {
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+}
+
+html[data-theme='light'] .inspector-header span,
+html[data-theme='light'] .activity-detail-toggle button {
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .inspector-empty div {
+  color: var(--color-accent-strong);
+  background: var(--color-accent-surface);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 24%, var(--color-border));
+}
+
+html[data-theme='light'] .activity-detail-toggle button:hover {
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+}
+
+html[data-theme='light'] .current-operation {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .current-operation.running > span {
+  color: var(--color-accent-strong);
+  background: var(--color-accent-surface);
+}
+
+html[data-theme='light'] .current-operation.failed > span {
+  color: var(--color-danger);
+  background: #fcebed;
+}
+
+html[data-theme='light'] .activity-priority section {
+  background: var(--color-surface);
+  border-color: color-mix(in srgb, var(--color-warning) 34%, var(--color-border));
+}
+
+html[data-theme='light'] .activity-priority section h3 {
+  color: var(--color-text);
+}
+
+html[data-theme='light'] .activity-priority section h3 span {
+  color: var(--color-warning);
+  background: #fff7e8;
+}
+
+html[data-theme='light'] .plan-progress {
+  background: var(--color-surface);
+}
+
+html[data-theme='light'] .plan-progress > div:first-child span {
+  color: var(--color-accent-strong);
+}
+
+html[data-theme='light'] .progress-track {
+  background: var(--color-border-subtle);
+}
+
+html[data-theme='light'] .progress-track span {
+  background: linear-gradient(90deg, var(--color-accent-strong), var(--color-accent));
+}
+
+html[data-theme='light'] .plan-step > span {
+  color: var(--color-text-muted);
+  background: var(--color-surface-raised);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .plan-step.inProgress > span {
+  color: var(--color-accent-strong);
+  border-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-border));
+}
+
+html[data-theme='light'] .plan-step.completed > span {
+  color: var(--color-success);
+  background: #e6f5ed;
+  border-color: #9ccdb2;
+}
+
+html[data-theme='light'] .plan-actions button,
+html[data-theme='light'] .diagnostic-actions button,
+html[data-theme='light'] .secondary-setting,
+html[data-theme='light'] .onboarding-workspace {
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .plan-actions .primary {
+  color: #fff;
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
+}
+
+html[data-theme='light'] .plan-step input {
+  color: var(--color-text);
+  background: var(--color-panel);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .large-response,
+html[data-theme='light'] .onboarding-fix {
+  color: var(--color-text-secondary);
+  background: var(--color-surface-raised);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .codex-info,
+html[data-theme='light'] .project-summary {
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .brain-dialog {
+  background: var(--color-canvas);
+}
+
+html[data-theme='light'] .brain-create,
+html[data-theme='light'] .brain-library {
+  background: var(--color-panel);
+}
+
+html[data-theme='light'] .brain-mobile-tabs {
+  background: var(--color-panel);
+}
+
+html[data-theme='light'] .brain-card-meta span {
+  background: var(--color-panel);
+}
+
+html[data-theme='light'] .preview-dialog > header,
+html[data-theme='light'] .suggestion-dialog > header {
+  color: var(--color-text);
+  background: var(--color-panel);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .preview-dialog header button:hover,
+html[data-theme='light'] .suggestion-dialog > header button:hover {
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+}
+
+html[data-theme='light'] .preview-content.image {
+  background: repeating-conic-gradient(var(--color-surface-raised) 0 25%, var(--color-panel) 0 50%) 50% / 18px 18px;
+}
+
+html[data-theme='light'] .preview-content.text pre,
+html[data-theme='light'] .preview-content.markdown pre,
+html[data-theme='light'] .proposal-diff {
+  color: var(--color-text-secondary);
+  background: var(--color-surface-raised);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .preview-content.markdown h1,
+html[data-theme='light'] .preview-content.markdown h2,
+html[data-theme='light'] .preview-content.markdown h3 {
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .preview-content.markdown code,
+html[data-theme='light'] .proposal-title button,
+html[data-theme='light'] .commit-suggestion code {
+  color: var(--color-accent-strong);
+}
+
+html[data-theme='light'] .health-card {
+  background: linear-gradient(145deg, var(--color-panel), var(--color-surface-raised));
+}
+
+html[data-theme='light'] .health-grid strong {
+  color: var(--color-accent-strong);
+}
+
+html[data-theme='light'] .suggestion-card:hover {
+  background: var(--color-surface-hover);
+}
+
+html[data-theme='light'] .suggestion-files button,
+html[data-theme='light'] .dialog-files button {
+  color: var(--color-accent-strong);
+  background: var(--color-accent-surface);
+  border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+}
+
+html[data-theme='light'] .suggestion-files button:hover,
+html[data-theme='light'] .dialog-files button:hover {
+  color: var(--color-accent-strong);
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+}
+
+html[data-theme='light'] .suggestion-card footer .apply,
+html[data-theme='light'] .suggestion-dialog > footer .primary,
+html[data-theme='light'] .document-update-dialog > footer .primary {
+  color: #fff;
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
+}
+
+html[data-theme='light'] .suggestion-card footer .apply:hover,
+html[data-theme='light'] .suggestion-dialog > footer .primary:hover,
+html[data-theme='light'] .document-update-dialog > footer .primary:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+html[data-theme='light'] .suggestion-dialog > footer {
+  background: var(--color-surface-raised);
+  border-color: var(--color-border);
+}
+
+html[data-theme='light'] .suggestion-copy-error,
+html[data-theme='light'] .provider-feedback.error {
+  color: var(--color-danger);
+  background: #fcebed;
+  border-color: #e5a9b3;
+}
+
+html[data-theme='light'] .modal-actions .primary {
+  color: #fff;
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
+}
+
+html[data-theme='light'] .modal-actions .primary:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+html[data-theme='light'] .modal-actions .danger,
+html[data-theme='light'] .settings-footer .modal-actions .danger,
+html[data-theme='light'] .memory-footer .modal-actions .danger {
+  color: #fff;
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+html[data-theme='light'] .onboarding-progress span {
+  background: var(--color-border-subtle);
+}
+
+html[data-theme='light'] .onboarding-progress span.active {
+  background: var(--color-accent);
+}

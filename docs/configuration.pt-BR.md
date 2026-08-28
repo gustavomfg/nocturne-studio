@@ -3,8 +3,9 @@
 [English](configuration.md)
 
 Abra **Configurações** para definir modelo selecionado, sandbox e política de
-aprovação do Codex, logs detalhados e conexões de Providers. A interface mantém
-o tema escuro na release atual.
+aprovação do Codex, logs detalhados, conexões de Providers e o tema da
+interface. O tema escuro é o padrão; o tema claro também está disponível em
+Aplicativo.
 
 ## Providers e bindings de modelos
 
