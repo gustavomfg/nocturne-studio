@@ -21,6 +21,17 @@ test.describe('renderer do produto', () => {
     await expect(page.getByRole('button', { name: 'Abrir no WebStorm' })).toBeVisible()
   })
 
+  test('oferece ajuda contextual por botão e atalho de teclado', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await ready(page)
+    await page.getByRole('button', { name: 'Abrir ajuda e atalhos' }).click()
+    const help = page.getByRole('dialog', { name: 'Ajuda e atalhos' })
+    await expect(help.getByText('Nova conversa')).toBeVisible()
+    await help.getByRole('button', { name: 'Fechar ajuda' }).last().click()
+    await page.keyboard.press('?')
+    await expect(page.getByRole('dialog', { name: 'Ajuda e atalhos' })).toBeVisible()
+  })
+
   test('permite selecionar idioma e tema e mantém as preferências após reabrir configurações', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await ready(page)
@@ -412,7 +423,7 @@ test.describe('renderer do produto', () => {
     await dialog.getByRole('button', { name: 'Adicionar conta, API ou modelo local' }).click()
     await expect(dialog.getByText('Escolher acesso')).toBeVisible()
     await dialog.getByRole('button', { name: 'OpenRouter' }).click()
-    await dialog.getByRole('textbox', { name: '' }).fill('sk-or-v1-test')
+    await dialog.getByRole('textbox', { name: 'Chave de API' }).fill('sk-or-v1-test')
     await dialog.getByRole('button', { name: 'Conectar' }).click()
     await expect(dialog.getByText('Escolher modelo')).toBeVisible()
     await expect(dialog.getByText('Claude Sonnet')).toBeVisible()
@@ -454,7 +465,7 @@ test.describe('renderer do produto', () => {
     await expect(dialog.getByText('Escolher acesso')).toBeVisible()
 
     await dialog.getByRole('button', { name: 'OpenRouter' }).click()
-    const secret = dialog.getByRole('textbox', { name: '' })
+    const secret = dialog.getByRole('textbox', { name: 'Chave de API' })
     await secret.fill('temporary-renderer-secret')
 
     await dialog.getByRole('button', { name: 'Conectar' }).click()
@@ -634,8 +645,13 @@ test.describe('renderer do produto', () => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await ready(page)
     await page.getByText('Git e commit').click()
+    const fileCheckbox = page.locator('.git-file-list input[type="checkbox"]').first()
+    await expect(fileCheckbox).not.toBeChecked()
+    await fileCheckbox.check()
     await page.getByRole('textbox', { name: 'Mensagem do commit' }).fill('fix: confirmar operação')
     await page.getByRole('button', { name: 'Criar commit com arquivos selecionados' }).click()
+    await expect(page.getByRole('alertdialog', { name: 'Confirmar commit' })).toBeVisible()
+    await page.getByRole('alertdialog', { name: 'Confirmar commit' }).getByRole('button', { name: 'Criar commit' }).click()
     await expect(page.locator('.product-toast')).toContainText('Commit criado com sucesso.')
   })
 
@@ -829,7 +845,7 @@ test('diferencia o estado vazio sem dados locais', async ({ page }) => {
   await page.setViewportSize({ width: 1180, height: 850 })
   await ready(page)
   await expect(page.getByText('Nenhuma conversa ainda')).toBeVisible()
-  await expect(page.getByText('O que vamos construir?')).toBeVisible()
+  await expect(page.getByText('Comece com uma revisão segura')).toBeVisible()
 })
 
 test('conclui a jornada de primeiro uso e persiste a decisão', async ({ page }) => {
