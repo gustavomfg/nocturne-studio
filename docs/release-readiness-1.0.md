@@ -17,7 +17,7 @@ claim that a stable release has been published.
 
 ## Automated coverage
 
-The current Vitest suite contains **349 tests** across 52 files. The relevant
+The current Vitest suite contains **351 tests** across 52 files. The relevant
 journeys are covered by:
 
 | Area | Evidence in the repository |
@@ -35,7 +35,7 @@ journeys are covered by:
 
 `package-validation.yml` runs source, renderer, ABI, reliability and package
 smoke jobs on `ubuntu-latest`, `windows-latest` and `macos-latest`. The current
-local Playwright run contains **46 tests**; the candidate workflow remains the
+local Playwright run contains **47 tests**; the candidate workflow remains the
 authoritative cross-platform result.
 
 ## Gates closed by current evidence
