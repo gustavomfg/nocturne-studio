@@ -101,6 +101,13 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+      - name: Verify stable tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node -e "const v=require('./package.json').version;const tag=process.env.RELEASE_TAG;if(v.includes('-'))throw new Error('Stable tags require a version without a prerelease suffix: '+v);if(tag !== 'v'+v)throw new Error('Tag '+tag+' does not match package version v'+v)"
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test

@@ -11,6 +11,10 @@ on:
         description: Successful Codex contract smoke run ID for the exact release commit
         required: true
         type: string
+      candidate_sha:
+        description: Full candidate commit SHA validated by source and Codex gates
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -29,6 +33,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ inputs.release_tag }}
       CODEX_SMOKE_RUN_ID: ${{ inputs.codex_smoke_run_id }}
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -41,12 +46,13 @@ jobs:
       - name: Require a stable version and matching tag
         shell: bash
         run: |
-          node -e "const v=require('./package.json').version;const tag=process.env.RELEASE_TAG;if(v.includes('-'))throw new Error('Stable signing requires a version without a prerelease suffix: '+v);if(tag !== 'v'+v)throw new Error('Tag '+tag+' does not match package version v'+v)"
-          test "$(git rev-parse HEAD)" = "$(git rev-list -n 1 "$RELEASE_TAG")"
+          node -e "const v=require('./package.json').version;const tag=process.env.RELEASE_TAG;const sha=(process.env.CANDIDATE_SHA||'').trim();if(v.includes('-'))throw new Error('Stable signing requires a version without a prerelease suffix: '+v);if(tag !== 'v'+v)throw new Error('Tag '+tag+' does not match package version v'+v);if(!/^[0-9a-f]{40}$/.test(sha))throw new Error('candidate_sha must be a lowercase full commit SHA')"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$CANDIDATE_SHA"
       - name: Require a successful Codex smoke for this commit
         shell: bash
         run: |
-          expected_sha="$(git rev-parse HEAD)"
+          expected_sha="$CANDIDATE_SHA"
           run_sha="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CODEX_SMOKE_RUN_ID" --jq .head_sha)"
           conclusion="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CODEX_SMOKE_RUN_ID" --jq .conclusion)"
           event="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CODEX_SMOKE_RUN_ID" --jq .event)"
@@ -65,7 +71,7 @@ jobs:
             --dir "$evidence_dir"
           report_path="$(find "$evidence_dir" -type f -name codex-contract-smoke.json -print -quit)"
           test -n "$report_path"
-          EXPECTED_SHA="$(git rev-parse HEAD)" REPORT_PATH="$report_path" node <<'NODE'
+          EXPECTED_SHA="$CANDIDATE_SHA" REPORT_PATH="$report_path" node <<'NODE'
           const fs = require('node:fs')
           const report = JSON.parse(fs.readFileSync(process.env.REPORT_PATH, 'utf8'))
           const expectedSha = process.env.EXPECTED_SHA
@@ -114,6 +120,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     env:
       RELEASE_TAG: ${{ inputs.release_tag }}
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
       CSC_LINK: ${{ (matrix.os == 'macos-latest' && secrets.MAC_CSC_LINK) || (matrix.os == 'windows-latest' && secrets.WIN_CSC_LINK) || '' }}
       CSC_KEY_PASSWORD: ${{ (matrix.os == 'macos-latest' && secrets.MAC_CSC_KEY_PASSWORD) || (matrix.os == 'windows-latest' && secrets.WIN_CSC_KEY_PASSWORD) || '' }}
       APPLE_ID: ${{ matrix.os == 'macos-latest' && secrets.APPLE_ID || '' }}
@@ -133,7 +140,9 @@ jobs:
       - name: Require a stable version
         shell: bash
         run: |
-          node -e "const v=require('./package.json').version;const tag=process.env.RELEASE_TAG;if(v.includes('-'))throw new Error('Stable signing requires a version without a prerelease suffix: '+v);if(tag !== 'v'+v)throw new Error('Tag '+tag+' does not match package version v'+v)"
+          node -e "const v=require('./package.json').version;const tag=process.env.RELEASE_TAG;const sha=(process.env.CANDIDATE_SHA||'').trim();if(v.includes('-'))throw new Error('Stable signing requires a version without a prerelease suffix: '+v);if(tag !== 'v'+v)throw new Error('Tag '+tag+' does not match package version v'+v);if(!/^[0-9a-f]{40}$/.test(sha))throw new Error('candidate_sha must be a lowercase full commit SHA')"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$CANDIDATE_SHA"
       - name: Require platform signing credentials
         shell: bash
         run: |
@@ -207,13 +216,21 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
+      actions: read
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ inputs.release_tag }}
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.release_tag }}
+          fetch-depth: 0
+      - name: Require the verified candidate SHA
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$CANDIDATE_SHA"
       - uses: actions/download-artifact@v8
         with:
           pattern: nocturne-signed-*

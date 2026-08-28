@@ -10,6 +10,8 @@ claim that a stable release has been published.
 - Candidate SHA: must be recorded by the final candidate commit and every
   release workflow; a local build from another SHA is not release evidence.
 - Expected stable tag: `v1.0.0`.
+- Stable workflow inputs: `release_tag`, the lowercase full `candidate_sha`, and the
+  successful `codex_smoke_run_id` for that exact SHA.
 - Product identity remains `com.nocturne.codex` / `Nocturne Studio` so existing
   user-data and update paths remain compatible.
 
@@ -73,15 +75,17 @@ smoke jobs.
 ## Open gates before publication
 
 1. Create the final candidate commit and record its exact SHA.
-2. Create tag `v1.0.0` only after that SHA has passed the source and renderer
-   gates.
-3. Run the authenticated Codex smoke and pass its exact run ID to
-   `stable-release.yml`; the report must match the tag SHA and `1.0.0`.
-4. Complete the protected signed-package matrix: Windows signing, macOS signing
+2. Run the source, renderer, ABI, reliability and unsigned package gates for
+   that SHA; the tag must also pass the package-version check.
+3. Create tag `v1.0.0` only after those gates pass.
+4. Run the authenticated Codex smoke from the exact candidate SHA and pass its
+   run ID and SHA to `stable-release.yml`; the report must match the tag SHA and
+   `1.0.0`.
+5. Complete the protected signed-package matrix: Windows signing, macOS signing
    and notarization, and Linux GPG checksum signing.
-5. Run the short [manual RC checklist](release-rc-checklist.md), including the
+6. Run the short [manual RC checklist](release-rc-checklist.md), including the
    native recovery-consent dialog, first startup and install/update checks.
-6. Verify checksums, release-asset inventory and the protected stable approval
+7. Verify checksums, release-asset inventory and the protected stable approval
    before publishing.
 
 The updater rehearsal proves the beta-to-stable metadata path; it does not
