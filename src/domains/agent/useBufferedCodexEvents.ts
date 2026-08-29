@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { Activity } from '../../types'
 import { useAppStore } from '../../store'
 import { describeChanges, humanizeCommand, parseChanges } from '../../shared/format'
@@ -12,18 +12,18 @@ export function useBufferedAgentEvents() {
   const activityBuffersRef = useRef(new Map<string, { type: Activity['type']; label: string; detail: string }>())
   const activityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const flushStream = () => {
+  const flushStream = useCallback(() => {
     if (streamTimerRef.current) clearTimeout(streamTimerRef.current)
     streamTimerRef.current = null
     const buffered = streamBufferRef.current; streamBufferRef.current = ''
     if (buffered) useAppStore.getState().appendStream(buffered)
-  }
-  const queueStreamDelta = (delta: string) => {
+  }, [])
+  const queueStreamDelta = useCallback((delta: string) => {
     streamBufferRef.current += delta
     if (streamBufferRef.current.length > 100_000) streamBufferRef.current = streamBufferRef.current.slice(-100_000)
     if (!streamTimerRef.current) streamTimerRef.current = setTimeout(flushStream, UI_TIMING.streamFlushMs)
-  }
-  const flushActivityDetails = () => {
+  }, [flushStream])
+  const flushActivityDetails = useCallback(() => {
     if (activityTimerRef.current) clearTimeout(activityTimerRef.current)
     activityTimerRef.current = null
     const store = useAppStore.getState()
@@ -32,27 +32,27 @@ export function useBufferedAgentEvents() {
       store.upsertActivity({ id, type: buffered.type, label: current?.label || buffered.label, detail: `${current?.detail || ''}${buffered.detail}`.slice(-64_000), status: 'running' })
     }
     activityBuffersRef.current.clear()
-  }
-  const appendActivityDetail = (id: string, type: Activity['type'], label: string, delta: string) => {
+  }, [])
+  const appendActivityDetail = useCallback((id: string, type: Activity['type'], label: string, delta: string) => {
     const buffered = activityBuffersRef.current.get(id)
     activityBuffersRef.current.set(id, { type, label: buffered?.label || label, detail: `${buffered?.detail || ''}${delta}`.slice(-64_000) })
     if (!activityTimerRef.current) activityTimerRef.current = setTimeout(flushActivityDetails, UI_TIMING.activityFlushMs)
-  }
-  const addItemActivity = (item?: Record<string, unknown>) => {
+  }, [flushActivityDetails])
+  const addItemActivity = useCallback((item?: Record<string, unknown>) => {
     if (!item) return
     const store = useAppStore.getState(); const type = String(item.type)
     if (type === 'commandExecution') store.upsertActivity({ id: String(item.id), type: 'command', label: humanizeCommand(String(item.command ?? ''), language), detail: String(item.command ?? ''), status: 'running' })
     if (type === 'fileChange') store.upsertActivity({ id: String(item.id), type: 'file', label: t('agent.preparingFileChanges'), status: 'running' })
     if (type === 'mcpToolCall' || type === 'dynamicToolCall') store.upsertActivity({ id: String(item.id), type: 'read', label: `${t('common.tool')}: ${String(item.tool ?? type)}`, detail: JSON.stringify(item.arguments ?? ''), status: 'running' })
-  }
-  const completeItem = (item?: Record<string, unknown>) => {
+  }, [language, t])
+  const completeItem = useCallback((item?: Record<string, unknown>) => {
     if (!item) return
     flushActivityDetails()
     const store = useAppStore.getState(); const type = String(item.type)
     if (type === 'commandExecution') store.upsertActivity({ id: String(item.id), type: 'command', label: humanizeCommand(String(item.command ?? ''), language), detail: [String(item.command ?? ''), String(item.aggregatedOutput ?? '')].filter(Boolean).join('\n\n'), status: item.status === 'failed' ? 'failed' : 'completed' })
     if (type === 'fileChange') { store.upsertActivity({ id: String(item.id), type: 'file', label: t('common.filesUpdated'), detail: describeChanges(item.changes), status: item.status === 'failed' ? 'failed' : 'completed' }); store.addFiles(parseChanges(item.changes)) }
     if (type === 'mcpToolCall' || type === 'dynamicToolCall') store.upsertActivity({ id: String(item.id), type: 'read', label: `${t('common.completedTool')}: ${String(item.tool ?? type)}`, detail: item.error ? JSON.stringify(item.error) : undefined, status: item.error ? 'failed' : 'completed' })
-  }
+  }, [flushActivityDetails, language, t])
 
   useEffect(() => () => {
     if (streamTimerRef.current) clearTimeout(streamTimerRef.current)

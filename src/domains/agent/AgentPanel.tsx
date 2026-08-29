@@ -10,6 +10,7 @@ import { useOffCanvasPanel } from '../../shared/useOffCanvasPanel'
 import { DocumentUpdateDialog } from './DocumentUpdateDialog'
 import { parseAwarenessSnapshot } from '../../../shared/awareness'
 import { useI18n } from '../../shared/i18n'
+import { useRendererRenderCounter } from '../../shared/rendererDiagnostics'
 
 interface AgentPanelProps {
   open: boolean; compact: boolean; triggerRef: RefObject<HTMLElement | null>; gitInfo: GitInfo | null;
@@ -20,6 +21,7 @@ interface AgentPanelProps {
 const tabs = ['activity', 'plan', 'suggestions', 'artifacts'] as const
 
 export function AgentPanel({ open: isOpen, compact, triggerRef, gitInfo, artifactsHaveMore, suggestionsHaveMore, loadingCollection, onClose, onDecide, onError, onNotify, onGitRefresh, onArtifactsRefresh, onLoadMoreArtifacts, onLoadMoreSuggestions, onPreview, onArtifact, onDeleteArtifact, onSuggestionStatus, onSuggestionApply, onPlanChange, onPlanExecute }: AgentPanelProps) {
+  useRendererRenderCounter('agentPanel')
   const { t, language } = useI18n()
   const { activities, approvals, diff, files, artifacts, suggestions, plan, planExplanation, activeId, documentContent, awarenessMetadata } = useAppStore(useShallow((state) => ({
     activities: state.activities, approvals: state.approvals, diff: state.diff, files: state.files, artifacts: state.artifacts, suggestions: state.suggestions,

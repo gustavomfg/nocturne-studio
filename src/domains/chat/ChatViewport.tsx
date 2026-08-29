@@ -5,6 +5,7 @@ import { useAppStore } from '../../store'
 import { AssistantMessage, MessageBubble, Welcome } from './ChatContent'
 import { explainProductError } from '../../shared/productError'
 import { useI18n } from '../../shared/i18n'
+import { useRendererRenderCounter } from '../../shared/rendererDiagnostics'
 
 const dayKey = (value: string, locale: string) => new Date(value).toLocaleDateString(locale)
 const dayLabel = (value: string, language: 'pt-BR' | 'en') => {
@@ -53,6 +54,7 @@ function StreamingResponse({ chatScrollRef, stickToBottomRef, onNewContent }: Pi
 }
 
 export function ChatViewport({ active, messages, error, historyHasMore, historyHasNewer, historyLoading, newContent, chatScrollRef, endRef, stickToBottomRef, onNew, onWorkspace, onPrompt, onLoadOlder, onLoadLatest, onScroll, onNewContent, onDismissError, onRetryError, onJumpLatest }: ChatViewportProps) {
+  useRendererRenderCounter('chat')
   const { language, t } = useI18n()
   const errorDetails = error ? explainProductError(error, language) : null
   const errorCard = errorDetails && <div className="error-card" role="alert" aria-live="assertive"><AlertTriangle size={18}/><div><strong>{errorDetails.title}</strong><p>{errorDetails.cause}</p><small><b>{t('error.preserved')}:</b> {errorDetails.preserved}</small><small><b>{t('error.resolution')}:</b> {errorDetails.resolution}</small></div><span>{onRetryError && errorDetails.retryable && <button onClick={onRetryError}><RotateCcw size={13}/>{t('error.retry')}</button>}<button onClick={onDismissError}><X size={13}/>{t('common.close')}</button></span></div>

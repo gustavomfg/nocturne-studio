@@ -3,6 +3,7 @@ import { Code2, FileCode2, GitBranch, Paperclip, Send, ShieldCheck, Square, X } 
 import type { AgentMode, Attachment } from '../../types'
 import { isBusy } from '../../shared/format'
 import { useI18n } from '../../shared/i18n'
+import { useRendererRenderCounter } from '../../shared/rendererDiagnostics'
 
 interface ComposerProps {
   agentMode: AgentMode; attachments: Attachment[]; prompt: string; status: string; finalizing: boolean; active: boolean; pendingApprovals: number; composerRef: RefObject<HTMLTextAreaElement | null>;
@@ -16,6 +17,7 @@ const modes: Array<{ id: AgentMode; labelKey: string; descriptionKey: string }> 
 ]
 
 export function Composer({ agentMode, attachments, prompt, status, finalizing, active, pendingApprovals, composerRef, onMode, onPrompt, onRemoveAttachment, onAttach, onCancel, onSubmit, onQuick }: ComposerProps) {
+  useRendererRenderCounter('composer')
   const { t } = useI18n()
   const busy = isBusy(status) || finalizing
   useLayoutEffect(() => {
