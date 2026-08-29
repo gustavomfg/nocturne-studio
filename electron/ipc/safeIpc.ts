@@ -1,7 +1,23 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
+import { performance } from 'node:perf_hooks'
 import { isMainProcessOperational } from '../runtime/MainProcessState'
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
+
+export interface SafeIpcMain {
+  handle(channel: string, handler: Handler): void
+  dispose(): void
+}
+
+export interface IpcTimingRecord {
+  channel: string
+  durationMs: number
+  failed: boolean
+}
+
+export interface SafeIpcMainOptions {
+  onCompleted?(record: IpcTimingRecord): void
+}
 
 interface RateLimitConfig {
   windowMs: number
@@ -26,19 +42,44 @@ const RATE_LIMITS: Record<string, RateLimitConfig> = {
   'clipboard:readText': { windowMs: 1_000, maxCalls: 10 },
 }
 
-export function safeIpcMain(win: BrowserWindow) {
+export function safeIpcMain(win: BrowserWindow, options: SafeIpcMainOptions = {}): SafeIpcMain {
   const channels = new Set<string>()
   const callLog = new Map<string, number[]>()
   let disposed = false
+  const report = (channel: string, startedAt: number, failed: boolean) => {
+    try {
+      options.onCompleted?.({ channel, durationMs: Math.max(0, Math.round(performance.now() - startedAt)), failed })
+    } catch {
+      // Observability must never change the IPC operation's behavior.
+    }
+  }
+  const invoke = (channel: string, handler: Handler, event: IpcMainInvokeEvent, args: unknown[]) => {
+    const startedAt = performance.now()
+    const finish = (failed: boolean) => report(channel, startedAt, failed)
+    try {
+      const result = handler(event, ...args)
+      if (result && typeof (result as PromiseLike<unknown>).then === 'function') {
+        return Promise.resolve(result).then(
+          (value) => { finish(false); return value },
+          (error: unknown) => { finish(true); throw error },
+        )
+      }
+      finish(false)
+      return result
+    } catch (error) {
+      finish(true)
+      throw error
+    }
+  }
   return {
     handle(channel: string, handler: Handler) {
       if (disposed) throw new Error('O registro de handlers IPC já foi descartado.')
       if (channels.has(channel)) throw new Error(`Handler IPC duplicado: ${channel}.`)
-      ipcMain.handle(channel, (event, ...args) => {
+      ipcMain.handle(channel, (event, ...args) => invoke(channel, (trustedEvent, ...trustedArgs) => {
         if (!isMainProcessOperational()) throw new Error('O processo principal está encerrando após uma falha fatal.')
         const trustedContents = win.webContents
         const expectedUrl = trustedContents.getURL()
-        if (event.sender !== trustedContents || event.senderFrame !== trustedContents.mainFrame || !expectedUrl || event.senderFrame.url !== expectedUrl) {
+        if (trustedEvent.sender !== trustedContents || trustedEvent.senderFrame !== trustedContents.mainFrame || !expectedUrl || trustedEvent.senderFrame.url !== expectedUrl) {
           throw new Error(`Origem IPC não autorizada para ${channel}.`)
         }
         const config = RATE_LIMITS[channel] ?? RATE_LIMITS.default
@@ -54,8 +95,8 @@ export function safeIpcMain(win: BrowserWindow) {
           throw new Error(`Limite de taxa excedido para ${channel}. Tente novamente em alguns instantes.`)
         }
         timestamps.push(now)
-        return handler(event, ...args)
-      })
+        return handler(trustedEvent, ...trustedArgs)
+      }, event, args))
       channels.add(channel)
     },
     dispose() {
