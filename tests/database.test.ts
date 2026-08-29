@@ -74,6 +74,19 @@ describe('persistência SQLite', () => {
     expect(db.getWorkspaceMemory(workspace).content).toBe('decisão')
     expect(db.listArtifacts(conversation.id)[0].type).toBe('markdown'); db.close()
   })
+  it('expõe métricas agregadas das operações de persistência sem dados de conteúdo', () => {
+    const db = create(); const conversation = db.createConversation('/tmp/observability')
+    const metrics: Array<{ operation: string; durationMs: number; failed: boolean }> = []
+    db.setOperationObserver((metric) => metrics.push(metric))
+    db.listConversationPage()
+    db.addMessage(conversation.id, 'user', 'Conteúdo que não deve aparecer na métrica')
+    db.listMessagePage(conversation.id)
+
+    expect(metrics.map(({ operation }) => operation)).toEqual(expect.arrayContaining(['conversations.page', 'messages.page']))
+    expect(metrics.every(({ durationMs, failed }) => Number.isFinite(durationMs) && durationMs >= 0 && failed === false)).toBe(true)
+    expect(JSON.stringify(metrics)).not.toContain('Conteúdo que não deve aparecer')
+    db.close()
+  })
   it('mantém metadata de turns dentro do contrato de backup sem escrita parcial', () => {
     const db = create(); const workspace = '/tmp/metadata-contract'; const conversation = db.createConversation(workspace)
     const metadataAtLimit = 'x'.repeat(PERSISTENCE_LIMITS.metadataCharacters - 2)
