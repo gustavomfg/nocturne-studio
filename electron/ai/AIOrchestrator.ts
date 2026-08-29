@@ -92,6 +92,7 @@ export class AIOrchestrator {
       const rawResult = await adapter.execute(request, {
         signal,
         emit(payload) {
+          if (stream.status === 'terminal') return
           const normalized = providerStreamPayloadSchema.parse(payload)
           stream.emit(normalized)
         },
