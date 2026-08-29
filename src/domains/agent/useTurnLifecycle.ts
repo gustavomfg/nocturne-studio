@@ -6,7 +6,7 @@ import { PERSISTENCE_LIMITS } from '../../../shared/constants'
 import { isJsonValueWithinLimit } from '../../../shared/json'
 import { useI18n } from '../../shared/i18n'
 
-export interface ActiveTurnContext { conversationId: string; mode: AgentMode; suggestionId: string | null; suggestionFiles: string[] }
+export interface ActiveTurnContext { conversationId: string; mode: AgentMode; suggestionId: string | null; suggestionFiles: string[]; runId: string | null }
 
 export function useTurnLifecycle({ flushStream, activeTurnRef, refreshGit }: { flushStream(): void; activeTurnRef: MutableRefObject<ActiveTurnContext | null>; refreshGit(conversationId: string): Promise<void> }) {
   const { t } = useI18n()
