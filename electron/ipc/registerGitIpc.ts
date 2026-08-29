@@ -5,9 +5,10 @@ import { promisify } from 'node:util'
 import type { LocalDatabase } from '../database/Database'
 import { gitCommitSchema, idSchema } from '../../shared/ipc/schemas'
 import { resolveInsideWorkspace } from '../security/ExecutionPolicy'
-import { safeIpcMain } from './safeIpc'
+import { safeIpcMain, type SafeIpcMain } from './safeIpc'
 import { getAuthorizedConversation } from './conversationAccess'
 import { redactLogText } from '../logging/Logger'
+import { IPC_CHANNELS } from '../../shared/ipc/channels'
 
 const run = promisify(execFile)
 const MAX_DIFF_CHARACTERS = 1_500_000
@@ -15,10 +16,11 @@ const MAX_GIT_FILES = 5_000
 const GIT_OUTPUT_BUFFER = 8_000_000
 const MAX_GIT_STATUS_CHARACTERS = 8_000_000
 
-export function registerGitIpc(win: BrowserWindow, database: LocalDatabase) {
-  const ipcMain = safeIpcMain(win)
-  ipcMain.handle('git:status', async (_event, value: unknown) => gitStatus(getWorkspace(database, idSchema.parse(value))))
-  ipcMain.handle('git:commit', async (_event, value: unknown) => {
+export function registerGitIpc(win: BrowserWindow, database: LocalDatabase, registrar?: SafeIpcMain) {
+  const ipcMain = registrar ?? safeIpcMain(win)
+  const ownsRegistrar = !registrar
+  ipcMain.handle(IPC_CHANNELS.git.status, async (_event, value: unknown) => gitStatus(getWorkspace(database, idSchema.parse(value))))
+  ipcMain.handle(IPC_CHANNELS.git.commit, async (_event, value: unknown) => {
     const data = gitCommitSchema.parse(value)
     const workspace = getWorkspace(database, data.conversationId)
     const current = await gitStatus(workspace)
@@ -32,7 +34,7 @@ export function registerGitIpc(win: BrowserWindow, database: LocalDatabase) {
     const { stdout } = await run('git', ['commit', '-m', data.message], { cwd: workspace, timeout: 60_000, maxBuffer: GIT_OUTPUT_BUFFER })
     return { output: stdout.trim() }
   })
-  return () => ipcMain.dispose()
+  return () => { if (ownsRegistrar) ipcMain.dispose() }
 }
 
 export function resolveSelectedGitFiles(currentFiles: Array<{ path: string; originalPath?: string }>, requestedFiles: string[]) {

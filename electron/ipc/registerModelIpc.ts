@@ -12,7 +12,7 @@ import type { ModelCatalogRefreshResult } from '../ai/ModelCatalogService'
 import { ProviderRegistryError } from '../ai/ProviderRegistry'
 import type { LocalDatabase } from '../database/Database'
 import { getAuthorizedWorkspace } from './conversationAccess'
-import { safeIpcMain } from './safeIpc'
+import { safeIpcMain, type SafeIpcMain } from './safeIpc'
 
 export interface ModelCatalogOperations {
   list(): ModelDescriptor[]
@@ -32,8 +32,10 @@ export function registerModelIpc(
   win: BrowserWindow,
   database: LocalDatabase,
   catalog: ModelCatalogOperations,
+  registrar?: SafeIpcMain,
 ) {
-  const ipcMain = safeIpcMain(win)
+  const ipcMain = registrar ?? safeIpcMain(win)
+  const ownsRegistrar = !registrar
 
   ipcMain.handle(IPC_CHANNELS.models.list, () => execute(() =>
     z.array(modelDescriptorSchema).max(25_000).parse(catalog.list())))
@@ -61,7 +63,7 @@ export function registerModelIpc(
       ) as WorkspaceModelBindings
     }))
 
-  return () => ipcMain.dispose()
+  return () => { if (ownsRegistrar) ipcMain.dispose() }
 }
 
 async function execute<T>(

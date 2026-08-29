@@ -3,12 +3,11 @@ import fs from 'node:fs'
 import { spawn } from 'node:child_process'
 import { z } from 'zod'
 import type { LocalDatabase } from '../database/Database'
-import { idSchema, pageSchema, workspaceFavoriteSchema, workspaceToolSchema } from '../../shared/ipc/schemas'
-import { safeIpcMain } from './safeIpc'
+import { workspaceFavoriteSchema, workspaceToolSchema } from '../../shared/ipc/schemas'
+import { safeIpcMain, type SafeIpcMain } from './safeIpc'
 import { assertSafeWorkspaceScope, inspectWorkspaceScope } from '../security/WorkspaceTrust'
 import { WorkspaceChangeWatcher } from '../workspaces/WorkspaceChangeWatcher'
 import { IPC_CHANNELS } from '../../shared/ipc/channels'
-import { getAuthorizedConversation } from './conversationAccess'
 import { resolveExecutable } from '../runtime/resolveExecutable'
 
 interface Dependencies {
@@ -17,10 +16,11 @@ interface Dependencies {
   run(command: string, args: string[], cwd: string): Promise<unknown>
 }
 
-export function registerWorkspaceIpc(win: BrowserWindow, database: LocalDatabase, dependencies: Dependencies) {
-  const ipcMain = safeIpcMain(win)
+export function registerWorkspaceIpc(win: BrowserWindow, database: LocalDatabase, dependencies: Dependencies, registrar?: SafeIpcMain) {
+  const ipcMain = registrar ?? safeIpcMain(win)
+  const ownsRegistrar = !registrar
   const changeWatcher = new WorkspaceChangeWatcher((event) => win.webContents.send(IPC_CHANNELS.workspace.changed, event))
-  ipcMain.handle('workspace:select', async (_event, value: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.workspace.select, async (_event, value: unknown) => {
     const expected = z.string().trim().min(1).max(4_000).optional().parse(value)
     const expectedInspection = expected ? inspectWorkspaceScope(expected) : null
     if (expectedInspection?.availability === 'invalid' || expectedInspection?.availability === 'permission-denied') {
@@ -58,8 +58,8 @@ export function registerWorkspaceIpc(win: BrowserWindow, database: LocalDatabase
     database.touchWorkspace(storedWorkspace)
     return storedWorkspace
   })
-  ipcMain.handle('workspace:validate', (_event, value: unknown) => { try { return assertSafeWorkspaceScope(z.string().min(1).parse(value)) } catch { return null } })
-  ipcMain.handle('workspaces:list', () => database.listWorkspaces().map((workspace) => {
+  ipcMain.handle(IPC_CHANNELS.workspace.validate, (_event, value: unknown) => { try { return assertSafeWorkspaceScope(z.string().min(1).parse(value)) } catch { return null } })
+  ipcMain.handle(IPC_CHANNELS.workspace.list, () => database.listWorkspaces().map((workspace) => {
     const inspection = inspectWorkspaceScope(workspace.path)
     return {
       ...workspace,
@@ -68,9 +68,9 @@ export function registerWorkspaceIpc(win: BrowserWindow, database: LocalDatabase
       ...(inspection.message ? { availabilityMessage: inspection.message } : {}),
     }
   }))
-  ipcMain.handle('workspaces:remove', (_event, value: unknown) => database.removeWorkspace(z.string().min(1).parse(value)))
-  ipcMain.handle('workspaces:favorite', (_event, value: unknown) => { const data = workspaceFavoriteSchema.parse(value); dependencies.assertKnownWorkspace(data.workspace); database.setWorkspaceFavorite(data.workspace, data.favorite) })
-  ipcMain.handle('workspace:watch', (_event, value: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.workspace.remove, (_event, value: unknown) => database.removeWorkspace(z.string().min(1).parse(value)))
+  ipcMain.handle(IPC_CHANNELS.workspace.favorite, (_event, value: unknown) => { const data = workspaceFavoriteSchema.parse(value); dependencies.assertKnownWorkspace(data.workspace); database.setWorkspaceFavorite(data.workspace, data.favorite) })
+  ipcMain.handle(IPC_CHANNELS.workspace.watch, (_event, value: unknown) => {
     const requested = z.string().trim().min(1).max(4_000).nullable().parse(value)
     if (requested === null) {
       return changeWatcher.stop()
@@ -78,7 +78,7 @@ export function registerWorkspaceIpc(win: BrowserWindow, database: LocalDatabase
     const workspace = dependencies.assertKnownWorkspace(requested)
     return changeWatcher.start(workspace)
   })
-  ipcMain.handle('workspace:openTool', async (_event, value: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.workspace.openTool, async (_event, value: unknown) => {
     const data = workspaceToolSchema.parse(value); const workspace = dependencies.assertKnownWorkspace(data.workspace)
     if (!fs.existsSync(workspace)) throw new Error('Workspace não encontrado.')
     if (data.tool === 'editor') {
@@ -96,20 +96,8 @@ export function registerWorkspaceIpc(win: BrowserWindow, database: LocalDatabase
       child.once('spawn', () => { child.unref(); resolve() })
     })
   })
-  ipcMain.handle('conversations:list', () => database.listConversations())
-  ipcMain.handle('conversations:page', (_event, value: unknown) => { const data = pageSchema.parse(value); return database.listConversationPage(data.offset, data.limit) })
-  ipcMain.handle('conversations:create', async (_event, value: unknown) => { const workspace = dependencies.assertKnownWorkspace(z.string().min(1).parse(value)); await dependencies.ensureWorkspace(workspace); return database.createConversation(workspace) })
-  ipcMain.handle('conversations:messages', (_event, value: unknown) => database.listMessages(idSchema.parse(value)))
-  ipcMain.handle('conversations:messagePage', (_event, value: unknown) => {
-    const data = z.object({ id: idSchema, offset: z.number().int().min(0).max(1_000_000), limit: z.number().int().min(1).max(200) }).strict().parse(value)
-    return database.listMessagePage(data.id, data.offset, data.limit)
-  })
-  ipcMain.handle('conversations:delete', (_event, value: unknown) => {
-    const conversation = getAuthorizedConversation(database, idSchema.parse(value))
-    database.deleteConversation(conversation.id)
-  })
   return async () => {
-    ipcMain.dispose()
+    if (ownsRegistrar) ipcMain.dispose()
     await changeWatcher.stop()
   }
 }

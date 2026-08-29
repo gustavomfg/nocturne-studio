@@ -6,13 +6,15 @@ import type { LocalDatabase } from '../database/Database'
 import type { Logger } from '../logging/Logger'
 import { backupSchema } from '../../shared/ipc/backupSchemas'
 import { assertBackupByteLimit, assertBackupMetrics, assertBackupRecordLimit, countBackupRecords } from '../../shared/ipc/backupLimits'
-import { safeIpcMain } from './safeIpc'
+import { safeIpcMain, type SafeIpcMain } from './safeIpc'
 import { parseBackupInWorker, serializeBackupInWorker } from './backupWorkers'
 import { assertSafeWorkspaceScope } from '../security/WorkspaceTrust'
+import { IPC_CHANNELS } from '../../shared/ipc/channels'
 
-export function registerDataIpc(win: BrowserWindow, database: LocalDatabase, logger: Logger) {
-  const ipcMain = safeIpcMain(win)
-  ipcMain.handle('data:export', async () => {
+export function registerDataIpc(win: BrowserWindow, database: LocalDatabase, logger: Logger, registrar?: SafeIpcMain) {
+  const ipcMain = registrar ?? safeIpcMain(win)
+  const ownsRegistrar = !registrar
+  ipcMain.handle(IPC_CHANNELS.data.export, async () => {
     const warning = await dialog.showMessageBox(win, { type: 'info', buttons: ['Continuar', 'Cancelar'], defaultId: 0, cancelId: 1, title: 'Exportar dados do Nocturne', message: 'O backup inclui todas as conversas, memórias e artefatos do workspace.', detail: 'Credenciais de API não são exportadas. Mantenha o arquivo em local seguro — ele contém o histórico completo de conversas e dados do projeto.' })
     if (warning.response !== 0) return null
     const result = await dialog.showSaveDialog(win, { title: 'Exportar dados do Nocturne', defaultPath: 'nocturne-backup.json', filters: [{ name: 'JSON', extensions: ['json'] }] })
@@ -28,7 +30,7 @@ export function registerDataIpc(win: BrowserWindow, database: LocalDatabase, log
     logger.info('persistence', 'Dados exportados', { bytes: Buffer.byteLength(serialized), durationMs: Math.round(performance.now() - startedAt) })
     return result.filePath
   })
-  ipcMain.handle('data:import', async () => {
+  ipcMain.handle(IPC_CHANNELS.data.import, async () => {
     const result = await dialog.showOpenDialog(win, { title: 'Importar dados do Nocturne', properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] })
     if (result.canceled || !result.filePaths[0]) return false
     const importPath = result.filePaths[0]
@@ -54,7 +56,7 @@ export function registerDataIpc(win: BrowserWindow, database: LocalDatabase, log
     logger.info('persistence', 'Dados importados', { recoveryPath, scope, records: countBackupRecords(validated), durationMs: Math.round(performance.now() - startedAt) })
     return true
   })
-  return () => ipcMain.dispose()
+  return () => { if (ownsRegistrar) ipcMain.dispose() }
 }
 
 async function atomicWriteBackup(destination: string, content: string) {

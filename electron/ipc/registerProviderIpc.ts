@@ -16,7 +16,7 @@ import {
   ProviderConfigurationServiceError,
   type ProviderCredentialChange,
 } from '../ai/ProviderConfigurationService'
-import { safeIpcMain } from './safeIpc'
+import { safeIpcMain, type SafeIpcMain } from './safeIpc'
 
 export interface ProviderConfigurationOperations {
   list(): ProviderConfigurationSummary[]
@@ -86,8 +86,10 @@ const providerDiagnosticSchema = z.object({
 export function registerProviderIpc(
   win: BrowserWindow,
   service: ProviderConfigurationOperations,
+  registrar?: SafeIpcMain,
 ) {
-  const ipcMain = safeIpcMain(win)
+  const ipcMain = registrar ?? safeIpcMain(win)
+  const ownsRegistrar = !registrar
 
   ipcMain.handle(IPC_CHANNELS.providers.list, () => execute(() =>
     z.array(providerConfigurationSummarySchema).parse(service.list())))
@@ -129,7 +131,7 @@ export function registerProviderIpc(
       return providerDiagnosticSchema.parse(await service.diagnose(value.id))
     }))
 
-  return () => ipcMain.dispose()
+  return () => { if (ownsRegistrar) ipcMain.dispose() }
 }
 
 async function execute<T>(
