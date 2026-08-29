@@ -307,6 +307,11 @@ async function initializeServices() {
   await recoverDatabaseIfNeeded(userDataPath)
   database = new LocalDatabase(userDataPath)
   logger = new Logger(app.getPath('logs'), database.getSettings().diagnosticMode === 'true')
+  database.setOperationObserver(({ operation, durationMs, failed }) => {
+    const details = { operation, durationMs, failed }
+    if (failed || durationMs >= 50) logger!.warn('persistence', 'Operação SQLite concluída com atenção.', details)
+    else logger!.debug('persistence', 'Operação SQLite concluída.', details)
+  })
   modelRegistry = new ModelRegistry()
   providerRegistry = new ProviderRegistry()
   modelCatalog = new ModelCatalogService(
