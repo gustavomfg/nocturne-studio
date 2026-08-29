@@ -70,6 +70,12 @@ test.describe('renderer do produto', () => {
       responseSize: expect.any(Number),
       activities: expect.any(Number),
       messages: expect.any(Number),
+      renderCounts: {
+        app: expect.any(Number),
+        chat: expect.any(Number),
+        composer: expect.any(Number),
+        agentPanel: expect.any(Number),
+      },
       startupMs: expect.any(Number),
       conversationLoadMs: expect.any(Number),
       longTasks: expect.any(Number),
