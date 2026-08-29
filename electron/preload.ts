@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS as channels } from '../shared/ipc/channels'
 import type { AgentEvent, WorkspaceChangeEvent } from '../shared/types'
+import type { AgentStatusEvent } from '../shared/agentLifecycle'
 import type {
   NocturneApi,
   ModelIpcResult,
@@ -75,7 +76,7 @@ export const nocturneApi: NocturneApi = {
     rollbackStatus: (conversationId: string) => ipcRenderer.invoke(channels.ai.rollbackStatus, conversationId),
     rollback: (conversationId: string) => ipcRenderer.invoke(channels.ai.rollback, conversationId),
     onEvent: (listener: (payload: AgentEvent) => void) => on(channels.ai.event, listener),
-    onStatus: (listener: (payload: { status: string; conversationId?: string; error?: string }) => void) => on(channels.ai.status, listener),
+    onStatus: (listener: (payload: AgentStatusEvent) => void) => on(channels.ai.status, listener),
   },
   codex: {
     status: () => ipcRenderer.invoke(channels.codex.status),

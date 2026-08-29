@@ -1,4 +1,5 @@
 export type { AgentMode, Suggestion, SuggestionStatus } from './suggestions'
+export type { AgentExecutionState, AgentLifecycleDetails, AgentLifecycleEvent, AgentRunState, AgentStatusEvent } from './agentLifecycle'
 
 export type Role = 'user' | 'assistant' | 'system'
 export interface Conversation { id: string; title: string; workspace: string; createdAt: string; updatedAt: string }
@@ -28,13 +29,26 @@ export interface RendererPerformanceStats {
   responseSize: number
   activities: number
   messages: number
+  renderCounts: {
+    app: number
+    chat: number
+    composer: number
+    agentPanel: number
+  }
   startupMs: number
   conversationLoadMs: number
   longTasks: number
   longTaskDurationMs: number
   longestLongTaskMs: number
 }
-export interface AgentEvent { method: string; params: Record<string, unknown> }
+export interface AgentEvent {
+  method: string
+  params: Record<string, unknown>
+  conversationId?: string
+  runId?: string
+  sequence?: number
+  timestamp?: string
+}
 export type CodexAccountState =
   | 'ready'
   | 'not-installed'

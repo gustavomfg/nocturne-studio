@@ -21,6 +21,12 @@ export const rendererStatsSchema = z.object({
   responseSize: z.number().int().nonnegative().max(10_000_000),
   activities: z.number().int().nonnegative().max(100_000),
   messages: z.number().int().nonnegative().max(100_000),
+  renderCounts: z.object({
+    app: z.number().int().nonnegative().max(1_000_000),
+    chat: z.number().int().nonnegative().max(1_000_000),
+    composer: z.number().int().nonnegative().max(1_000_000),
+    agentPanel: z.number().int().nonnegative().max(1_000_000),
+  }).strict(),
   startupMs: z.number().nonnegative().max(600_000),
   conversationLoadMs: z.number().nonnegative().max(600_000),
   longTasks: z.number().int().nonnegative().max(100_000),
