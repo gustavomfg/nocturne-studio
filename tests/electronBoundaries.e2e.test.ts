@@ -173,9 +173,10 @@ const simulatedModel: ModelDescriptor = {
 describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
   let api: NocturneApi
   let database: Awaited<ReturnType<typeof createDatabase>> | null = null
-  let disposeIpc: (() => void) | null = null
-  let reinstallIpc: (() => () => void) | null = null
+  let disposeIpc: (() => void | Promise<void>) | null = null
+  let reinstallIpc: (() => (() => void | Promise<void>)) | null = null
   let root: string
+  let flushLogger: (() => Promise<void>) | null = null
   const electronMock = electron
 
   async function createDatabase(userDataPath: string) {
@@ -193,6 +194,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     const { ModelRegistry } = await import('../electron/ai/ModelRegistry')
     const { ProviderRegistry } = await import('../electron/ai/ProviderRegistry')
     const logger = new Logger(root)
+    flushLogger = () => logger.flush()
     const providers = new SimulatedProviderConfigurations()
     const simulatedModelCatalog = new SimulatedModelCatalog()
     simulatedModelCatalog.models.push(simulatedModel)
@@ -216,9 +218,10 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     api = electron.exposed
   })
 
-  afterAll(() => {
-    disposeIpc?.()
+  afterAll(async () => {
+    await disposeIpc?.()
     database?.close()
+    await flushLogger?.()
     removeTestDirectory(root)
   })
 
@@ -632,7 +635,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     const registeredHandlers = electronMock.handlers.size
     expect(registeredHandlers).toBeGreaterThan(0)
 
-    disposeIpc?.()
+    await disposeIpc?.()
     disposeIpc = null
     expect(electronMock.handlers.size).toBe(0)
 
