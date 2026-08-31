@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { BrowserWindow } from 'electron'
 import type { WorkspaceModelBindings } from '../../shared/ai/bindings'
 import type { NormalizedTaskInput } from '../../shared/ai/task'
-import type { AgentState } from '../../shared/agentState'
+import { isAgentState, type AgentState } from '../../shared/agentState'
 import { reduceAgentLifecycle, type AgentLifecycleDetails, type AgentLifecycleEvent, type AgentRunState } from '../../shared/agentLifecycle'
 import type { AgentMode, AppSettings } from '../../shared/types'
 import { PERSISTENCE_LIMITS } from '../../shared/constants'
@@ -291,14 +291,19 @@ export class AiExecutionCoordinator {
     )
   }
 
-  private readonly onCodexStatus = (status: { status: string; error?: string }) => {
-    const active = this.active
-    if (!active) {
-      this.pushTransportStatus(status.status, status.error)
+  private readonly onCodexStatus = (status: { status: unknown; error?: string }) => {
+    if (!isAgentState(status.status)) {
+      this.logger.warn('ai', 'Estado de execução desconhecido recebido do transporte.', { status: status.status })
       return
     }
-    this.pushExecutionStatus(active, status.status, status.error, status.status === 'ready' && active.lifecycle?.state === 'cancelling')
-    if (status.status === 'failed' && status.error && active?.kind === 'codex' && active.threadId && !active.finishing) {
+    const nextStatus = status.status
+    const active = this.active
+    if (!active) {
+      this.pushTransportStatus(nextStatus, status.error)
+      return
+    }
+    this.pushExecutionStatus(active, nextStatus, status.error, nextStatus === 'ready' && active.lifecycle?.state === 'cancelling')
+    if (nextStatus === 'failed' && status.error && active?.kind === 'codex' && active.threadId && !active.finishing) {
       this.pushEvent('error', { message: status.error }, active)
       void this.persistAndComplete(active, {
         threadId: active.threadId,
@@ -392,16 +397,12 @@ export class AiExecutionCoordinator {
     }
   }
 
-  private pushExecutionStatusIfCurrent(active: ActiveExecution, status: string, error?: string, cancelled = false) {
+  private pushExecutionStatusIfCurrent(active: ActiveExecution, status: AgentState, error?: string, cancelled = false) {
     if (!this.isCurrentOrFinished(active)) return
     this.pushExecutionStatus(active, status, error, cancelled)
   }
 
-  private pushExecutionStatus(active: ActiveExecution, status: string, error?: string, cancelled = false) {
-    if (!isAgentState(status)) {
-      this.logger.warn('ai', 'Estado de execução desconhecido ignorado.', { status, runId: active.runId })
-      return
-    }
+  private pushExecutionStatus(active: ActiveExecution, status: AgentState, error?: string, cancelled = false) {
     if (!this.applyStatusLifecycle(active, status, error, cancelled)) return
     this.pushStatusForRun(active, status, error)
   }
@@ -421,8 +422,7 @@ export class AiExecutionCoordinator {
     }
   }
 
-  private pushTransportStatus(status: string, error?: string) {
-    if (!isAgentState(status)) return
+  private pushTransportStatus(status: AgentState, error?: string) {
     if (!this.win.isDestroyed()) {
       this.win.webContents.send('ai:status', {
         status,
@@ -518,22 +518,6 @@ export class AiExecutionCoordinator {
 function isTerminalState(state: AgentRunState['state']) {
   return state === 'completed' || state === 'failed' || state === 'cancelled'
 }
-
-function isAgentState(value: string): value is AgentState {
-  return agentStates.has(value as AgentState)
-}
-
-const agentStates = new Set<AgentState>([
-  'disconnected',
-  'starting',
-  'ready',
-  'planning',
-  'running',
-  'waiting-approval',
-  'cancelling',
-  'completed',
-  'failed',
-])
 
 function eventFiles(method: string, params: Record<string, unknown>) {
   if (method === 'fs/changed' && Array.isArray(params.changedPaths)) return params.changedPaths.map(String)

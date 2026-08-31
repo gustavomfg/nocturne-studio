@@ -1,11 +1,12 @@
 import { useEffect, type RefObject } from 'react'
 import { AlertTriangle, ChevronRight, Code2, Folder, FolderOpen, History, Laptop, Menu, MessageSquarePlus, Search, Settings, Star, Trash2, X } from 'lucide-react'
 import type { AppSettings, Conversation, Workspace } from '../../types'
+import type { AgentState } from '../../../shared/agentState'
 import { relativeTime } from '../../shared/format'
 import { useOffCanvasPanel } from '../../shared/useOffCanvasPanel'
 import { useI18n } from '../../shared/i18n'
 
-const statusLabelKeys: Record<string, string> = {
+const statusLabelKeys: Record<AgentState, string> = {
   disconnected: 'status.disconnected',
   starting: 'status.starting',
   ready: 'status.ready',
@@ -18,7 +19,7 @@ const statusLabelKeys: Record<string, string> = {
 }
 
 interface SidebarProps {
-  open: boolean; compact: boolean; triggerRef: RefObject<HTMLElement | null>; conversations: Conversation[]; hasConversations: boolean; hasMore: boolean; loadingMore: boolean; activeId: string | null; search: string; searchRef: RefObject<HTMLInputElement | null>; workspace: string; workspaces: Workspace[]; settings: AppSettings; status: string;
+  open: boolean; compact: boolean; triggerRef: RefObject<HTMLElement | null>; conversations: Conversation[]; hasConversations: boolean; hasMore: boolean; loadingMore: boolean; activeId: string | null; search: string; searchRef: RefObject<HTMLInputElement | null>; workspace: string; workspaces: Workspace[]; settings: AppSettings; status: AgentState;
   onClose(): void; onNew(): void; onSearch(value: string): void; onLoadMore(): void; onConversation(id: string): void; onDelete(id: string): void; onWorkspace(): void; onSavedWorkspace(path: string): void; onFavorite(item: Workspace): void; onSettings(): void
 }
 

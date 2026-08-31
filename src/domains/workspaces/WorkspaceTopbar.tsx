@@ -1,13 +1,14 @@
 import type { RefObject } from 'react'
 import { AlertTriangle, Brain, Check, ChevronRight, Code2, Folder, GitBranch, HelpCircle, LoaderCircle, Menu, PanelRight, Settings, Terminal, X } from 'lucide-react'
 import type { GitInfo } from '../../types'
+import type { AgentState } from '../../../shared/agentState'
 import { useI18n } from '../../shared/i18n'
 
 interface WorkspaceTopbarProps {
   title: string
   pathLabel: string
   gitInfo: GitInfo | null
-  status: string
+  status: AgentState
   sidebarOpen: boolean
   inspectorOpen: boolean
   compact: boolean

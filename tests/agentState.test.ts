@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { AgentStateMachine, canTransition } from '../shared/agentState'
+import { AgentStateMachine, canTransition, isAgentState } from '../shared/agentState'
 
 describe('AgentStateMachine', () => {
   it('aceita o ciclo normal de execução e cancelamento', () => {
@@ -12,5 +12,10 @@ describe('AgentStateMachine', () => {
     expect(machine.transition('running')).toBe(false)
     expect(invalid).toHaveBeenCalledWith('disconnected', 'running')
     expect(canTransition('waiting-approval', 'running')).toBe(true)
+  })
+  it('valida estados recebidos de fronteiras não tipadas', () => {
+    expect(isAgentState('waiting-approval')).toBe(true)
+    expect(isAgentState('unknown')).toBe(false)
+    expect(isAgentState(null)).toBe(false)
   })
 })

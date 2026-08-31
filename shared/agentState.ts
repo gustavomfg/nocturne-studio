@@ -1,5 +1,21 @@
 export type AgentState = 'disconnected' | 'starting' | 'ready' | 'planning' | 'running' | 'waiting-approval' | 'cancelling' | 'completed' | 'failed'
 
+const agentStates: ReadonlySet<string> = new Set([
+  'disconnected',
+  'starting',
+  'ready',
+  'planning',
+  'running',
+  'waiting-approval',
+  'cancelling',
+  'completed',
+  'failed',
+])
+
+export function isAgentState(value: unknown): value is AgentState {
+  return typeof value === 'string' && agentStates.has(value)
+}
+
 const transitions: Record<AgentState, ReadonlySet<AgentState>> = {
   disconnected: new Set(['starting']),
   starting: new Set(['ready', 'failed', 'disconnected']),

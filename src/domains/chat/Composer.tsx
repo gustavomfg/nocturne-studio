@@ -1,12 +1,13 @@
 import { useLayoutEffect, type FormEvent, type KeyboardEvent, type RefObject } from 'react'
 import { Code2, FileCode2, GitBranch, Paperclip, Send, ShieldCheck, Square, X } from 'lucide-react'
 import type { AgentMode, Attachment } from '../../types'
+import type { AgentState } from '../../../shared/agentState'
 import { isBusy } from '../../shared/format'
 import { useI18n } from '../../shared/i18n'
 import { useRendererRenderCounter } from '../../shared/rendererDiagnostics'
 
 interface ComposerProps {
-  agentMode: AgentMode; attachments: Attachment[]; prompt: string; status: string; finalizing: boolean; active: boolean; pendingApprovals: number; composerRef: RefObject<HTMLTextAreaElement | null>;
+  agentMode: AgentMode; attachments: Attachment[]; prompt: string; status: AgentState; finalizing: boolean; active: boolean; pendingApprovals: number; composerRef: RefObject<HTMLTextAreaElement | null>;
   onMode(mode: AgentMode): void; onPrompt(value: string): void; onRemoveAttachment(path: string): void; onAttach(): void; onCancel(): void; onSubmit(event: FormEvent<HTMLFormElement>): void; onQuick(prompt: string, mode?: AgentMode): void
 }
 

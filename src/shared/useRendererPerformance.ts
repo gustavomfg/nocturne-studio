@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { UI_TIMING } from '../../shared/constants'
+import type { AgentState } from '../../shared/agentState'
 import { useAppStore } from '../store'
 import { isBusy } from './format'
 import { getRendererRenderCounts } from './rendererDiagnostics'
 
-export function useRendererPerformance(status: string) {
+export function useRendererPerformance(status: AgentState) {
   const performanceRef = useRef({ startupMs: 0, conversationLoadMs: 0, longTasks: 0, longTaskDurationMs: 0, longestLongTaskMs: 0 })
 
   const reportRendererPerformance = useCallback(() => {
