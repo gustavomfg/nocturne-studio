@@ -17,3 +17,8 @@ export const IPC_CHANNELS = {
   documents: { prepareMarkdown: 'documents:prepareMarkdown', applyMarkdown: 'documents:applyMarkdown', export: 'documents:export' },
   clipboard: { readText: 'clipboard:readText', writeText: 'clipboard:writeText' },
 } as const
+
+export type IpcChannel = {
+  [Group in keyof typeof IPC_CHANNELS]:
+    (typeof IPC_CHANNELS)[Group][keyof (typeof IPC_CHANNELS)[Group]]
+}[keyof typeof IPC_CHANNELS]

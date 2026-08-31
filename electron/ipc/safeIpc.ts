@@ -1,16 +1,17 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import { performance } from 'node:perf_hooks'
 import { isMainProcessOperational } from '../runtime/MainProcessState'
+import type { IpcChannel } from '../../shared/ipc/channels'
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
 
 export interface SafeIpcMain {
-  handle(channel: string, handler: Handler): void
+  handle(channel: IpcChannel, handler: Handler): void
   dispose(): void
 }
 
 export interface IpcTimingRecord {
-  channel: string
+  channel: IpcChannel
   durationMs: number
   failed: boolean
 }
@@ -24,8 +25,8 @@ interface RateLimitConfig {
   maxCalls: number
 }
 
-const RATE_LIMITS: Record<string, RateLimitConfig> = {
-  default: { windowMs: 1_000, maxCalls: 120 },
+const DEFAULT_RATE_LIMIT: RateLimitConfig = { windowMs: 1_000, maxCalls: 120 }
+const RATE_LIMITS: Partial<Record<IpcChannel, RateLimitConfig>> = {
   'ai:send': { windowMs: 10_000, maxCalls: 5 },
   'ai:cancel': { windowMs: 2_000, maxCalls: 10 },
   'ai:approve': { windowMs: 2_000, maxCalls: 20 },
@@ -46,14 +47,14 @@ export function safeIpcMain(win: BrowserWindow, options: SafeIpcMainOptions = {}
   const channels = new Set<string>()
   const callLog = new Map<string, number[]>()
   let disposed = false
-  const report = (channel: string, startedAt: number, failed: boolean) => {
+  const report = (channel: IpcChannel, startedAt: number, failed: boolean) => {
     try {
       options.onCompleted?.({ channel, durationMs: Math.max(0, Math.round(performance.now() - startedAt)), failed })
     } catch {
       // Observability must never change the IPC operation's behavior.
     }
   }
-  const invoke = (channel: string, handler: Handler, event: IpcMainInvokeEvent, args: unknown[]) => {
+  const invoke = (channel: IpcChannel, handler: Handler, event: IpcMainInvokeEvent, args: unknown[]) => {
     const startedAt = performance.now()
     const finish = (failed: boolean) => report(channel, startedAt, failed)
     try {
@@ -72,7 +73,7 @@ export function safeIpcMain(win: BrowserWindow, options: SafeIpcMainOptions = {}
     }
   }
   return {
-    handle(channel: string, handler: Handler) {
+    handle(channel: IpcChannel, handler: Handler) {
       if (disposed) throw new Error('O registro de handlers IPC já foi descartado.')
       if (channels.has(channel)) throw new Error(`Handler IPC duplicado: ${channel}.`)
       ipcMain.handle(channel, (event, ...args) => invoke(channel, (trustedEvent, ...trustedArgs) => {
@@ -82,7 +83,7 @@ export function safeIpcMain(win: BrowserWindow, options: SafeIpcMainOptions = {}
         if (trustedEvent.sender !== trustedContents || trustedEvent.senderFrame !== trustedContents.mainFrame || !expectedUrl || trustedEvent.senderFrame.url !== expectedUrl) {
           throw new Error(`Origem IPC não autorizada para ${channel}.`)
         }
-        const config = RATE_LIMITS[channel] ?? RATE_LIMITS.default
+        const config = RATE_LIMITS[channel] ?? DEFAULT_RATE_LIMIT
         const now = Date.now()
         const windowStart = now - config.windowMs
         let timestamps = callLog.get(channel)
