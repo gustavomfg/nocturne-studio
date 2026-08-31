@@ -1,6 +1,5 @@
 import { app, BrowserWindow, dialog, shell } from 'electron'
 import fs from 'node:fs'
-import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { LocalDatabase } from './database/Database'
@@ -20,8 +19,9 @@ import { hasDatabaseRecoveryArtifacts, inspectDatabaseFile, isRecoverableDatabas
 import packageMetadata from '../package.json'
 import { FatalShutdownController, type FatalShutdownEvent } from './runtime/FatalShutdown'
 import { createNormalShutdownHandler } from './runtime/NormalShutdown'
+import { runPackageSmoke } from './runtime/PackageSmoke'
+import { createPackagedRecoveryHarness } from './runtime/PackagedRecoveryHarness'
 import { isMainProcessOperational, markMainProcessFatal, markMainProcessTerminated } from './runtime/MainProcessState'
-import { canonicalizePackagedRecoveryPath, isPackagedRecoveryPathInside } from './security/PackagedRecoveryContainment'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const softwareRendering = process.env.NOCTURNE_DISABLE_GPU === '1' || process.argv.includes('--disable-gpu')
@@ -185,6 +185,15 @@ const normalShutdown = createNormalShutdownHandler({
   },
 })
 
+const packagedRecovery = createPackagedRecoveryHarness({
+  getWindow: () => win,
+  getDatabase: () => database,
+  setDatabase: (value) => { database = value },
+  createDatabase: (userDataPath) => new LocalDatabase(userDataPath),
+  getStage: () => packagedRecoveryStage,
+  setStage: (stage) => { packagedRecoveryStage = stage },
+})
+
 process.on('uncaughtException', (error) => { void fatalShutdown.handle('uncaughtException', error) })
 process.on('unhandledRejection', (reason) => { void fatalShutdown.handle('unhandledRejection', reason) })
 
@@ -258,7 +267,10 @@ function createWindow() {
     )
 
     currentWindow.webContents.once('did-finish-load', () => {
-      void runPackageSmoke(output)
+      void runPackageSmoke(output, {
+        getWindow: () => win,
+        getDatabase: () => database,
+      })
     })
   }
   if (
@@ -268,7 +280,7 @@ function createWindow() {
   ) {
     packagedRecoveryScheduled = true
     currentWindow.webContents.once('did-finish-load', () => {
-      void runPackagedRecoveryHarness()
+      void packagedRecovery.run()
     })
   }
   currentWindow.webContents.on('preload-error', (_event, preloadPath, error) => logger?.error('app', `Falha no preload: ${preloadPath}`, error))
@@ -399,336 +411,6 @@ async function restoreCorruptDatabase(userDataPath: string, databasePath: string
   await restoreDatabaseFile(userDataPath, latest.path)
 }
 
-async function runPackageSmoke(output: string) {
-  try {
-    const preload = await win?.webContents.executeJavaScript(`(async () => {
-      const api = window.nocturne
-      const geolocation = await navigator.permissions.query({ name: 'geolocation' }).then((result) => result.state).catch(() => 'denied')
-      const externalWindowsDenied = window.open('about:blank', '_blank') === null
-      return { available: Boolean(api), settings: typeof api?.settings?.get === 'function', channels: api ? Object.keys(api).sort() : [], geolocation, externalWindowsDenied }
-    })()` ) as { available: boolean; settings: boolean; channels: string[]; geolocation: PermissionState; externalWindowsDenied: boolean } | undefined
-    const originalUrl = win?.webContents.getURL()
-    await win?.webContents.executeJavaScript(`(() => {
-      const link = document.createElement('a')
-      link.href = 'https://example.invalid/nocturne-package-smoke'
-      document.body.append(link)
-      link.click()
-      link.remove()
-    })()`)
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    const smokeWorkspace = app.getPath('userData')
-    const conversation = database?.createConversation(smokeWorkspace)
-    if (conversation) database?.addMessage(conversation.id, 'user', 'package-smoke')
-    const sqlite = Boolean(conversation && database?.listMessages(conversation.id)[0]?.content === 'package-smoke')
-    const lifecycle = await recreateWindowForPackageSmoke()
-    const preferences = (win?.webContents as Electron.WebContents & { getLastWebPreferences(): Electron.WebPreferences } | undefined)?.getLastWebPreferences()
-    const security = { contextIsolation: preferences?.contextIsolation === true, nodeIntegration: preferences?.nodeIntegration === false, sandbox: preferences?.sandbox === true }
-    const finalUrl = win?.webContents.getURL()
-    const navigation = { externalWindowsDenied: preload?.externalWindowsDenied === true, unexpectedNavigationBlocked: Boolean(originalUrl && finalUrl === originalUrl), originalUrl, finalUrl }
-    const ok = Boolean(preload?.available && preload.settings && preload.geolocation === 'denied' && sqlite && lifecycle.closed && lifecycle.activated && lifecycle.secondInstanceReused && lifecycle.api && lifecycle.settings && Object.values(security).every(Boolean) && navigation && Object.values(navigation).every(Boolean))
-    fs.writeFileSync(output, `${JSON.stringify({ ok, packaged: app.isPackaged, preload, sqlite, lifecycle, security, navigation })}\n`, { encoding: 'utf8', mode: 0o600 })
-    app.quit()
-  } catch (error) {
-    fs.writeFileSync(output, `${JSON.stringify({ ok: false, packaged: app.isPackaged, error: error instanceof Error ? error.message : String(error) })}\n`, { encoding: 'utf8', mode: 0o600 })
-    app.exit(1)
-  }
-}
-
-type PackagedRecoveryMode = 'fixture' | 'verify' | 'verify-historical' | 'engine-restore'
-
-interface PackagedRecoveryContext {
-  root: string
-  output: string
-  workspace: string
-  mode: PackagedRecoveryMode
-}
-
-function setPackagedRecoveryStage(stage: string) {
-  packagedRecoveryStage = stage
-}
-
-function isLexicalPathInside(parent: string, candidate: string) {
-  const relative = path.relative(parent, candidate)
-  return relative === '' || (
-    relative !== '..'
-    && !relative.startsWith(`..${path.sep}`)
-    && !path.isAbsolute(relative)
-  )
-}
-
-function sanitizePackagedRecoveryText(value: string) {
-  const knownRoots = [process.cwd(), os.homedir(), path.resolve(os.tmpdir()), process.env.NOCTURNE_PACKAGED_RECOVERY_ROOT].filter((entry): entry is string => Boolean(entry))
-  let text = redactLogText(value)
-  for (const root of knownRoots) text = text.split(root).join('<redacted-root>')
-  text = text.replace(/(?:[A-Za-z]:[\\/]|\\\\|\/)(?:[^\s'"`]|\\ )+/g, '<redacted-path>')
-  return text.slice(0, 2_000)
-}
-
-function packagedRecoveryOutputContext() {
-  const rootValue = process.env.NOCTURNE_PACKAGED_RECOVERY_ROOT
-  const outputValue = process.env.NOCTURNE_PACKAGED_RECOVERY_OUTPUT
-  if (!rootValue || !outputValue) return null
-  const root = path.resolve(rootValue)
-  const output = path.resolve(outputValue)
-  const temporaryRoot = path.resolve(os.tmpdir())
-  if (!isPackagedRecoveryPathInside(temporaryRoot, root) || !isPackagedRecoveryPathInside(root, output)) return null
-  return { root, output }
-}
-
-function inspectPackagedRecoveryPaths() {
-  const rootValue = process.env.NOCTURNE_PACKAGED_RECOVERY_ROOT
-  const outputValue = process.env.NOCTURNE_PACKAGED_RECOVERY_OUTPUT
-  const temporaryRoot = path.resolve(os.tmpdir())
-  const root = rootValue ? path.resolve(rootValue) : null
-  const output = outputValue ? path.resolve(outputValue) : null
-  const userData = path.resolve(app.getPath('userData'))
-  const canonical = (value: string | null) => {
-    if (!value) return null
-    return canonicalizePackagedRecoveryPath(value)
-  }
-  const canonicalTemporaryRoot = canonical(temporaryRoot)
-  const canonicalRoot = canonical(root)
-  const canonicalUserData = canonical(userData)
-  return {
-    rootLexicalInsideTemporary: Boolean(root && isLexicalPathInside(temporaryRoot, root)),
-    outputLexicalInsideRoot: Boolean(root && output && isLexicalPathInside(root, output)),
-    userDataExists: fs.existsSync(userData),
-    userDataLexicalInsideTemporary: isLexicalPathInside(temporaryRoot, userData),
-    canonicalTemporaryAvailable: Boolean(canonicalTemporaryRoot),
-    canonicalRootAvailable: Boolean(canonicalRoot),
-    canonicalUserDataAvailable: Boolean(canonicalUserData),
-    canonicalRootInsideTemporary: Boolean(canonicalTemporaryRoot && canonicalRoot && isPackagedRecoveryPathInside(canonicalTemporaryRoot, canonicalRoot)),
-    canonicalUserDataInsideTemporary: Boolean(canonicalTemporaryRoot && canonicalUserData && isPackagedRecoveryPathInside(canonicalTemporaryRoot, canonicalUserData)),
-    temporaryAliasChanged: Boolean(canonicalTemporaryRoot && canonicalTemporaryRoot !== temporaryRoot),
-    rootAliasChanged: Boolean(canonicalRoot && root && canonicalRoot !== root),
-    userDataAliasChanged: Boolean(canonicalUserData && canonicalUserData !== userData),
-  }
-}
-
-function writePackagedRecoveryFailure(error: unknown, phase: string) {
-  const outputContext = packagedRecoveryOutputContext()
-  if (!outputContext) return
-  try {
-    fs.mkdirSync(path.dirname(outputContext.output), { recursive: true, mode: 0o700 })
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    fs.writeFileSync(outputContext.output, `${JSON.stringify({
-      packaged: app.isPackaged,
-      mode: process.env.NOCTURNE_PACKAGED_RECOVERY_MODE ?? null,
-      ok: false,
-      phase,
-      stage: packagedRecoveryStage,
-      errorName: error instanceof Error ? error.name : typeof error,
-      errorMessage: sanitizePackagedRecoveryText(errorMessage),
-      failureFingerprint: diagnosticFingerprint(`${errorMessage}\n${error instanceof Error ? error.stack ?? '' : ''}`),
-      pathDiagnostics: inspectPackagedRecoveryPaths(),
-    })}\n`, { encoding: 'utf8', mode: 0o600 })
-  } catch { /* diagnostics must not replace the original failure */ }
-}
-
-function packagedRecoveryContext(): PackagedRecoveryContext {
-  const rootValue = process.env.NOCTURNE_PACKAGED_RECOVERY_ROOT
-  const outputValue = process.env.NOCTURNE_PACKAGED_RECOVERY_OUTPUT
-  const workspaceValue = process.env.NOCTURNE_PACKAGED_RECOVERY_WORKSPACE
-  const mode = process.env.NOCTURNE_PACKAGED_RECOVERY_MODE as PackagedRecoveryMode | undefined
-  if (!rootValue || !outputValue || !workspaceValue || !mode || !['fixture', 'verify', 'verify-historical', 'engine-restore'].includes(mode)) {
-    throw new Error('Configuração incompleta do harness empacotado de recovery.')
-  }
-  const root = path.resolve(rootValue)
-  const output = path.resolve(outputValue)
-  const workspace = path.resolve(workspaceValue)
-  const temporaryRoot = path.resolve(os.tmpdir())
-  const userData = path.resolve(app.getPath('userData'))
-  if (!isPackagedRecoveryPathInside(temporaryRoot, root) || !isPackagedRecoveryPathInside(root, output) || !isPackagedRecoveryPathInside(root, workspace) || !isPackagedRecoveryPathInside(root, userData)) {
-    throw new Error('O harness empacotado exige userData, workspace e relatório dentro de um diretório temporário isolado.')
-  }
-  return { root, output, workspace, mode }
-}
-
-function writePackagedRecoveryResult(context: PackagedRecoveryContext, value: Record<string, unknown>) {
-  fs.mkdirSync(path.dirname(context.output), { recursive: true, mode: 0o700 })
-  fs.writeFileSync(context.output, `${JSON.stringify({
-    packaged: app.isPackaged,
-    mode: context.mode,
-    stage: packagedRecoveryStage,
-    ...value,
-  })}\n`, { encoding: 'utf8', mode: 0o600 })
-}
-
-function packagedRecoveryState(context: PackagedRecoveryContext) {
-  if (!database) throw new Error('Banco indisponível no harness empacotado de recovery.')
-  const conversations = database.listConversations()
-  const conversation = conversations.find((item) => item.workspace === context.workspace)
-  const messages = conversation ? database.listMessages(conversation.id) : []
-  const artifacts = conversation ? database.listArtifacts(conversation.id) : []
-  const suggestions = conversation ? database.listSuggestions(conversation.id) : []
-  const memories = database.listBrainMemoryPage(context.workspace, 0, 50).items
-  const workspaceRows = database.listWorkspaces()
-  return {
-    schemaVersion: database.exportData().schemaVersion,
-    records: {
-      workspaces: workspaceRows.length,
-      conversations: conversations.length,
-      messages: messages.length,
-      artifacts: artifacts.length,
-      suggestions: suggestions.length,
-      memories: memories.length,
-    },
-    markers: {
-      conversation: Boolean(conversation?.title === 'PACKAGED_RECOVERY_CONVERSATION'),
-      messageA: messages.some((message) => message.content === 'PACKAGED_RECOVERY_MESSAGE_A'),
-      messageB: messages.some((message) => message.content === 'PACKAGED_RECOVERY_MESSAGE_B'),
-      artifact: artifacts.some((artifact) => artifact.content === 'PACKAGED_RECOVERY_ARTIFACT'),
-      suggestion: suggestions.some((suggestion) => suggestion.title === 'PACKAGED_RECOVERY_SUGGESTION'),
-      memory: memories.some((memory) => memory.content === 'PACKAGED_RECOVERY_MEMORY'),
-      setting: database.getSettings().packagedRecoverySetting === 'PACKAGED_RECOVERY_SETTING',
-    },
-    historicalMarkers: {
-      message: messages.some((message) => message.content === 'PACKAGED_RECOVERY_HISTORICAL_MESSAGE'),
-      setting: database.getSettings().packagedHistoricalSetting === 'PACKAGED_RECOVERY_HISTORICAL',
-    },
-    workspace: {
-      historyPresent: workspaceRows.some((item) => item.path === context.workspace),
-      filesystemPresent: fs.existsSync(context.workspace),
-      // The renderer-facing list applies WorkspaceTrust to the persisted row.
-      authorizationRefusedWhenMissing: false,
-    },
-  }
-}
-
-async function runPackagedRecoveryHarness() {
-  try {
-    setPackagedRecoveryStage('validate-environment')
-    const context = packagedRecoveryContext()
-    setPackagedRecoveryStage('validate-user-data')
-    if (!database) throw new Error('Banco indisponível no harness empacotado de recovery.')
-    if (context.mode === 'fixture') {
-      setPackagedRecoveryStage('prepare-fixture')
-      fs.mkdirSync(context.workspace, { recursive: true, mode: 0o700 })
-      setPackagedRecoveryStage('write-fixture')
-      fs.writeFileSync(path.join(context.workspace, 'PACKAGED_RECOVERY_WORKSPACE.md'), 'PACKAGED_RECOVERY_WORKSPACE', { encoding: 'utf8', mode: 0o600 })
-      const conversation = database.createConversation(context.workspace)
-      database.renameFromPrompt(conversation.id, 'PACKAGED_RECOVERY_CONVERSATION')
-      database.addMessage(conversation.id, 'user', 'PACKAGED_RECOVERY_MESSAGE_A')
-      database.addMessage(conversation.id, 'assistant', 'PACKAGED_RECOVERY_MESSAGE_B')
-      database.addArtifact(conversation.id, context.workspace, 'markdown', 'PACKAGED_RECOVERY_ARTIFACT', 'PACKAGED_RECOVERY_WORKSPACE.md', 'PACKAGED_RECOVERY_ARTIFACT')
-      database.setWorkspaceMemory(context.workspace, 'PACKAGED_RECOVERY_MEMORY')
-      database.addSuggestion(conversation.id, context.workspace, {
-        title: 'PACKAGED_RECOVERY_SUGGESTION',
-        description: 'Fixture sintético de recuperação empacotada.',
-        reasoning: 'Exercitar preservação semântica.',
-        category: 'testing',
-        severity: 'low',
-        affectedFiles: ['PACKAGED_RECOVERY_WORKSPACE.md'],
-        proposedChanges: 'Nenhuma alteração.',
-        expectedBenefits: ['Evidência reproduzível.'],
-        complexity: 'low',
-        risk: 'low',
-        evidence: [{ source: 'packaged-recovery', detail: 'Fixture sintético.' }],
-        confidence: 100,
-        source: 'packaged-recovery',
-        responsible: 'harness',
-      })
-      database.createBrainMemory(context.workspace, {
-        kind: 'decision',
-        scope: 'workspace',
-        content: 'PACKAGED_RECOVERY_MEMORY',
-        confidence: 100,
-        sourceType: 'manual',
-        status: 'active',
-      })
-      database.setSettings({ packagedRecoverySetting: 'PACKAGED_RECOVERY_SETTING' })
-    }
-    if (context.mode === 'engine-restore') {
-      setPackagedRecoveryStage('open-database')
-      const userDataPath = app.getPath('userData')
-      const databasePath = path.join(userDataPath, 'nocturne.db')
-      const candidateName = fs.readdirSync(userDataPath).find((name) => name.startsWith('nocturne.db.recovery-engine'))
-      if (!candidateName) throw new Error('Candidato do engine smoke não encontrado.')
-      database.close()
-      database = null
-      fs.truncateSync(databasePath, 32)
-      const quarantine = await restoreDatabaseFile(userDataPath, path.join(userDataPath, candidateName))
-      database = new LocalDatabase(userDataPath)
-      const state = packagedRecoveryState(context)
-      setPackagedRecoveryStage('write-report')
-      writePackagedRecoveryResult(context, {
-        ok: Object.values(state.markers).every(Boolean),
-        phase: 'engine-restore',
-        recoveryEngine: { restored: true, corruptOriginalPreserved: fs.existsSync(path.join(quarantine, 'nocturne.db')) },
-        state,
-      })
-    } else if (context.mode === 'fixture') {
-      const state = packagedRecoveryState(context)
-      setPackagedRecoveryStage('write-report')
-      writePackagedRecoveryResult(context, { ok: Object.values(state.markers).every(Boolean), phase: context.mode, state })
-    } else {
-      setPackagedRecoveryStage('open-database')
-      const state = packagedRecoveryState(context)
-      if (context.mode === 'verify-historical') {
-        const historical = Object.values(state.historicalMarkers).every(Boolean)
-        setPackagedRecoveryStage('write-report')
-        writePackagedRecoveryResult(context, { ok: historical, phase: 'historical-startup', state })
-      } else {
-        const markers = Object.values(state.markers).every(Boolean)
-        const workspaceRows = await win?.webContents.executeJavaScript('window.nocturne.workspace.list()') as Array<{ path?: string; authorized?: boolean }> | undefined
-        const missingWorkspace = workspaceRows?.find((item) => item.path === context.workspace)
-        state.workspace.authorizationRefusedWhenMissing = !state.workspace.filesystemPresent && missingWorkspace?.authorized === false
-        setPackagedRecoveryStage('write-report')
-        writePackagedRecoveryResult(context, { ok: markers, phase: context.mode, state })
-      }
-    }
-    setPackagedRecoveryStage('shutdown')
-    app.quit()
-  } catch (error) {
-    writePackagedRecoveryFailure(error, 'harness-failure')
-    app.exit(1)
-  }
-}
-
-function writePackagedRecoveryStartupFailure(error: unknown) {
-  setPackagedRecoveryStage('startup')
-  writePackagedRecoveryFailure(error, 'startup-failure')
-}
-
-async function recreateWindowForPackageSmoke() {
-  const previousWindow = win
-  if (!previousWindow) throw new Error('A janela do smoke não foi criada.')
-  const closed = new Promise<void>((resolve) => previousWindow.once('closed', resolve))
-  previousWindow.close()
-  await closed
-  if (typeof app.emit !== 'function') throw new Error('O harness não oferece eventos de aplicação.')
-  app.emit('activate')
-  const activatedWindow = win
-  if (!activatedWindow) throw new Error('O evento activate não recriou a janela do smoke.')
-  await waitForWindowLoad(activatedWindow)
-  app.emit('second-instance')
-  const secondInstanceReused = win === activatedWindow && !activatedWindow.isDestroyed()
-  const result = await activatedWindow.webContents.executeJavaScript(`(async () => {
-    const api = window.nocturne
-    let settings = false
-    try { await api?.settings?.get(); settings = true } catch { /* handler ausente */ }
-    return { recreated: true, api: Boolean(api), settings }
-  })()` ) as { recreated: boolean; api: boolean; settings: boolean }
-  return { closed: true, activated: result.recreated, secondInstanceReused, api: result.api, settings: result.settings }
-}
-
-async function waitForWindowLoad(window: BrowserWindow) {
-  if (!window.webContents.isLoading()) return
-  await new Promise<void>((resolve, reject) => {
-    const onLoad = () => { cleanup(); resolve() }
-    const onFail = (_event: Electron.Event, code: number, description: string) => {
-      cleanup()
-      reject(new Error(`A janela recriada falhou ao carregar (${code}): ${description}`))
-    }
-    const cleanup = () => {
-      window.webContents.removeListener('did-finish-load', onLoad)
-      window.webContents.removeListener('did-fail-load', onFail)
-    }
-    window.webContents.once('did-finish-load', onLoad)
-    window.webContents.once('did-fail-load', onFail)
-  })
-}
-
 app.on('window-all-closed', () => {
   if (process.env.NOCTURNE_PACKAGE_SMOKE_OUTPUT || process.env.NOCTURNE_PACKAGED_RECOVERY_OUTPUT) return
   if (process.platform !== 'darwin') app.quit()
@@ -754,7 +436,7 @@ else void app.whenReady().then(() => {
   if (logger) disposeUpdates = startUpdateService(logger, () => win)
 }).catch((error) => {
   if (app.isPackaged && process.env.NOCTURNE_PACKAGED_RECOVERY_OUTPUT) {
-    writePackagedRecoveryStartupFailure(error)
+    packagedRecovery.writeStartupFailure(error)
   } else {
     dialog.showErrorBox('Nocturne Studio não pôde iniciar', error instanceof Error ? error.message : String(error))
   }

@@ -30,11 +30,12 @@ describe('políticas de execução', () => {
   })
   it('exercita bloqueios de janela e navegação no smoke empacotado', () => {
     const main = fs.readFileSync(path.join(process.cwd(), 'electron/main.ts'), 'utf8')
-    expect(main).toContain("window.open('about:blank', '_blank')")
+    const packageSmoke = fs.readFileSync(path.join(process.cwd(), 'electron/runtime/PackageSmoke.ts'), 'utf8')
     expect(main).toContain("on('will-frame-navigate'")
-    expect(main).toContain("link.href = 'https://example.invalid/nocturne-package-smoke'")
-    expect(main).toContain('finalUrl === originalUrl')
-    expect(main).not.toContain('const navigation = { externalWindowsDenied: true, unexpectedNavigationBlocked: true }')
+    expect(packageSmoke).toContain("window.open('about:blank', '_blank')")
+    expect(packageSmoke).toContain("link.href = 'https://example.invalid/nocturne-package-smoke'")
+    expect(packageSmoke).toContain('finalUrl === originalUrl')
+    expect(packageSmoke).not.toContain('const navigation = { externalWindowsDenied: true, unexpectedNavigationBlocked: true }')
   })
   it('remove credenciais completas de strings e objetos de log', () => {
     for (const value of [
