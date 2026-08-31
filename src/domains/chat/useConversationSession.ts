@@ -1,9 +1,9 @@
-import { useCallback, useRef, useState, type MutableRefObject, type RefObject } from 'react'
+import { useCallback, useRef, type MutableRefObject, type RefObject } from 'react'
 import type { Conversation, Workspace, WorkspaceMemory } from '../../types'
 import { errorMessage } from '../../shared/format'
-import { RENDERER_LIMITS } from '../../../shared/constants'
 import { useAppStore } from '../../store'
 import { useI18n } from '../../shared/i18n'
+import { useConversationHistory } from './useConversationHistory'
 
 interface ConfirmationOptions {
   title: string
@@ -34,19 +34,6 @@ interface ConversationSessionOptions {
   stickToBottomRef: MutableRefObject<boolean>
 }
 
-const messageBubble = (entry: HTMLElement) => (
-  entry.querySelector<HTMLElement>('.user-row, .assistant-row') ?? entry
-)
-
-function visibleMessageAnchor(scroller: HTMLElement) {
-  const top = scroller.getBoundingClientRect().top
-  const entries = Array.from(scroller.querySelectorAll<HTMLElement>('[data-message-id]'))
-  const element = entries.find((entry) => messageBubble(entry).getBoundingClientRect().bottom >= top)
-  return element
-    ? { id: element.dataset.messageId ?? '', top: messageBubble(element).getBoundingClientRect().top }
-    : null
-}
-
 export interface ConversationSession {
   historyHasMore: boolean
   historyHasNewer: boolean
@@ -61,17 +48,8 @@ export interface ConversationSession {
 
 export function useConversationSession({ conversations, availableWorkspaces, isInteractionLocked, confirm, onError, onSetWorkspace, onInitializeWorkspaces, onRefreshConversations, onLoadCollections, onResetPreview, onClearMemoryAndGit, onLoadMemory, onSetMemory, onRefreshGit, onRestoreMetadata, onConversationLoaded, onNewContent, chatScrollRef, stickToBottomRef }: ConversationSessionOptions): ConversationSession {
   const { t } = useI18n()
-  const [historyHasMore, setHistoryHasMore] = useState(false)
-  const [historyHasNewer, setHistoryHasNewer] = useState(false)
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const historyOffsetRef = useRef(0)
   const conversationRequestRef = useRef(0)
-
-  const resetHistory = useCallback(() => {
-    historyOffsetRef.current = 0
-    setHistoryHasMore(false)
-    setHistoryHasNewer(false)
-  }, [])
+  const { historyHasMore, historyHasNewer, historyLoading, initializeHistory, loadOlderMessages, loadLatestMessages, resetHistory } = useConversationHistory({ onError, onNewContent, chatScrollRef, stickToBottomRef })
 
   const openConversation = useCallback(async (id: string, conversationList = conversations, workspaceList = availableWorkspaces) => {
     const loadStartedAt = performance.now()
@@ -83,14 +61,13 @@ export function useConversationSession({ conversations, availableWorkspaces, isI
     const requestId = ++conversationRequestRef.current
     stickToBottomRef.current = true
     onNewContent(false)
+    resetHistory()
     store.setActive(id)
     store.clearRun()
     const page = await window.nocturne.conversations.messagePage(id)
     if (requestId !== conversationRequestRef.current || useAppStore.getState().activeId !== id) return
     store.setMessages(page.items)
-    historyOffsetRef.current = page.items.length
-    setHistoryHasMore(page.hasMore)
-    setHistoryHasNewer(false)
+    initializeHistory(page)
     const lastMetadata = [...page.items].reverse().find((message) => message.metadata)?.metadata
     if (lastMetadata) onRestoreMetadata(lastMetadata)
     const conversation = conversationList.find((item) => item.id === id)
@@ -132,66 +109,7 @@ export function useConversationSession({ conversations, availableWorkspaces, isI
     onSetMemory(savedMemory)
     onConversationLoaded(performance.now() - loadStartedAt)
     void onRefreshGit(id)
-  }, [availableWorkspaces, confirm, conversations, isInteractionLocked, onClearMemoryAndGit, onConversationLoaded, onError, onInitializeWorkspaces, onLoadCollections, onLoadMemory, onNewContent, onRefreshConversations, onRefreshGit, onRestoreMetadata, onResetPreview, onSetMemory, onSetWorkspace, stickToBottomRef, t])
-
-  const loadOlderMessages = useCallback(async () => {
-    const conversationId = useAppStore.getState().activeId
-    if (!conversationId || historyLoading || !historyHasMore) return
-    const scroller = chatScrollRef.current
-    const previousHeight = scroller?.scrollHeight ?? 0
-    const anchor = scroller ? visibleMessageAnchor(scroller) : null
-    stickToBottomRef.current = false
-    onNewContent(false)
-    setHistoryLoading(true)
-    try {
-      const page = await window.nocturne.conversations.messagePage(conversationId, historyOffsetRef.current)
-      if (useAppStore.getState().activeId !== conversationId) return
-      const current = useAppStore.getState().messages
-      const known = new Set(current.map((message) => message.id))
-      const older = page.items.filter((message) => !known.has(message.id))
-      const combined = [...older, ...current]
-      const bounded = combined.length > RENDERER_LIMITS.chatMessages ? combined.slice(0, RENDERER_LIMITS.chatMessages) : combined
-      useAppStore.getState().setMessages(bounded)
-      historyOffsetRef.current += page.items.length
-      setHistoryHasMore(page.hasMore)
-      setHistoryHasNewer((currentValue) => currentValue || bounded.length < combined.length)
-      window.requestAnimationFrame(() => {
-        if (!scroller) return
-        const anchored = anchor && Array.from(scroller.querySelectorAll<HTMLElement>('[data-message-id]')).find((entry) => entry.dataset.messageId === anchor.id)
-        scroller.scrollTop += anchored
-          ? messageBubble(anchored).getBoundingClientRect().top - anchor.top
-          : scroller.scrollHeight - previousHeight
-      })
-    } catch (error) {
-      onError(errorMessage(error))
-    } finally {
-      if (useAppStore.getState().activeId === conversationId) setHistoryLoading(false)
-    }
-  }, [chatScrollRef, historyHasMore, historyLoading, onError, onNewContent, stickToBottomRef])
-
-  const loadLatestMessages = useCallback(async () => {
-    const conversationId = useAppStore.getState().activeId
-    if (!conversationId || historyLoading) return
-    setHistoryLoading(true)
-    try {
-      const page = await window.nocturne.conversations.messagePage(conversationId)
-      if (useAppStore.getState().activeId !== conversationId) return
-      useAppStore.getState().setMessages(page.items)
-      historyOffsetRef.current = page.items.length
-      setHistoryHasMore(page.hasMore)
-      setHistoryHasNewer(false)
-      stickToBottomRef.current = true
-      onNewContent(false)
-      window.requestAnimationFrame(() => {
-        const scroller = chatScrollRef.current
-        if (scroller) scroller.scrollTop = scroller.scrollHeight
-      })
-    } catch (error) {
-      onError(errorMessage(error))
-    } finally {
-      if (useAppStore.getState().activeId === conversationId) setHistoryLoading(false)
-    }
-  }, [chatScrollRef, historyLoading, onError, onNewContent, stickToBottomRef])
+  }, [availableWorkspaces, confirm, conversations, initializeHistory, isInteractionLocked, onClearMemoryAndGit, onConversationLoaded, onError, onInitializeWorkspaces, onLoadCollections, onLoadMemory, onNewContent, onRefreshConversations, onRefreshGit, onRestoreMetadata, onResetPreview, onSetMemory, onSetWorkspace, resetHistory, stickToBottomRef, t])
 
   return { historyHasMore, historyHasNewer, historyLoading, chatScrollRef, stickToBottomRef, openConversation, loadOlderMessages, loadLatestMessages, resetHistory }
 }
