@@ -42,6 +42,29 @@ Restored workspaces are not authorized automatically. The active workspace is
 watched through a single Chokidar backend with ignored generated directories,
 bounded reconciliation and debounced semantic change events.
 
+## Runtime and code organization
+
+The main process composes the application lifecycle and keeps packaged
+diagnostic harnesses in `electron/runtime/PackageSmoke.ts` and
+`electron/runtime/PackagedRecoveryHarness.ts`. The harnesses receive their
+window and database dependencies explicitly, so packaging checks do not become
+additional bootstrap responsibilities.
+
+`DatabaseRuntime` owns the SQLite connection, migrations, recovery snapshots,
+integrity maintenance and operation timing. `DatabaseRepositories` composes
+the domain repositories around that connection, while critical repository
+transactions use a named runtime-owned transaction runner. `Database.ts`
+remains a compatibility façade for the main process and does not issue raw
+audit SQL directly.
+
+IPC registration is composed by domain modules under `electron/ipc/`; the
+shared `IpcChannel` contract limits the safe registrar to channels declared in
+`shared/ipc/channels.ts`. The renderer keeps high-frequency execution state in
+Zustand and reports aggregate render, long-task and operation metrics without
+including prompt or file contents. Components that need only a derived value,
+such as the pending approval notice, subscribe to that value rather than to
+the complete collection.
+
 ## Trust model
 
 The developer controls provider selection, workspace authorization, approvals,

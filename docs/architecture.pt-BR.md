@@ -43,6 +43,29 @@ Workspaces restaurados não são autorizados automaticamente. O workspace ativo 
 observado por um único backend Chokidar, com diretórios gerados ignorados,
 reconciliação limitada e eventos semânticos agrupados.
 
+## Organização do runtime e do código
+
+O processo principal compõe o ciclo de vida da aplicação e mantém os harnesses
+de diagnóstico empacotado em `electron/runtime/PackageSmoke.ts` e
+`electron/runtime/PackagedRecoveryHarness.ts`. Os harnesses recebem
+explicitamente suas dependências de janela e banco, evitando que os checks de
+empacotamento acumulem responsabilidades no bootstrap.
+
+`DatabaseRuntime` é o responsável pela conexão SQLite, migrações, snapshots de
+recuperação, manutenção de integridade e medição das operações.
+`DatabaseRepositories` compõe os repositórios de domínio em torno dessa
+conexão, enquanto as transações críticas usam um runner nomeado pertencente ao
+runtime. `Database.ts` continua sendo uma fachada de compatibilidade para o
+processo principal e não emite SQL de auditoria diretamente.
+
+O registro de IPC é composto por módulos de domínio em `electron/ipc/`; o
+contrato compartilhado `IpcChannel` limita o registrador seguro aos canais
+declarados em `shared/ipc/channels.ts`. O renderer mantém o estado de execução
+de alta frequência no Zustand e publica métricas agregadas de renderização,
+long tasks e operações sem incluir prompts ou conteúdo de arquivos.
+Componentes que precisam apenas de um valor derivado, como o aviso de
+aprovação pendente, assinam esse valor em vez da coleção completa.
+
 ## Modelo de confiança
 
 O desenvolvedor controla a escolha do Provider, a autorização do workspace, as
