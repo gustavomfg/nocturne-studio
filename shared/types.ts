@@ -34,6 +34,7 @@ export interface RendererPerformanceStats {
     chat: number
     composer: number
     agentPanel: number
+    agentActivity: number
   }
   startupMs: number
   conversationLoadMs: number

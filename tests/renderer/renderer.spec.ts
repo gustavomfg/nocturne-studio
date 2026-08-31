@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { installNocturneMock } from './mockNocturne'
 import type { Suggestion } from '../../src/types'
-import { RENDERER_LIMITS } from '../../shared/constants'
+import { RENDERER_LIMITS, UI_TIMING } from '../../shared/constants'
 
 async function ready(page: import('@playwright/test').Page) {
   await page.goto('/')
@@ -75,6 +75,7 @@ test.describe('renderer do produto', () => {
         chat: expect.any(Number),
         composer: expect.any(Number),
         agentPanel: expect.any(Number),
+        agentActivity: expect.any(Number),
       },
       startupMs: expect.any(Number),
       conversationLoadMs: expect.any(Number),
@@ -82,6 +83,33 @@ test.describe('renderer do produto', () => {
       longTaskDurationMs: expect.any(Number),
       longestLongTaskMs: expect.any(Number),
     })
+  })
+
+  test('separa rerenders do conteúdo de atividade do container do inspector', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await ready(page)
+    if (await page.locator('#agent-inspector').evaluate((element) => element.classList.contains('closed'))) {
+      await page.getByRole('button', { name: 'Mostrar painel do agente' }).click()
+    }
+    await expect(page.locator('#agent-inspector')).toHaveClass(/open/)
+    await page.evaluate(() => (window as unknown as { __nocturneTest: { emitStatus(payload: unknown): void } }).__nocturneTest.emitStatus({ status: 'running' }))
+    await page.waitForTimeout(250)
+    const before = await page.evaluate(() => {
+      const reports = (window as unknown as { __nocturneTest: { performanceReports(): Array<{ renderCounts: { agentPanel: number; agentActivity: number } }> } }).__nocturneTest.performanceReports()
+      return reports[reports.length - 1].renderCounts
+    })
+    await page.evaluate(() => {
+      const bridge = (window as unknown as { __nocturneTest: { emitEvent(payload: unknown): void } }).__nocturneTest
+      for (let index = 0; index < 8; index += 1) bridge.emitEvent({ method: 'item/reasoning/summaryTextDelta', params: { itemId: 'activity-rerender', delta: `detalhe ${index}` } })
+    })
+    await expect(page.locator('#agent-panel-activity .timeline-item')).toHaveCount(1)
+    await page.waitForTimeout(UI_TIMING.diagnosticsIntervalMs + 100)
+    const after = await page.evaluate(() => {
+      const reports = (window as unknown as { __nocturneTest: { performanceReports(): Array<{ renderCounts: { agentPanel: number; agentActivity: number } }> } }).__nocturneTest.performanceReports()
+      return reports[reports.length - 1].renderCounts
+    })
+    expect(after.agentActivity).toBeGreaterThan(before.agentActivity)
+    expect(after.agentPanel - before.agentPanel).toBeLessThan(after.agentActivity - before.agentActivity)
   })
 
   test('mantém somente um painel modal e restaura o foco', async ({ page }) => {

@@ -73,7 +73,7 @@ describe('métricas internas de desempenho', () => {
     responseSize: 2_000,
     activities: 12,
     messages: 80,
-    renderCounts: { app: 4, chat: 3, composer: 5, agentPanel: 2 },
+    renderCounts: { app: 4, chat: 3, composer: 5, agentPanel: 2, agentActivity: 8 },
     startupMs: RENDERER_PERFORMANCE_BUDGETS.startupMs,
     conversationLoadMs: RENDERER_PERFORMANCE_BUDGETS.conversationLoadMs,
     longTasks: 1,
