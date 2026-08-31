@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { affectsWorkspaceContext } from '../src/domains/workspaces/useWorkspaceSession'
+import { affectsWorkspaceContext } from '../src/domains/workspaces/useWorkspaceWatcher'
 
 describe('workspace session change classification', () => {
   it('refreshes context files and overflow events', () => {
