@@ -66,4 +66,33 @@ describe('Agent lifecycle contract', () => {
     })
     expect(cancel).toMatchObject({ accepted: true, state: { state: 'cancelling' } })
   })
+
+  it('fecha erro e cancelamento como estados terminais sem aceitar eventos posteriores', () => {
+    const first = reduceAgentLifecycle(null, started)
+    if (!first.accepted) throw new Error('run.started deveria ser aceito')
+
+    const failed = reduceAgentLifecycle(first.state, event({ state: 'running' }))
+    if (!failed.accepted) throw new Error('run.stateChanged deveria ser aceito')
+    const error = reduceAgentLifecycle(failed.state, {
+      type: 'run.failed', runId: 'run-1', conversationId: 'conversation-1', sequence: 2,
+      timestamp: '2026-08-29T12:00:02.000Z', error: 'Falha reproduzível.',
+    })
+    expect(error).toMatchObject({ accepted: true, state: { state: 'failed', error: 'Falha reproduzível.' } })
+    if (!error.accepted) return
+    expect(reduceAgentLifecycle(error.state, {
+      type: 'run.cancelRequested', runId: 'run-1', conversationId: 'conversation-1', sequence: 3,
+      timestamp: '2026-08-29T12:00:03.000Z',
+    })).toEqual({ accepted: false, reason: 'invalid-transition' })
+
+    const cancelling = reduceAgentLifecycle(first.state, {
+      type: 'run.cancelRequested', runId: 'run-1', conversationId: 'conversation-1', sequence: 4,
+      timestamp: '2026-08-29T12:00:04.000Z',
+    })
+    if (!cancelling.accepted) throw new Error('run.cancelRequested deveria ser aceito')
+    const cancelled = reduceAgentLifecycle(cancelling.state, {
+      type: 'run.cancelled', runId: 'run-1', conversationId: 'conversation-1', sequence: 5,
+      timestamp: '2026-08-29T12:00:05.000Z', reason: 'user',
+    })
+    expect(cancelled).toMatchObject({ accepted: true, state: { state: 'cancelled' } })
+  })
 })

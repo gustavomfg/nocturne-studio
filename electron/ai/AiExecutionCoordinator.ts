@@ -3,7 +3,7 @@ import type { BrowserWindow } from 'electron'
 import type { WorkspaceModelBindings } from '../../shared/ai/bindings'
 import type { NormalizedTaskInput } from '../../shared/ai/task'
 import { isAgentState, type AgentState } from '../../shared/agentState'
-import { reduceAgentLifecycle, type AgentLifecycleDetails, type AgentLifecycleEvent, type AgentRunState } from '../../shared/agentLifecycle'
+import { isTerminalAgentState, reduceAgentLifecycle, type AgentLifecycleDetails, type AgentLifecycleEvent, type AgentRunState } from '../../shared/agentLifecycle'
 import type { AgentMode, AppSettings } from '../../shared/types'
 import { PERSISTENCE_LIMITS } from '../../shared/constants'
 import { assessCommand } from '../security/ExecutionPolicy'
@@ -14,6 +14,7 @@ import type { ModelRegistry } from './ModelRegistry'
 import type { ProviderRegistry } from './ProviderRegistry'
 import { startAiTurn } from './executeAiTurn'
 import type { CompletedTurnSnapshot, PersistedTurn } from './TurnPersistence'
+import { IPC_CHANNELS } from '../../shared/ipc/channels'
 
 export type ApprovalDetails = Map<string, { command?: string; risk?: string }>
 
@@ -199,7 +200,7 @@ export class AiExecutionCoordinator {
 
   async cancel(conversationId: string) {
     const active = this.active
-    if (!active || active.conversationId !== conversationId || active.finishing || (active.lifecycle && isTerminalState(active.lifecycle.state))) {
+    if (!active || active.conversationId !== conversationId || active.finishing || (active.lifecycle && isTerminalAgentState(active.lifecycle.state))) {
       throw new Error('Nenhuma execução ativa nesta conversa.')
     }
     if (!this.applyLifecycle(active, {
@@ -337,7 +338,7 @@ export class AiExecutionCoordinator {
     const sequence = this.nextSequence(active)
     const timestamp = this.now().toISOString()
     if (!this.win.isDestroyed()) {
-      this.win.webContents.send('ai:event', {
+      this.win.webContents.send(IPC_CHANNELS.ai.event, {
         method,
         runId: active.runId,
         sequence,
@@ -411,7 +412,7 @@ export class AiExecutionCoordinator {
     const sequence = this.nextSequence(active)
     const timestamp = this.now().toISOString()
     if (!this.win.isDestroyed()) {
-      this.win.webContents.send('ai:status', {
+      this.win.webContents.send(IPC_CHANNELS.ai.status, {
         status,
         conversationId: active.conversationId,
         runId: active.runId,
@@ -424,7 +425,7 @@ export class AiExecutionCoordinator {
 
   private pushTransportStatus(status: AgentState, error?: string) {
     if (!this.win.isDestroyed()) {
-      this.win.webContents.send('ai:status', {
+      this.win.webContents.send(IPC_CHANNELS.ai.status, {
         status,
         sequence: ++this.transportSequence,
         timestamp: this.now().toISOString(),
@@ -513,10 +514,6 @@ export class AiExecutionCoordinator {
   }
 
   private transportSequence = 0
-}
-
-function isTerminalState(state: AgentRunState['state']) {
-  return state === 'completed' || state === 'failed' || state === 'cancelled'
 }
 
 function eventFiles(method: string, params: Record<string, unknown>) {

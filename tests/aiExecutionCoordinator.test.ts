@@ -86,6 +86,24 @@ describe('AiExecutionCoordinator', () => {
     coordinator.dispose()
   })
 
+  it('publica erro terminal e libera a conversa para uma nova tentativa', async () => {
+    const { sent, win } = testWindow()
+    const models = new ModelRegistry(); models.register(descriptor)
+    const providers = new ProviderRegistry(); providers.register(new FakeProviderAdapter([descriptor], { error: { code: 'rate-limited', message: 'Limite temporário.', retryable: true } }))
+    const finalize = vi.fn((snapshot: { conversationId: string }) => ({ message: { id: `failed-${finalize.mock.calls.length + 1}`, conversationId: snapshot.conversationId, role: 'assistant' as const, content: '', metadata: null, createdAt: '2026-07-29T10:00:00.000Z' } }))
+    const coordinator = new AiExecutionCoordinator(win as never, models, providers, testLogger() as never, new Map(), finalize, undefined, () => `run-error-${finalize.mock.calls.length + 1}`, () => new Date('2026-07-29T10:00:00.000Z'))
+
+    await coordinator.startProvider('conversation-1', task, bindings)
+    await vi.waitFor(() => expect(finalize).toHaveBeenCalledOnce())
+    expect(sent).toContainEqual(expect.objectContaining({ channel: 'ai:event', payload: expect.objectContaining({ method: 'error', params: expect.objectContaining({ message: 'Limite temporário.' }) }) }))
+    expect(sent).toContainEqual(expect.objectContaining({ channel: 'ai:event', payload: expect.objectContaining({ method: 'turn/completed', params: expect.objectContaining({ turn: expect.objectContaining({ status: 'failed' }) }) }) }))
+
+    await coordinator.startProvider('conversation-1', task, bindings)
+    await vi.waitFor(() => expect(finalize).toHaveBeenCalledTimes(2))
+    expect(new Set(sent.filter(({ channel }) => channel === 'ai:event').map(({ payload }) => payload.runId))).toEqual(new Set(['run-error-1', 'run-error-2']))
+    coordinator.dispose()
+  })
+
   it('ignora deltas emitidos depois do cancelamento e conclui o run como cancelado', async () => {
     const { sent, win } = testWindow()
     const adapter = new ControlledProviderAdapter([descriptor], true)

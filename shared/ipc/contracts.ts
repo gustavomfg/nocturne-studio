@@ -19,9 +19,11 @@ export interface ProviderConfigurationIpcError {
   availability?: ProviderAvailability
 }
 
-export type ProviderConfigurationIpcResult<T> =
+export type IpcResult<T, E extends { message: string } = { message: string }> =
   | { ok: true; value: T }
-  | { ok: false; error: ProviderConfigurationIpcError }
+  | { ok: false; error: E }
+
+export type ProviderConfigurationIpcResult<T> = IpcResult<T, ProviderConfigurationIpcError>
 
 export type ModelIpcErrorCode =
   | 'invalid-request'
@@ -29,9 +31,7 @@ export type ModelIpcErrorCode =
   | 'workspace-not-authorized'
   | 'operation-failed'
 
-export type ModelIpcResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; error: { code: ModelIpcErrorCode; message: string } }
+export type ModelIpcResult<T> = IpcResult<T, { code: ModelIpcErrorCode; message: string }>
 
 export interface NocturneApi {
   workspace: { select(expectedWorkspace?: string): Promise<string | null>; validate(value: string): Promise<string | null>; list(): Promise<Workspace[]>; remove(value: string): Promise<void>; favorite(value: string, favorite: boolean): Promise<void>; openTool(value: string, tool: 'editor' | 'terminal'): Promise<void>; watch(value: string | null): Promise<void>; onChanged(listener: (event: WorkspaceChangeEvent) => void): () => void }
