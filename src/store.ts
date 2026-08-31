@@ -35,3 +35,7 @@ export const useAppStore = create<AppState>((set) => ({
   setArtifacts: (artifacts) => set({ artifacts }), setSuggestions: (suggestions) => set({ suggestions }), setPlan: (plan, planExplanation = '') => set({ plan, planExplanation }),
   setError: (error) => set({ error }),
 }))
+
+export const selectPendingApprovalCount = (state: AppState) => (
+  state.approvals.reduce((count, approval) => count + (approval.status === 'pending' ? 1 : 0), 0)
+)

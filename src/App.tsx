@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { X } from 'lucide-react'
-import { useAppStore } from './store'
+import { selectPendingApprovalCount, useAppStore } from './store'
 import type { Activity, ChangedFile, Conversation, PlanStep, Workspace } from './types'
 import { Sidebar } from './domains/workspaces/Sidebar'
 import { WorkspaceTopbar } from './domains/workspaces/WorkspaceTopbar'
@@ -44,11 +44,12 @@ function App() {
   useRendererRenderCounter('app')
   const { t } = useI18n()
   const store = useAppStore(useShallow((state) => ({
-    conversations: state.conversations, activeId: state.activeId, messages: state.messages, status: state.status, finalizing: state.finalizing, approvals: state.approvals, error: state.error,
+    conversations: state.conversations, activeId: state.activeId, messages: state.messages, status: state.status, finalizing: state.finalizing, error: state.error,
     setConversations: state.setConversations, setActive: state.setActive, setMessages: state.setMessages, addMessage: state.addMessage, setStatus: state.setStatus, setFinalizing: state.setFinalizing,
     clearRun: state.clearRun, setDiff: state.setDiff, upsertActivity: state.upsertActivity, addApproval: state.addApproval, resolveApproval: state.resolveApproval, setError: state.setError,
     setFiles: state.setFiles, setArtifacts: state.setArtifacts, setSuggestions: state.setSuggestions, setPlan: state.setPlan,
   })))
+  const pendingApprovalCount = useAppStore(selectPendingApprovalCount)
   const confirmation = useConfirmDialog()
   const { confirm } = confirmation
   const [search, setSearch] = useState('')
@@ -282,7 +283,7 @@ function App() {
 
       <ChatViewport active={Boolean(store.activeId)} messages={store.messages} error={store.error} historyHasMore={historyHasMore} historyHasNewer={historyHasNewer} historyLoading={historyLoading} newContent={newContent} chatScrollRef={chatScrollRef} endRef={endRef} stickToBottomRef={stickToBottomRef} onNew={() => void createConversation()} onWorkspace={() => void selectWorkspace()} onPrompt={preparePrompt} onLoadOlder={() => void loadOlderMessages()} onLoadLatest={() => void loadLatestMessages()} onScroll={handleChatScroll} onNewContent={setNewContent} onDismissError={() => store.setError(null)} onRetryError={retryAvailableForActiveConversation ? retryLastAttempt : undefined} onJumpLatest={jumpToLatest}/>
 
-      <Composer agentMode={agentMode} attachments={attachments} prompt={prompt} status={store.status} finalizing={store.finalizing} active={Boolean(store.activeId)} pendingApprovals={store.approvals.filter((item) => item.status === 'pending').length} composerRef={composerRef} onMode={setAgentMode} onPrompt={setPrompt} onRemoveAttachment={removeAttachment} onAttach={attachFiles} onCancel={cancelRun} onSubmit={send} onQuick={preparePrompt}/>
+      <Composer agentMode={agentMode} attachments={attachments} prompt={prompt} status={store.status} finalizing={store.finalizing} active={Boolean(store.activeId)} pendingApprovals={pendingApprovalCount} composerRef={composerRef} onMode={setAgentMode} onPrompt={setPrompt} onRemoveAttachment={removeAttachment} onAttach={attachFiles} onCancel={cancelRun} onSubmit={send} onQuick={preparePrompt}/>
     </main>
     {compactLayout && rightOpen && <button tabIndex={-1} className="panel-backdrop inspector-backdrop" aria-label={t('topbar.closeAgent')} onClick={() => setInspectorVisibility(false)}/>}
 

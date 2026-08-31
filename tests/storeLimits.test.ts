@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useAppStore } from '../src/store'
+import { selectPendingApprovalCount, useAppStore } from '../src/store'
 import { PERSISTENCE_LIMITS, RENDERER_PERFORMANCE_BUDGETS } from '../shared/constants'
 import { exportDocumentSchema, prepareMarkdownSchema, rendererStatsSchema, saveAssistantSchema, suggestionExtractSchema } from '../shared/ipc/schemas'
 import { JSON_VALUE_LIMITS } from '../shared/json'
 
-beforeEach(() => useAppStore.setState({ streaming: '', activities: [], files: [] }))
+beforeEach(() => useAppStore.setState({ streaming: '', activities: [], files: [], approvals: [] }))
 
 describe('limites de estabilidade do renderer', () => {
   it('limita o buffer acumulado da resposta', () => {
@@ -23,6 +23,13 @@ describe('limites de estabilidade do renderer', () => {
     const files = useAppStore.getState().files
     expect(files).toHaveLength(300)
     expect(files[0].path).toBe('src/file-50.ts')
+  })
+  it('deriva somente a contagem de aprovações pendentes para o composer', () => {
+    useAppStore.getState().addApproval({ key: 'pending', kind: 'command', title: 'Executar', detail: 'npm test', status: 'pending' })
+    useAppStore.getState().addApproval({ key: 'resolved', kind: 'command', title: 'Executado', detail: 'npm test', status: 'accepted' })
+    expect(selectPendingApprovalCount(useAppStore.getState())).toBe(1)
+    useAppStore.getState().resolveApproval('pending', 'declined')
+    expect(selectPendingApprovalCount(useAppStore.getState())).toBe(0)
   })
 })
 
