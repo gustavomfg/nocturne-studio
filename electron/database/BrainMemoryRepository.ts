@@ -9,6 +9,7 @@ import type {
   UpdateBrainMemoryInput,
 } from '../../shared/brainMemory'
 import type { ConversationRow } from './ConversationRepository'
+import type { DatabaseTransactionRunner } from './DatabaseTransaction'
 
 type ConversationLookup = (id: string) => ConversationRow | null
 
@@ -17,6 +18,7 @@ export class BrainMemoryRepository {
   constructor(
     private readonly database: Database.Database,
     private readonly getConversation: ConversationLookup,
+    private readonly transactions: DatabaseTransactionRunner,
   ) {}
 
   create(workspaceId: string, value: CreateBrainMemoryInput): BrainMemory {
@@ -40,7 +42,7 @@ export class BrainMemoryRepository {
       lastUsedAt: null,
       useCount: 0,
     }
-    this.database.transaction(() => {
+    this.transactions.run('brainMemories.create', () => {
       this.database.prepare(`INSERT INTO brain_memories(
         id,workspace_id,conversation_id,kind,scope,status,content,confidence,
         source_type,source_id,created_at,updated_at,last_confirmed_at,last_used_at,use_count
@@ -54,7 +56,7 @@ export class BrainMemoryRepository {
           ? 'Memória criada a partir de uma mensagem.'
           : 'Memória criada manualmente.'
       this.addHistory(row.id, 'created', null, row.status, summary, now)
-    })()
+    })
     return row
   }
 
@@ -91,7 +93,7 @@ export class BrainMemoryRepository {
         ? updatedAt
         : current.lastConfirmedAt,
     }
-    this.database.transaction(() => {
+    this.transactions.run('brainMemories.update', () => {
       this.database.prepare(`UPDATE brain_memories SET
         conversation_id=@conversationId,kind=@kind,scope=@scope,status=@status,
         content=@content,confidence=@confidence,updated_at=@updatedAt,
@@ -110,7 +112,7 @@ export class BrainMemoryRepository {
         this.addHistory(id, action, current.status, status,
           brainMemoryHistorySummary(action), updatedAt)
       }
-    })()
+    })
     return this.get(id, workspaceId) as BrainMemory
   }
 
@@ -153,7 +155,7 @@ export class BrainMemoryRepository {
     currentConversationId: string,
     candidates: BrainMemoryCandidate[],
   ) {
-    return this.database.transaction(() => candidates.flatMap((candidate) => {
+    return this.transactions.run('brainMemories.createCandidates', () => candidates.flatMap((candidate) => {
       const conversationId = candidate.scope === 'conversation' ? currentConversationId : null
       if (this.findEquivalent(workspaceId, candidate.scope, conversationId, candidate.content)) return []
       return [this.create(workspaceId, {
@@ -162,7 +164,7 @@ export class BrainMemoryRepository {
         sourceType: 'agent',
         status: 'candidate',
       })]
-    }))()
+    }))
   }
 
   listPage(workspaceId: string, offset = 0, limit = 50, query = '', status?: BrainMemory['status']) {

@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import { DATABASE_SCHEMA_VERSION } from '../../shared/constants'
 import { SettingsRepository } from './SettingsRepository'
+import type { DatabaseTransactionRunner } from './DatabaseTransaction'
 
 export interface DatabaseImportData {
   conversations: unknown[]
@@ -26,6 +27,7 @@ export class BackupRepository {
     private readonly database: Database.Database,
     private readonly settings: SettingsRepository,
     private readonly cleanupOrphans: () => void,
+    private readonly transactions: DatabaseTransactionRunner,
   ) {}
 
   exportData() {
@@ -104,7 +106,7 @@ export class BackupRepository {
       }
     }
 
-    this.database.transaction(() => {
+    this.transactions.run('backup.importData', () => {
       this.database.exec(`DELETE FROM workspace_model_bindings;
         DELETE FROM brain_memory_history;
         DELETE FROM brain_memories;
@@ -141,7 +143,7 @@ export class BackupRepository {
         if (data.settings) this.settings.set(data.settings)
       }
       this.cleanupOrphans()
-    })()
+    })
   }
 }
 

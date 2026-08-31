@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import Sqlite from 'better-sqlite3'
 import { afterEach, describe, expect, it } from 'vitest'
+import { DatabaseRuntime } from '../electron/database/DatabaseRuntime'
 import { LocalDatabase } from '../electron/database/Database'
 import { restoreDatabaseFile } from '../electron/database/recovery'
 
@@ -13,15 +14,15 @@ describe('durabilidade SQLite e restauração', () => {
   it('mantém a configuração WAL e synchronous=FULL no banco do produto', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-sqlite-pragmas-'))
     directories.push(root)
-    const database = new LocalDatabase(root)
-    const connection = (database as unknown as { db: Sqlite.Database }).db
+    const runtime = new DatabaseRuntime(root)
+    const connection = runtime.db
 
     expect(connection.pragma('journal_mode', { simple: true })).toBe('wal')
     expect(connection.pragma('synchronous', { simple: true })).toBe(2)
     expect(connection.pragma('foreign_keys', { simple: true })).toBe(1)
     expect(connection.pragma('busy_timeout', { simple: true })).toBe(5_000)
     expect(connection.pragma('temp_store', { simple: true })).toBe(2)
-    database.close()
+    runtime.close()
   })
 
   it('não expõe dados de uma transação interrompida após reabertura', () => {

@@ -1,6 +1,7 @@
 import path from 'node:path'
 import type Database from 'better-sqlite3'
 import type { WorkspaceModelBindingRepository } from './WorkspaceModelBindingRepository'
+import type { DatabaseTransactionRunner } from './DatabaseTransaction'
 
 export interface WorkspaceRow {
   path: string
@@ -16,6 +17,7 @@ export class WorkspaceRepository {
   constructor(
     private readonly database: Database.Database,
     private readonly modelBindings: WorkspaceModelBindingRepository,
+    private readonly transactions: DatabaseTransactionRunner,
   ) {}
 
   list(): WorkspaceRow[] {
@@ -47,7 +49,7 @@ export class WorkspaceRepository {
     }
 
     const modelBindings = this.modelBindings.get(source)
-    this.database.transaction(() => {
+    this.transactions.run('workspaces.relocate', () => {
       const current = this.database.prepare(`SELECT path,name,favorite,authorized,
         created_at createdAt,last_opened_at lastOpenedAt
         FROM workspaces WHERE path=?`).get(source) as {
@@ -82,7 +84,7 @@ export class WorkspaceRepository {
         this.modelBindings.delete(source)
       }
       this.database.prepare('DELETE FROM workspaces WHERE path=?').run(source)
-    })()
+    })
   }
 
   remove(workspace: string) {

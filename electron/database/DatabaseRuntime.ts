@@ -59,8 +59,8 @@ export class DatabaseRuntime {
     this.cleanupOrphans()
   }
 
-  runInTransaction<T>(operation: () => T): T {
-    return this.measure('transaction', () => this.db.transaction(operation)())
+  runInTransaction<T>(operation: () => T, operationName = 'transaction'): T {
+    return this.measure(operationName, () => this.db.transaction(operation)())
   }
 
   setOperationObserver(observer: DatabaseOperationObserver | undefined) {

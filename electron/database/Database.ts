@@ -1,5 +1,3 @@
-import Database from 'better-sqlite3'
-import { randomUUID } from 'node:crypto'
 import type {
   BrainMemory,
   BrainMemoryCandidate,
@@ -14,17 +12,10 @@ import type {
   SuggestionStatus,
 } from '../../shared/suggestions'
 import { DatabaseRuntime, type DatabaseOperationObserver } from './DatabaseRuntime'
-import { ProviderConfigurationRepository } from './ProviderConfigurationRepository'
-import { ModelCatalogRepository } from './ModelCatalogRepository'
-import { WorkspaceModelBindingRepository } from './WorkspaceModelBindingRepository'
-import { ConversationRepository, type ConversationRow, type MessageRow } from './ConversationRepository'
-import { ArtifactRepository } from './ArtifactRepository'
-import { SettingsRepository } from './SettingsRepository'
-import { WorkspaceMemoryRepository } from './WorkspaceMemoryRepository'
-import { WorkspaceRepository, type WorkspaceRow } from './WorkspaceRepository'
-import { BrainMemoryRepository } from './BrainMemoryRepository'
-import { SuggestionRepository } from './SuggestionRepository'
-import { BackupRepository, type DatabaseImportData } from './BackupRepository'
+import { createDatabaseRepositories, type DatabaseRepositories } from './DatabaseRepositories'
+import type { ConversationRow, MessageRow } from './ConversationRepository'
+import type { WorkspaceRow } from './WorkspaceRepository'
+import type { DatabaseImportData } from './BackupRepository'
 
 export type { ConversationRow, MessageRow } from './ConversationRepository'
 export type { ArtifactRow } from './ArtifactRepository'
@@ -33,34 +24,24 @@ export type { DatabaseImportData } from './BackupRepository'
 
 /** Compatibility façade for the main process while persistence is split by domain. */
 export class LocalDatabase {
-  private db: Database.Database
   private readonly runtime: DatabaseRuntime
-  readonly conversations: ConversationRepository
-  readonly artifacts: ArtifactRepository
-  readonly settings: SettingsRepository
-  readonly workspaceMemory: WorkspaceMemoryRepository
-  readonly workspaces: WorkspaceRepository
-  readonly brainMemories: BrainMemoryRepository
-  readonly suggestions: SuggestionRepository
-  readonly backup: BackupRepository
-  readonly providerConfigurations: ProviderConfigurationRepository
-  readonly modelCatalog: ModelCatalogRepository
-  readonly workspaceModelBindings: WorkspaceModelBindingRepository
+  private readonly repositories: DatabaseRepositories
+
+  get conversations() { return this.repositories.conversations }
+  get artifacts() { return this.repositories.artifacts }
+  get settings() { return this.repositories.settings }
+  get workspaceMemory() { return this.repositories.workspaceMemory }
+  get workspaces() { return this.repositories.workspaces }
+  get brainMemories() { return this.repositories.brainMemories }
+  get suggestions() { return this.repositories.suggestions }
+  get backup() { return this.repositories.backup }
+  get providerConfigurations() { return this.repositories.providerConfigurations }
+  get modelCatalog() { return this.repositories.modelCatalog }
+  get workspaceModelBindings() { return this.repositories.workspaceModelBindings }
 
   constructor(userDataPath: string) {
     this.runtime = new DatabaseRuntime(userDataPath)
-    this.db = this.runtime.db
-    this.conversations = new ConversationRepository(this.db)
-    this.artifacts = new ArtifactRepository(this.db)
-    this.settings = new SettingsRepository(this.db)
-    this.workspaceMemory = new WorkspaceMemoryRepository(this.db)
-    this.providerConfigurations = new ProviderConfigurationRepository(this.db)
-    this.modelCatalog = new ModelCatalogRepository(this.db)
-    this.workspaceModelBindings = new WorkspaceModelBindingRepository(this.db)
-    this.workspaces = new WorkspaceRepository(this.db, this.workspaceModelBindings)
-    this.brainMemories = new BrainMemoryRepository(this.db, (id) => this.conversations.get(id))
-    this.suggestions = new SuggestionRepository(this.db)
-    this.backup = new BackupRepository(this.db, this.settings, () => this.runtime.cleanupOrphans())
+    this.repositories = createDatabaseRepositories(this.runtime)
   }
 
   runInTransaction<T>(operation: () => T): T {
@@ -257,16 +238,7 @@ export class LocalDatabase {
   }
 
   recordApproval(key: string, accepted: boolean, command?: string, risk?: string) {
-    this.db.prepare(`INSERT INTO approval_audit(
-      id,approval_key,decision,command,risk,created_at
-    ) VALUES(?,?,?,?,?,?)`).run(
-      randomUUID(),
-      key,
-      accepted ? 'accepted' : 'declined',
-      command?.slice(0, 4_000) ?? null,
-      risk ?? null,
-      new Date().toISOString(),
-    )
+    this.repositories.approvals.record(key, accepted, command, risk)
   }
 
   listSuggestions(conversationId: string): Suggestion[] {

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
 import { PERSISTENCE_LIMITS } from '../../shared/constants'
 import { serializeJsonValue } from '../../shared/json'
+import type { DatabaseTransactionRunner } from './DatabaseTransaction'
 
 export interface ConversationRow {
   id: string
@@ -22,7 +23,10 @@ export interface MessageRow {
 }
 
 export class ConversationRepository {
-  constructor(private readonly database: Database.Database) {}
+  constructor(
+    private readonly database: Database.Database,
+    private readonly transactions: DatabaseTransactionRunner,
+  ) {}
 
   list(): ConversationRow[] {
     return this.database.prepare(`SELECT id, title, workspace,
@@ -83,7 +87,7 @@ export class ConversationRepository {
   }
 
   addMessage(conversationId: string, role: MessageRow['role'], content: string, metadata?: unknown) {
-    return this.database.transaction(() => this.insertMessage(conversationId, role, content, metadata))()
+    return this.transactions.run('conversations.addMessage', () => this.insertMessage(conversationId, role, content, metadata))
   }
 
   insertMessage(conversationId: string, role: MessageRow['role'], content: string, metadata?: unknown) {

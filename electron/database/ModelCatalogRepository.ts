@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { ModelDescriptor } from '../../shared/ai/model'
 import { MODEL_LIMITS } from '../../shared/ai/model'
 import { modelDescriptorSchema } from '../../shared/ai/modelSchemas'
+import type { DatabaseTransactionRunner } from './DatabaseTransaction'
 
 const providerIdSchema = z.string().trim().min(1)
   .max(MODEL_LIMITS.identifierCharacters)
@@ -16,6 +17,7 @@ interface ModelCatalogRow {
 export class ModelCatalogRepository {
   constructor(
     private readonly database: Database.Database,
+    private readonly transactions: DatabaseTransactionRunner,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
@@ -47,7 +49,7 @@ export class ModelCatalogRepository {
       keys.add(descriptor.modelId)
     }
 
-    const replace = this.database.transaction(() => {
+    this.transactions.run('modelCatalog.replaceProviderModels', () => {
       this.database.prepare('DELETE FROM model_catalog WHERE provider_id=?')
         .run(validatedProviderId)
       const insert = this.database.prepare(`INSERT INTO model_catalog(
@@ -63,7 +65,6 @@ export class ModelCatalogRepository {
         )
       }
     })
-    replace()
     return descriptors.map(cloneDescriptor)
   }
 

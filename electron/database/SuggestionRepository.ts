@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
 import { suggestionIdentity, type ReviewComparisonItem, type Suggestion, type SuggestionInput, type SuggestionReconciliation, type SuggestionStatus } from '../../shared/suggestions'
+import type { DatabaseTransactionRunner } from './DatabaseTransaction'
 
 type EncodedSuggestion = Omit<Suggestion, 'affectedFiles' | 'expectedBenefits' | 'evidence' | 'history'> & {
   affectedFiles: string
@@ -10,7 +11,10 @@ type EncodedSuggestion = Omit<Suggestion, 'affectedFiles' | 'expectedBenefits' |
 
 /** Owns review suggestions, reconciliation and their decision history. */
 export class SuggestionRepository {
-  constructor(private readonly database: Database.Database) {}
+  constructor(
+    private readonly database: Database.Database,
+    private readonly transactions: DatabaseTransactionRunner,
+  ) {}
 
   list(conversationId: string): Suggestion[] {
     const rows = this.database.prepare(`${suggestionSelect}
@@ -55,7 +59,7 @@ export class SuggestionRepository {
       updatedAt: now,
       history: [{ id: decisionId, status: 'new', result: null, createdAt: now }],
     }
-    this.database.transaction(() => {
+    this.transactions.run('suggestions.add', () => {
       this.database.prepare(`INSERT INTO suggestions(
         id,workspace_id,conversation_id,title,description,reasoning,category,severity,
         affected_files,proposed_changes,expected_benefits,complexity,risk,evidence,
@@ -73,7 +77,7 @@ export class SuggestionRepository {
       this.database.prepare(`INSERT INTO suggestion_decisions(
         id,suggestion_id,status,result,created_at
       ) VALUES(?,?,?,?,?)`).run(decisionId, row.id, 'new', null, now)
-    })()
+    })
     return row
   }
 
@@ -82,7 +86,7 @@ export class SuggestionRepository {
     workspaceId: string,
     values: SuggestionInput[],
   ): SuggestionReconciliation {
-    return this.database.transaction(() => {
+    return this.transactions.run('suggestions.reconcile', () => {
       const history = this.listHistory(conversationId)
       const byIdentity = new Map<string, Suggestion>()
       const activeBefore = new Map<string, Suggestion>()
@@ -170,11 +174,11 @@ export class SuggestionRepository {
           severityChanges,
         },
       }
-    })()
+    })
   }
 
   setStatus(id: string, status: SuggestionStatus, result?: string): Suggestion {
-    return this.database.transaction(() => {
+    return this.transactions.run('suggestions.setStatus', () => {
       const updatedAt = new Date().toISOString()
       const current = this.database.prepare('SELECT status FROM suggestions WHERE id=?')
         .get(id) as { status: SuggestionStatus } | undefined
@@ -208,7 +212,7 @@ export class SuggestionRepository {
         'SELECT conversation_id conversationId FROM suggestions WHERE id=?',
       ).get(id) as { conversationId: string }
       return this.get(id, row.conversationId) as Suggestion
-    })()
+    })
   }
 
   private listHistory(conversationId: string): Suggestion[] {
