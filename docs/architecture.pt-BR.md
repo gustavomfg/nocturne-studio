@@ -45,6 +45,21 @@ reconciliação limitada e eventos semânticos agrupados.
 
 ## Organização do runtime e do código
 
+O shell da aplicação no renderer em `src/App.tsx` é intencionalmente uma
+fronteira de composição. Bootstrap, transições de tema, avisos e preload das
+configurações ficam em `src/domains/app/`; ações de conversa, restauração de
+metadados de turno e comportamento do viewport do chat ficam no domínio de
+chat. Assim, composição de navegação e layout permanece separada de efeitos
+com estado e regras de domínio.
+
+O inspector do agente é dividido entre o container de navegação em
+`src/domains/agent/AgentPanel.tsx` e a superfície de atividades em
+`src/domains/agent/AgentActivityPanel.tsx`. O container assina somente contagens
+das abas e o indicador de execução; atividades, rollback, exportação de
+documentos, Git e histórico de aprovações permanecem na superfície de
+atividades. Essa superfície continua montada durante a troca de abas para que
+o estado local de diálogos e rollback não seja descartado.
+
 O processo principal compõe o ciclo de vida da aplicação e mantém os harnesses
 de diagnóstico empacotado em `electron/runtime/PackageSmoke.ts` e
 `electron/runtime/PackagedRecoveryHarness.ts`. Os harnesses recebem
@@ -65,6 +80,9 @@ de alta frequência no Zustand e publica métricas agregadas de renderização,
 long tasks e operações sem incluir prompts ou conteúdo de arquivos.
 Componentes que precisam apenas de um valor derivado, como o aviso de
 aprovação pendente, assinam esse valor em vez da coleção completa.
+Os contadores de renderização usam um registro único no renderer para que
+chunks de domínios carregados sob demanda contribuam para o mesmo relatório
+agregado.
 
 ## Modelo de confiança
 

@@ -13,6 +13,13 @@ O renderer mede:
 - quantidade e duração acumulada de tarefas longas;
 - duração da maior tarefa longa observada;
 - tamanhos dos buffers de resposta, atividades e mensagens.
+- contagens agregadas de renderização para o shell, chat, composer, container do
+  agent inspector e superfície de atividades.
+
+O cenário de renderer em `tests/renderer/renderer.spec.ts` exercita eventos de
+atividade durante uma execução e compara as contagens do container com as da
+superfície de atividades. Isso mantém a separação observável sem enviar
+conteúdo de prompt, resposta ou arquivos ao diagnóstico.
 
 Os orçamentos de referência ficam em `shared/constants.ts`:
 

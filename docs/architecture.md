@@ -44,6 +44,20 @@ bounded reconciliation and debounced semantic change events.
 
 ## Runtime and code organization
 
+The renderer application shell in `src/App.tsx` is intentionally a composition
+boundary. Bootstrap, theme transitions, notices and settings preloading live in
+`src/domains/app/`; conversation actions, turn metadata restoration and chat
+viewport behavior live with the chat domain. This keeps navigation and layout
+composition separate from stateful effects and domain rules.
+
+The agent inspector is split between the navigation container in
+`src/domains/agent/AgentPanel.tsx` and the activity surface in
+`src/domains/agent/AgentActivityPanel.tsx`. The container subscribes only to
+tab counts and the running indicator; activity data, rollback, document export,
+Git and approval history remain in the activity surface. The activity surface
+is kept mounted while tabs change so local dialog and rollback state is not
+discarded.
+
 The main process composes the application lifecycle and keeps packaged
 diagnostic harnesses in `electron/runtime/PackageSmoke.ts` and
 `electron/runtime/PackagedRecoveryHarness.ts`. The harnesses receive their
@@ -63,7 +77,8 @@ shared `IpcChannel` contract limits the safe registrar to channels declared in
 Zustand and reports aggregate render, long-task and operation metrics without
 including prompt or file contents. Components that need only a derived value,
 such as the pending approval notice, subscribe to that value rather than to
-the complete collection.
+the complete collection. Render counters use a renderer-level diagnostic
+registry so lazy-loaded domain chunks contribute to the same aggregate report.
 
 ## Trust model
 
