@@ -1,21 +1,22 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { X } from 'lucide-react'
 import { selectPendingApprovalCount, useAppStore } from './store'
-import type { Activity, ChangedFile, Conversation, PlanStep, Workspace } from './types'
+import type { Conversation, Workspace } from './types'
 import { Sidebar } from './domains/workspaces/Sidebar'
 import { WorkspaceTopbar } from './domains/workspaces/WorkspaceTopbar'
 import { Composer } from './domains/chat/Composer'
 import { ChatViewport } from './domains/chat/ChatViewport'
-import { errorMessage, isBusy } from './shared/format'
+import { isBusy } from './shared/format'
 import { useAgentRunController } from './domains/agent/useAgentRunController'
 import { useConfirmDialog } from './shared/ConfirmDialog'
 import { useResponsivePanels } from './shared/useResponsivePanels'
 import { AppOverlays } from './domains/settings/AppOverlays'
-import { loadSettingsDialog } from './domains/settings/loadSettingsDialog'
 import { usePagedCollections } from './domains/collections/usePagedCollections'
 import { useWorkspaceSession } from './domains/workspaces/useWorkspaceSession'
 import { useConversationSession } from './domains/chat/useConversationSession'
+import { useConversationActions } from './domains/chat/useConversationActions'
+import { useChatViewport } from './domains/chat/useChatViewport'
 import { useSettingsController } from './domains/settings/useSettingsController'
 import { useWorkspaceMemory } from './domains/memory/useWorkspaceMemory'
 import { useArtifactActions } from './domains/artifacts/useArtifactActions'
@@ -25,6 +26,10 @@ import { useI18n } from './shared/i18n'
 import { useRendererRenderCounter } from './shared/rendererDiagnostics'
 import { useRendererPerformance } from './shared/useRendererPerformance'
 import { useAppShortcuts } from './shared/useAppShortcuts'
+import { useAppBootstrap } from './domains/app/useAppBootstrap'
+import { useAppNotice } from './domains/app/useAppNotice'
+import { useAppTheme } from './domains/app/useAppTheme'
+import { useSettingsDialogPreload } from './domains/app/useSettingsDialogPreload'
 import './styles/components.css'
 import './domains/settings/settings.css'
 import './domains/agent/agent.css'
@@ -33,10 +38,6 @@ import './styles/product-constraints.css'
 
 const AgentPanel = lazy(() => import('./domains/agent/AgentPanel').then((module) => ({ default: module.AgentPanel })))
 const BrainMemoryDialog = lazy(() => import('./domains/memory/BrainMemoryDialog').then((module) => ({ default: module.BrainMemoryDialog })))
-
-type ViewTransitionDocument = Document & {
-  startViewTransition?: (update: () => void) => { finished: Promise<void> }
-}
 
 type OpenConversation = (id: string, conversationList?: Conversation[], workspaceList?: Workspace[]) => Promise<void>
 
@@ -60,22 +61,16 @@ function App() {
   const [brainOpen, setBrainOpen] = useState(false)
   const [onboardingOpen, setOnboardingOpen] = useState(() => localStorage.getItem('nocturne.onboarding.completed') !== 'true')
   const [newContent, setNewContent] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
+  const { notice, notify, dismissNotice } = useAppNotice()
   const endRef = useRef<HTMLDivElement>(null)
   const chatScrollRef = useRef<HTMLElement>(null)
   const stickToBottomRef = useRef(true)
-  const noticeTimerRef = useRef<number | null>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const sidebarTriggerRef = useRef<HTMLButtonElement>(null)
   const inspectorTriggerRef = useRef<HTMLButtonElement>(null)
   const { recordStartup, recordConversationLoaded } = useRendererPerformance(store.status)
   const active = store.conversations.find((item) => item.id === store.activeId)
-  const notify = useCallback((message: string) => {
-    setNotice(message)
-    if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current)
-    noticeTimerRef.current = window.setTimeout(() => setNotice(null), 3_200)
-  }, [])
   const interactionLocked = useCallback(() => {
     const state = useAppStore.getState()
     return isBusy(state.status) || state.finalizing
@@ -92,16 +87,6 @@ function App() {
     clearMemory()
     clearGit()
   }, [clearGit, clearMemory])
-  const restoreMetadata = useCallback((metadata: string) => {
-    try {
-      const parsed = JSON.parse(metadata) as { diff?: string; activities?: Activity[]; files?: ChangedFile[]; plan?: PlanStep[]; planExplanation?: string }
-      const current = useAppStore.getState()
-      if (parsed.diff) current.setDiff(parsed.diff)
-      if (parsed.activities) parsed.activities.forEach(current.upsertActivity)
-      if (parsed.files) current.setFiles(parsed.files)
-      if (parsed.plan) current.setPlan(parsed.plan, parsed.planExplanation)
-    } catch { /* metadata from older versions is optional */ }
-  }, [])
   const refresh = collections.refreshConversations
   const openConversationRef = useRef<OpenConversation>(() => Promise.resolve())
   const openConversation = useCallback<OpenConversation>((id, conversationList, workspaceList) => openConversationRef.current(id, conversationList, workspaceList), [])
@@ -141,7 +126,6 @@ function App() {
     onLoadMemory: loadMemory,
     onSetMemory: setMemory,
     onRefreshGit: refreshGit,
-    onRestoreMetadata: restoreMetadata,
     onConversationLoaded: recordConversationLoaded,
     onNewContent: setNewContent,
     chatScrollRef,
@@ -149,27 +133,24 @@ function App() {
   })
   openConversationRef.current = conversationSession.openConversation
   const { historyHasMore, historyHasNewer, historyLoading, loadOlderMessages, loadLatestMessages, resetHistory } = conversationSession
-  const handleChatScroll = useCallback(() => {
-    const scroller = chatScrollRef.current
-    if (!scroller) return
-    const atBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 96
-    stickToBottomRef.current = atBottom
-    if (atBottom) setNewContent(false)
-  }, [])
-  const jumpToLatest = useCallback(() => {
-    if (historyHasNewer) {
-      void loadLatestMessages()
-      return
-    }
-    const scroller = chatScrollRef.current
-    if (!scroller) return
-    stickToBottomRef.current = true
-    setNewContent(false)
-    scroller.scrollTo({
-      top: scroller.scrollHeight,
-      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-    })
-  }, [historyHasNewer, loadLatestMessages])
+  const { createConversation, removeConversation } = useConversationActions({
+    workspace,
+    activeConversation: active,
+    isInteractionLocked: interactionLocked,
+    confirm,
+    onRefresh: refresh,
+    onSetWorkspace: setWorkspaceForSession,
+    onResetHistory: resetHistory,
+    onResetPreview: resetPreview,
+  })
+  const { handleChatScroll, jumpToLatest } = useChatViewport({
+    messages: store.messages,
+    historyHasNewer,
+    loadLatestMessages,
+    onNewContent: setNewContent,
+    chatScrollRef,
+    stickToBottomRef,
+  })
   const agentController = useAgentRunController({
     hasNewerMessages: historyHasNewer,
     composerRef,
@@ -201,75 +182,21 @@ function App() {
     onHelp: () => setHelpOpen(true),
   })
 
-  useEffect(() => {
-    void Promise.all([window.nocturne.conversations.page(), window.nocturne.workspace.list(), window.nocturne.settings.get()]).then(async ([conversationPage, savedWorkspaces, savedSettings]) => {
-      const conversations = conversationPage.items
-      store.setConversations(conversations); void collections.initializeConversationHasMore(conversationPage.hasMore); initializeWorkspaces(savedWorkspaces); initializeSettings(savedSettings)
-      if (conversations[0]) await openConversation(conversations[0].id, conversations, savedWorkspaces)
-      recordStartup()
-    }).catch((error) => store.setError(error.message))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  useAppBootstrap({
+    onSetConversations: store.setConversations,
+    onInitializeConversationHasMore: collections.initializeConversationHasMore,
+    onInitializeWorkspaces: initializeWorkspaces,
+    onInitializeSettings: initializeSettings,
+    onOpenConversation: openConversation,
+    onRecordStartup: recordStartup,
+    onError: store.setError,
+  })
 
-  useEffect(() => {
-    const scroller = chatScrollRef.current
-    if (!scroller) return
-    if (stickToBottomRef.current) {
-      scroller.scrollTo({ top: scroller.scrollHeight, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
-      setNewContent(false)
-    }
-  }, [store.messages])
-  useEffect(() => () => { if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current) }, [])
-  useEffect(() => {
-    const root = document.documentElement
-    const nextTheme = settings.theme === 'light' ? 'light' : 'dark'
-    const currentTheme = root.dataset.theme || 'dark'
-    if (currentTheme === nextTheme) { root.dataset.theme = nextTheme; return }
-    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
-    const transitionDocument = document as ViewTransitionDocument
-    const applyTheme = () => { root.dataset.theme = nextTheme }
-    if (!reducedMotion && typeof transitionDocument.startViewTransition === 'function') {
-      try {
-        const transition = transitionDocument.startViewTransition(applyTheme)
-        void transition.finished.catch(() => undefined)
-        return
-      } catch { /* fallback for engines that expose but cannot start a transition */ }
-    }
-    applyTheme()
-  }, [settings.theme])
-  useEffect(() => {
-    const preload = () => { void loadSettingsDialog() }
-    const idle = window.requestIdleCallback?.(preload, { timeout: 1_500 })
-    if (idle === undefined) { const timer = window.setTimeout(preload, 500); return () => window.clearTimeout(timer) }
-    return () => window.cancelIdleCallback?.(idle)
-  }, [])
-  async function createConversation() {
-    if (interactionLocked()) { store.setError(t('common.waitBeforeCreate')); return }
-    let selected = workspace || active?.workspace
-    if (!selected) selected = await window.nocturne.workspace.select() ?? ''
-    if (!selected) return
-    const conversation = await window.nocturne.conversations.create(selected)
-    await refresh(); store.setActive(conversation.id); store.setMessages([]); store.clearRun(); resetHistory(); setWorkspaceForSession(selected)
-  }
-
+  useAppTheme(settings.theme)
+  useSettingsDialogPreload()
   function clearConversationSession() {
     store.setActive(null); store.setMessages([]); store.clearRun(); resetHistory(); clearGit()
   }
-
-  const removeConversation = useCallback(async (id: string) => {
-    if (interactionLocked()) { useAppStore.getState().setError(t('common.waitBeforeDelete')); return }
-    const current = useAppStore.getState()
-    const conversation = current.conversations.find((item) => item.id === id)
-    if (!await confirm({ title: t('common.deleteConversationConfirm'), description: `"${conversation?.title || t('common.thisConversation')}" ${t('common.conversationRemoved')}`, confirmLabel: t('common.deleteConversation'), danger: true })) return
-    try {
-      await window.nocturne.conversations.delete(id)
-      const next = useAppStore.getState()
-      if (next.activeId === id) { next.setActive(null); next.setMessages([]); next.setArtifacts([]); resetHistory(); resetPreview() }
-      await refresh()
-    } catch (error) {
-      useAppStore.getState().setError(errorMessage(error))
-    }
-  }, [confirm, interactionLocked, refresh, resetHistory, resetPreview, t])
 
   const title = active?.title ?? t('common.newConversation')
   const pathLabel = active?.workspace ?? workspace
@@ -288,7 +215,7 @@ function App() {
     {compactLayout && rightOpen && <button tabIndex={-1} className="panel-backdrop inspector-backdrop" aria-label={t('topbar.closeAgent')} onClick={() => setInspectorVisibility(false)}/>}
 
     <Suspense fallback={null}><AgentPanel open={rightOpen} compact={compactLayout} triggerRef={inspectorTriggerRef} gitInfo={gitInfo} artifactsHaveMore={collections.artifactHasMore} suggestionsHaveMore={collections.suggestionHasMore} loadingCollection={collections.loading} onClose={() => setInspectorVisibility(false)} onDecide={decide} onError={store.setError} onNotify={notify} onGitRefresh={refreshGit} onArtifactsRefresh={refreshArtifacts} onLoadMoreArtifacts={() => void collections.loadMoreArtifacts()} onLoadMoreSuggestions={() => void collections.loadMoreSuggestions()} onPreview={showFilePreview} onArtifact={showArtifact} onDeleteArtifact={deleteArtifact} onSuggestionStatus={updateSuggestion} onSuggestionApply={applySuggestion} onPlanChange={(plan) => store.setPlan(plan, useAppStore.getState().planExplanation)} onPlanExecute={(plan) => preparePrompt(`${t('quick.executePlan')}\n\n${plan.map((item, index) => `${index + 1}. ${item.step}`).join('\n')}`, 'build')}/></Suspense>
-    {confirmation.dialog}<AppOverlays settingsOpen={settingsOpen} settings={settings} workspaces={workspaces} memoryOpen={memoryOpen} memory={memory} preview={preview} onboardingOpen={onboardingOpen} helpOpen={helpOpen} activeId={store.activeId} workspace={workspace} onSettingsClose={() => setSettingsOpen(false)} onSaveSettings={saveSettings} onCodexModelChange={saveCodexModel} onNotify={notify} onOpenOnboarding={() => { setSettingsOpen(false); setOnboardingOpen(true) }} onMemoryClose={() => setMemoryOpen(false)} onOpenBrain={() => { setMemoryOpen(false); setBrainOpen(true) }} onSaveMemory={saveMemory} onPreviewClose={resetPreview} onError={store.setError} onWorkspace={async () => { await selectWorkspace() }} onOpenSettings={() => { setOnboardingOpen(false); setSettingsOpen(true) }} onDismissOnboarding={() => { setOnboardingOpen(false); composerRef.current?.focus() }} onCompleteOnboarding={() => { localStorage.setItem('nocturne.onboarding.completed', 'true'); setOnboardingOpen(false); notify(t('common.reloaded')); composerRef.current?.focus() }} onHelpClose={() => setHelpOpen(false)}/><Suspense fallback={null}>{brainOpen && store.activeId && <BrainMemoryDialog conversationId={store.activeId} onClose={() => setBrainOpen(false)} onNotify={notify}/>}</Suspense>{notice && <div className="product-toast" role="status" aria-live="polite"><span>{notice}</span><button aria-label={t('common.close')} onClick={() => setNotice(null)}><X size={14}/></button></div>}
+    {confirmation.dialog}<AppOverlays settingsOpen={settingsOpen} settings={settings} workspaces={workspaces} memoryOpen={memoryOpen} memory={memory} preview={preview} onboardingOpen={onboardingOpen} helpOpen={helpOpen} activeId={store.activeId} workspace={workspace} onSettingsClose={() => setSettingsOpen(false)} onSaveSettings={saveSettings} onCodexModelChange={saveCodexModel} onNotify={notify} onOpenOnboarding={() => { setSettingsOpen(false); setOnboardingOpen(true) }} onMemoryClose={() => setMemoryOpen(false)} onOpenBrain={() => { setMemoryOpen(false); setBrainOpen(true) }} onSaveMemory={saveMemory} onPreviewClose={resetPreview} onError={store.setError} onWorkspace={async () => { await selectWorkspace() }} onOpenSettings={() => { setOnboardingOpen(false); setSettingsOpen(true) }} onDismissOnboarding={() => { setOnboardingOpen(false); composerRef.current?.focus() }} onCompleteOnboarding={() => { localStorage.setItem('nocturne.onboarding.completed', 'true'); setOnboardingOpen(false); notify(t('common.reloaded')); composerRef.current?.focus() }} onHelpClose={() => setHelpOpen(false)}/><Suspense fallback={null}>{brainOpen && store.activeId && <BrainMemoryDialog conversationId={store.activeId} onClose={() => setBrainOpen(false)} onNotify={notify}/>}</Suspense>{notice && <div className="product-toast" role="status" aria-live="polite"><span>{notice}</span><button aria-label={t('common.close')} onClick={dismissNotice}><X size={14}/></button></div>}
   </div>
 }
 

@@ -4,6 +4,7 @@ import { errorMessage } from '../../shared/format'
 import { useAppStore } from '../../store'
 import { useI18n } from '../../shared/i18n'
 import { useConversationHistory } from './useConversationHistory'
+import { restoreConversationTurnMetadata } from './turnMetadata'
 
 interface ConfirmationOptions {
   title: string
@@ -27,7 +28,6 @@ interface ConversationSessionOptions {
   onLoadMemory(conversationId: string): Promise<WorkspaceMemory>
   onSetMemory(value: WorkspaceMemory): void
   onRefreshGit(conversationId: string): Promise<void>
-  onRestoreMetadata(metadata: string): void
   onConversationLoaded(durationMs: number): void
   onNewContent(value: boolean): void
   chatScrollRef: RefObject<HTMLElement | null>
@@ -46,7 +46,7 @@ export interface ConversationSession {
   resetHistory(): void
 }
 
-export function useConversationSession({ conversations, availableWorkspaces, isInteractionLocked, confirm, onError, onSetWorkspace, onInitializeWorkspaces, onRefreshConversations, onLoadCollections, onResetPreview, onClearMemoryAndGit, onLoadMemory, onSetMemory, onRefreshGit, onRestoreMetadata, onConversationLoaded, onNewContent, chatScrollRef, stickToBottomRef }: ConversationSessionOptions): ConversationSession {
+export function useConversationSession({ conversations, availableWorkspaces, isInteractionLocked, confirm, onError, onSetWorkspace, onInitializeWorkspaces, onRefreshConversations, onLoadCollections, onResetPreview, onClearMemoryAndGit, onLoadMemory, onSetMemory, onRefreshGit, onConversationLoaded, onNewContent, chatScrollRef, stickToBottomRef }: ConversationSessionOptions): ConversationSession {
   const { t } = useI18n()
   const conversationRequestRef = useRef(0)
   const { historyHasMore, historyHasNewer, historyLoading, initializeHistory, loadOlderMessages, loadLatestMessages, resetHistory } = useConversationHistory({ onError, onNewContent, chatScrollRef, stickToBottomRef })
@@ -69,7 +69,7 @@ export function useConversationSession({ conversations, availableWorkspaces, isI
     store.setMessages(page.items)
     initializeHistory(page)
     const lastMetadata = [...page.items].reverse().find((message) => message.metadata)?.metadata
-    if (lastMetadata) onRestoreMetadata(lastMetadata)
+    if (lastMetadata) restoreConversationTurnMetadata(lastMetadata)
     const conversation = conversationList.find((item) => item.id === id)
     if (conversation) onSetWorkspace(conversation.workspace)
     await onLoadCollections(id)
@@ -109,7 +109,7 @@ export function useConversationSession({ conversations, availableWorkspaces, isI
     onSetMemory(savedMemory)
     onConversationLoaded(performance.now() - loadStartedAt)
     void onRefreshGit(id)
-  }, [availableWorkspaces, confirm, conversations, initializeHistory, isInteractionLocked, onClearMemoryAndGit, onConversationLoaded, onError, onInitializeWorkspaces, onLoadCollections, onLoadMemory, onNewContent, onRefreshConversations, onRefreshGit, onRestoreMetadata, onResetPreview, onSetMemory, onSetWorkspace, resetHistory, stickToBottomRef, t])
+  }, [availableWorkspaces, confirm, conversations, initializeHistory, isInteractionLocked, onClearMemoryAndGit, onConversationLoaded, onError, onInitializeWorkspaces, onLoadCollections, onLoadMemory, onNewContent, onRefreshConversations, onRefreshGit, onResetPreview, onSetMemory, onSetWorkspace, resetHistory, stickToBottomRef, t])
 
   return { historyHasMore, historyHasNewer, historyLoading, chatScrollRef, stickToBottomRef, openConversation, loadOlderMessages, loadLatestMessages, resetHistory }
 }
