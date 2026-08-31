@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Brain, Check, Copy, ExternalLink, Eye, FolderOpen, Keyboard, MoonStar, Settings, X } from 'lucide-react'
-import type { AppSettings, FilePreview, WorkspaceMemory } from '../../types'
+import type { FilePreview, WorkspaceMemory } from '../../types'
 import { errorMessage, formatBytes, relativeTime } from '../../shared/format'
 import { useDialogA11y } from '../../shared/useDialogA11y'
 import { SafeMarkdown } from '../../shared/SafeMarkdown'
 import { useI18n } from '../../shared/i18n'
 
-export function OnboardingDialog({ workspace, onWorkspace, onSettings, onDismiss, onComplete }: { settings: AppSettings; status: string; workspace: string; onWorkspace(): void; onSettings(): void; onRecheck?(): Promise<void>; onDismiss(): void; onComplete(): void }) {
+export function OnboardingDialog({ workspace, onWorkspace, onSettings, onDismiss, onComplete }: { workspace: string; onWorkspace(): void; onSettings(): void; onDismiss(): void; onComplete(): void }) {
   const { t } = useI18n()
   const [step, setStep] = useState(0)
   const [aiReady, setAiReady] = useState(false)

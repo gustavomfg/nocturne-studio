@@ -15,7 +15,7 @@ const settingsPages: Array<{ id: SettingsPage; labelKey: string; descriptionKey:
   { id: 'diagnostics', labelKey: 'settings.diagnostics', descriptionKey: 'settings.diagnosticsDescription', icon: Activity },
 ]
 
-export function SettingsDialog({ value, workspace, workspaces, onClose, onSave, onCodexModelChange, onNotify, onOnboarding }: { value: AppSettings; status: string; workspace: string; workspaces: Workspace[]; onClose(): void; onSave(value: AppSettings): void | Promise<void>; onCodexModelChange(modelId: string): Promise<void>; onNotify(message: string): void; onOnboarding(): void }) {
+export function SettingsDialog({ value, workspace, workspaces, onClose, onSave, onCodexModelChange, onNotify, onOnboarding }: { value: AppSettings; workspace: string; workspaces: Workspace[]; onClose(): void; onSave(value: AppSettings): void | Promise<void>; onCodexModelChange(modelId: string): Promise<void>; onNotify(message: string): void; onOnboarding(): void }) {
   const { t } = useI18n()
   const [form, setForm] = useState(value)
   const [page, setPage] = useState<SettingsPage>('ai')

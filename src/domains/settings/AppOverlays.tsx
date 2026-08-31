@@ -11,7 +11,6 @@ const ShortcutsDialog = lazy(() => import('./Dialogs').then((module) => ({ defau
 interface AppOverlaysProps {
   settingsOpen: boolean
   settings: AppSettings
-  status: string
   workspaces: Workspace[]
   memoryOpen: boolean
   memory: WorkspaceMemory
@@ -37,12 +36,12 @@ interface AppOverlaysProps {
   onHelpClose(): void
 }
 
-export function AppOverlays({ settingsOpen, settings, status, workspaces, memoryOpen, memory, preview, onboardingOpen, helpOpen, activeId, workspace, onSettingsClose, onSaveSettings, onCodexModelChange, onNotify, onOpenOnboarding, onMemoryClose, onOpenBrain, onSaveMemory, onPreviewClose, onError, onWorkspace, onOpenSettings, onDismissOnboarding, onCompleteOnboarding, onHelpClose }: AppOverlaysProps) {
+export function AppOverlays({ settingsOpen, settings, workspaces, memoryOpen, memory, preview, onboardingOpen, helpOpen, activeId, workspace, onSettingsClose, onSaveSettings, onCodexModelChange, onNotify, onOpenOnboarding, onMemoryClose, onOpenBrain, onSaveMemory, onPreviewClose, onError, onWorkspace, onOpenSettings, onDismissOnboarding, onCompleteOnboarding, onHelpClose }: AppOverlaysProps) {
   return <Suspense fallback={null}>
-    {settingsOpen && <SettingsDialog value={settings} status={status} workspace={workspace} workspaces={workspaces} onClose={onSettingsClose} onSave={onSaveSettings} onCodexModelChange={onCodexModelChange} onNotify={onNotify} onOnboarding={onOpenOnboarding}/>}
+    {settingsOpen && <SettingsDialog value={settings} workspace={workspace} workspaces={workspaces} onClose={onSettingsClose} onSave={onSaveSettings} onCodexModelChange={onCodexModelChange} onNotify={onNotify} onOnboarding={onOpenOnboarding}/>}
     {memoryOpen && <MemoryDialog value={memory} onClose={onMemoryClose} onOpenBrain={onOpenBrain} onSave={onSaveMemory}/>}
     {preview && <PreviewDialog preview={preview} activeId={activeId} onClose={onPreviewClose} onError={onError} onNotify={onNotify}/>}
-    {onboardingOpen && <OnboardingDialog settings={settings} status={status} workspace={workspace} onWorkspace={onWorkspace} onSettings={onOpenSettings} onDismiss={onDismissOnboarding} onComplete={onCompleteOnboarding}/>}
+    {onboardingOpen && <OnboardingDialog workspace={workspace} onWorkspace={onWorkspace} onSettings={onOpenSettings} onDismiss={onDismissOnboarding} onComplete={onCompleteOnboarding}/>}
     {helpOpen && <ShortcutsDialog onClose={onHelpClose}/>}
   </Suspense>
 }
