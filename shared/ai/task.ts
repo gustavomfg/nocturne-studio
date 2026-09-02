@@ -1,7 +1,7 @@
 import type { ModelCapability, ModelReference } from './model'
 
 export const executionModes = ['build', 'review'] as const
-export const contextSourceTypes = ['memory'] as const
+export const contextSourceTypes = ['memory', 'project-index'] as const
 export const modelRoles = ['default'] as const
 export const taskOutputFormats = ['markdown'] as const
 

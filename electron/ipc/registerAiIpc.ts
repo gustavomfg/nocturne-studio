@@ -16,6 +16,7 @@ import { getAuthorizedConversation } from './conversationAccess'
 import { artifactType, assertInsideWorkspace } from './fileAccess'
 import { safeIpcMain, type SafeIpcMain } from './safeIpc'
 import type { ProviderConfigurationOperations } from './registerProviderIpc'
+import type { ProjectIndexService } from '../project-index/ProjectIndexService'
 
 interface WorkspaceContext {
   content: string
@@ -31,12 +32,13 @@ interface AiIpcDependencies {
   buildRollback: BuildRollbackService
   approvalDetails: Map<string, { command?: string; risk?: string }>
   readWorkspaceContext(workspace: string): Promise<WorkspaceContext>
+  projectIndex: ProjectIndexService
 }
 
 export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencies, registrar?: SafeIpcMain) {
   const ipcMain = registrar ?? safeIpcMain(win)
   const ownsRegistrar = !registrar
-  const { database, logger, providerConfigurations, aiExecutions, buildRollback, approvalDetails, readWorkspaceContext } = dependencies
+  const { database, logger, providerConfigurations, aiExecutions, buildRollback, approvalDetails, readWorkspaceContext, projectIndex } = dependencies
 
   ipcMain.handle(IPC_CHANNELS.ai.send, async (_event, value: unknown) => {
     const { conversationId, prompt, attachments, mode } = aiSendSchema.parse(value)
@@ -53,6 +55,7 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
     const history = database.listRecentMessages(conversationId, AI_TASK_LIMITS.messages)
     const workspaceMemory = await loadWorkspaceMemoryForAi(database, conversation.workspace, readWorkspaceContext)
     const brainMemory = buildBrainMemoryContext(database, conversation.workspace, conversationId, prompt)
+    const projectContext = projectIndex.buildAiContext(conversation.workspace, prompt)
     const projectPath = path.join(conversation.workspace, '.nocturne', 'project.json')
     let projectName = path.basename(conversation.workspace)
     try {
@@ -69,6 +72,9 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
     }
     if (brainMemory.text) {
       contextSources.push({ id: 'brain-memory', type: 'memory', title: 'Segundo Cérebro', content: brainMemory.text, scope: 'workspace-and-conversation', potentiallyOutdated: true })
+    }
+    if (projectContext?.text) {
+      contextSources.push({ id: `project-index:${projectContext.runId}`, type: 'project-index', title: 'Índice estrutural do projeto', content: projectContext.text, scope: 'workspace', updatedAt: projectContext.updatedAt, potentiallyOutdated: projectContext.potentiallyOutdated })
     }
     const awareness: AwarenessSnapshot = {
       mode,
@@ -88,6 +94,7 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
           contentPreview: workspaceMemory.content.slice(0, 500),
         }] : []),
         ...brainMemory.selections,
+        ...(projectContext?.selections ?? []),
       ],
     }
     database.addMessage(conversationId, 'user', prompt, { attachments, awareness })

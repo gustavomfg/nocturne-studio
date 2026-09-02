@@ -163,5 +163,5 @@ function DiffSection({ diff }: { diff: string }) {
 }
 
 function awarenessSourceLabel(source: string, t: (key: string) => string) {
-  return ({ workspace: t('awareness.workspace'), manual: t('awareness.manual'), message: t('awareness.message'), agent: t('awareness.agent') } as Record<string, string>)[source] ?? source
+  return ({ workspace: t('awareness.workspace'), manual: t('awareness.manual'), message: t('awareness.message'), agent: t('awareness.agent'), 'project-index': t('awareness.projectIndex') } as Record<string, string>)[source] ?? source
 }
