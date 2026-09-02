@@ -12,6 +12,8 @@ import { SuggestionRepository } from './SuggestionRepository'
 import { WorkspaceMemoryRepository } from './WorkspaceMemoryRepository'
 import { WorkspaceModelBindingRepository } from './WorkspaceModelBindingRepository'
 import { WorkspaceRepository } from './WorkspaceRepository'
+import { ProjectIndexRepository } from './ProjectIndexRepository'
+import { ValidationRepository } from './ValidationRepository'
 import type { DatabaseTransactionRunner } from './DatabaseTransaction'
 
 export interface DatabaseRepositories {
@@ -27,6 +29,8 @@ export interface DatabaseRepositories {
   providerConfigurations: ProviderConfigurationRepository
   modelCatalog: ModelCatalogRepository
   workspaceModelBindings: WorkspaceModelBindingRepository
+  projectIndex: ProjectIndexRepository
+  validation: ValidationRepository
 }
 
 /** Composes domain repositories around one runtime-owned SQLite connection. */
@@ -52,5 +56,7 @@ export function createDatabaseRepositories(runtime: DatabaseRuntime): DatabaseRe
     providerConfigurations: new ProviderConfigurationRepository(database),
     modelCatalog: new ModelCatalogRepository(database, transactions),
     workspaceModelBindings,
+    projectIndex: new ProjectIndexRepository(database, transactions),
+    validation: new ValidationRepository(database, transactions),
   }
 }

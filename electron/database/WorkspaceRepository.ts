@@ -79,6 +79,21 @@ export class WorkspaceRepository {
       this.database.prepare('UPDATE workspace_memory SET workspace=? WHERE workspace=?').run(destination, source)
       this.database.prepare('UPDATE suggestions SET workspace_id=? WHERE workspace_id=?').run(destination, source)
       this.database.prepare('UPDATE brain_memories SET workspace_id=? WHERE workspace_id=?').run(destination, source)
+      this.database.prepare('UPDATE project_index_runs SET workspace=? WHERE workspace=?').run(destination, source)
+      this.database.prepare(`INSERT INTO project_index_files(
+        workspace,relative_path,classification,language,extension,size,mtime_ms,ctime_ms,mode,
+        observed_hash,analyzed_hash,state,excluded,exclusion_reason,parser_id,parser_version,
+        error,discovered_at,analyzed_at
+      ) SELECT ?,relative_path,classification,language,extension,size,mtime_ms,ctime_ms,mode,
+        observed_hash,analyzed_hash,state,excluded,exclusion_reason,parser_id,parser_version,
+        error,discovered_at,analyzed_at FROM project_index_files WHERE workspace=?`).run(destination, source)
+      this.database.prepare('UPDATE project_index_symbols SET workspace=? WHERE workspace=?').run(destination, source)
+      this.database.prepare('UPDATE project_index_imports SET workspace=? WHERE workspace=?').run(destination, source)
+      this.database.prepare('UPDATE project_index_exports SET workspace=? WHERE workspace=?').run(destination, source)
+      this.database.prepare('UPDATE project_stack_evidence SET workspace=? WHERE workspace=?').run(destination, source)
+      this.database.prepare('UPDATE project_index_exclusions SET workspace=? WHERE workspace=?').run(destination, source)
+      this.database.prepare('UPDATE validation_runs SET workspace=? WHERE workspace=?').run(destination, source)
+      this.database.prepare('DELETE FROM project_index_files WHERE workspace=?').run(source)
       if (modelBindings) {
         this.modelBindings.set({ ...modelBindings, workspaceId: destination })
         this.modelBindings.delete(source)

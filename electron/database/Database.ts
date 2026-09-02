@@ -16,6 +16,7 @@ import { createDatabaseRepositories, type DatabaseRepositories } from './Databas
 import type { ConversationRow, MessageRow } from './ConversationRepository'
 import type { WorkspaceRow } from './WorkspaceRepository'
 import type { DatabaseImportData } from './BackupRepository'
+export type { PersistedFileAnalysis } from './ProjectIndexRepository'
 
 export type { ConversationRow, MessageRow } from './ConversationRepository'
 export type { ArtifactRow } from './ArtifactRepository'
@@ -38,6 +39,8 @@ export class LocalDatabase {
   get providerConfigurations() { return this.repositories.providerConfigurations }
   get modelCatalog() { return this.repositories.modelCatalog }
   get workspaceModelBindings() { return this.repositories.workspaceModelBindings }
+  get projectIndex() { return this.repositories.projectIndex }
+  get validation() { return this.repositories.validation }
 
   constructor(userDataPath: string) {
     this.runtime = new DatabaseRuntime(userDataPath)
