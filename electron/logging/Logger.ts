@@ -3,7 +3,7 @@ import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
-export type LogCategory = 'app' | 'codex' | 'ai' | 'ipc' | 'workspace' | 'git' | 'artifacts' | 'export' | 'persistence' | 'update'
+export type LogCategory = 'app' | 'codex' | 'ai' | 'ipc' | 'workspace' | 'index' | 'validation' | 'git' | 'artifacts' | 'export' | 'persistence' | 'update'
 
 export class Logger {
   private readonly file: string

@@ -9,8 +9,15 @@ import { RENDERER_PERFORMANCE_BUDGETS } from '../../shared/constants'
 import { IPC_CHANNELS } from '../../shared/ipc/channels'
 import { writeAtomicFile } from '../persistence/AtomicFile'
 import { safeIpcMain, type SafeIpcMain } from './safeIpc'
+import type { ProjectIndexMetricsSnapshot } from '../project-index/ProjectIndexService'
+import type { ValidationMetricsSnapshot } from '../validation/ValidationPipeline'
 
-export function registerDiagnosticsIpc(win: BrowserWindow, logger: Logger, providerConfigurations: ProviderConfigurationOperations, modelRegistry: ModelRegistry, registrar?: SafeIpcMain) {
+export interface CodeIntelligenceMetrics {
+  index: ProjectIndexMetricsSnapshot
+  validation: ValidationMetricsSnapshot
+}
+
+export function registerDiagnosticsIpc(win: BrowserWindow, logger: Logger, providerConfigurations: ProviderConfigurationOperations, modelRegistry: ModelRegistry, registrar?: SafeIpcMain, codeIntelligenceMetrics?: () => CodeIntelligenceMetrics) {
   const ipcMain = registrar ?? safeIpcMain(win)
   const ownsRegistrar = !registrar
   const diagnosticReport = () => ({
@@ -25,6 +32,7 @@ export function registerDiagnosticsIpc(win: BrowserWindow, logger: Logger, provi
       enabled: providerConfigurations.list().filter((provider) => provider.enabled).length,
     },
     models: modelRegistry.list().length,
+    codeIntelligence: codeIntelligenceMetrics?.() ?? null,
   })
 
   ipcMain.handle(IPC_CHANNELS.diagnostics.openLogs, () => shell.openPath(logger.path))

@@ -9,17 +9,23 @@ import { assertSafeWorkspaceScope, inspectWorkspaceScope } from '../security/Wor
 import { WorkspaceChangeWatcher } from '../workspaces/WorkspaceChangeWatcher'
 import { IPC_CHANNELS } from '../../shared/ipc/channels'
 import { resolveExecutable } from '../runtime/resolveExecutable'
+import type { WorkspaceChangeEvent } from '../../shared/types'
 
 interface Dependencies {
   ensureWorkspace(workspace: string): Promise<void>
   assertKnownWorkspace(value: string): string
   run(command: string, args: string[], cwd: string): Promise<unknown>
+  onWorkspaceChanged?(event: WorkspaceChangeEvent): void
+  onWorkspaceWatch?(workspace: string): void
 }
 
 export function registerWorkspaceIpc(win: BrowserWindow, database: LocalDatabase, dependencies: Dependencies, registrar?: SafeIpcMain) {
   const ipcMain = registrar ?? safeIpcMain(win)
   const ownsRegistrar = !registrar
-  const changeWatcher = new WorkspaceChangeWatcher((event) => win.webContents.send(IPC_CHANNELS.workspace.changed, event))
+  const changeWatcher = new WorkspaceChangeWatcher((event) => {
+    dependencies.onWorkspaceChanged?.(event)
+    win.webContents.send(IPC_CHANNELS.workspace.changed, event)
+  })
   ipcMain.handle(IPC_CHANNELS.workspace.select, async (_event, value: unknown) => {
     const expected = z.string().trim().min(1).max(4_000).optional().parse(value)
     const expectedInspection = expected ? inspectWorkspaceScope(expected) : null
@@ -76,7 +82,7 @@ export function registerWorkspaceIpc(win: BrowserWindow, database: LocalDatabase
       return changeWatcher.stop()
     }
     const workspace = dependencies.assertKnownWorkspace(requested)
-    return changeWatcher.start(workspace)
+    return changeWatcher.start(workspace).then(() => { dependencies.onWorkspaceWatch?.(workspace) })
   })
   ipcMain.handle(IPC_CHANNELS.workspace.openTool, async (_event, value: unknown) => {
     const data = workspaceToolSchema.parse(value); const workspace = dependencies.assertKnownWorkspace(data.workspace)

@@ -26,7 +26,12 @@ import { registerDiagnosticsIpc } from './registerDiagnosticsIpc'
 import { registerAiIpc } from './registerAiIpc'
 import { registerSettingsIpc } from './registerSettingsIpc'
 import { registerDocumentsIpc } from './registerDocumentsIpc'
+import { registerProjectIndexIpc } from './registerProjectIndexIpc'
+import { registerValidationIpc } from './registerValidationIpc'
 import { ensureNocturneWorkspace, readWorkspaceContext, recordSuggestionDecision, runWorkspaceCommand, writeWorkspaceContext } from '../workspaces/WorkspaceContextService'
+import { ProjectIndexService } from '../project-index/ProjectIndexService'
+import { IPC_CHANNELS } from '../../shared/ipc/channels'
+import { ValidationPipeline } from '../validation/ValidationPipeline'
 
 export function registerIpc(
   win: BrowserWindow,
@@ -44,6 +49,45 @@ export function registerIpc(
       else logger.debug('ipc', 'Operação IPC concluída.', details)
     },
   })
+  const projectIndex = new ProjectIndexService(database.projectIndex, {
+    onStatus: (status) => win.webContents.send(IPC_CHANNELS.projectIndex.changed, status),
+    onMetric: (metric) => logger.info('index', 'Métrica de indexação concluída.', {
+      runId: metric.runId,
+      runKind: metric.runKind,
+      durationMs: metric.durationMs,
+      processedFiles: metric.processedFiles,
+      failedFiles: metric.failedFiles,
+      unsupportedFiles: metric.unsupportedFiles,
+      incremental: metric.incremental,
+      status: metric.status,
+      partialFailure: metric.partialFailure,
+      parserDurationsMs: metric.parserDurationsMs,
+    }),
+  })
+  const disposeProjectIndex = registerProjectIndexIpc(
+    win,
+    projectIndex,
+    { assertAuthorized: (value) => getAuthorizedWorkspace(database, value) },
+    ipcMain,
+  )
+  const validation = new ValidationPipeline(
+    database.validation,
+    (workspace) => projectIndex.listStackEvidence(workspace),
+    {
+      onStatus: (run) => win.webContents.send(IPC_CHANNELS.validation.changed, run),
+      onMetric: (metric) => logger.info('validation', 'Métrica de validação concluída.', {
+        validationKind: metric.validationKind,
+        durationMs: metric.durationMs,
+        status: metric.status,
+      }),
+    },
+  )
+  const disposeValidation = registerValidationIpc(
+    win,
+    validation,
+    { assertAuthorized: (value) => getAuthorizedWorkspace(database, value) },
+    ipcMain,
+  )
   const disposeData = registerDataIpc(win, database, logger, ipcMain)
   const disposeGit = registerGitIpc(win, database, ipcMain)
   const disposeWorkspace = registerWorkspaceIpc(
@@ -53,6 +97,10 @@ export function registerIpc(
       ensureWorkspace: ensureNocturneWorkspace,
       assertKnownWorkspace: (value) => getAuthorizedWorkspace(database, value),
       run: runWorkspaceCommand,
+      onWorkspaceChanged: (event) => projectIndex.enqueueChange(event),
+      onWorkspaceWatch: (workspace) => {
+        void projectIndex.ensureIndexed(workspace).catch((error) => logger.warn('index', 'A indexação não pôde ser iniciada.', { reason: error instanceof Error ? error.message : String(error) }))
+      },
     },
     ipcMain,
   )
@@ -119,7 +167,7 @@ export function registerIpc(
 
   const disposeCodex = registerCodexIpc(win, codexAccount, aiExecutions, ipcMain)
   const disposeFiles = registerFilesIpc(win, database, ipcMain)
-  const disposeDiagnostics = registerDiagnosticsIpc(win, logger, providerConfigurations, modelRegistry, ipcMain)
+  const disposeDiagnostics = registerDiagnosticsIpc(win, logger, providerConfigurations, modelRegistry, ipcMain, () => ({ index: projectIndex.getMetrics(), validation: validation.getMetrics() }))
   const disposeAi = registerAiIpc(
     win,
     {
@@ -130,6 +178,7 @@ export function registerIpc(
       buildRollback,
       approvalDetails,
       readWorkspaceContext,
+      projectIndex,
     },
     ipcMain,
   )
@@ -140,6 +189,10 @@ export function registerIpc(
     aiExecutions.dispose()
     ipcMain.dispose()
     return Promise.all([
+      validation.dispose(),
+      projectIndex.dispose(),
+      disposeProjectIndex(),
+      disposeValidation(),
       disposeWorkspace(),
       disposeConversation(),
       disposeMemory(),
