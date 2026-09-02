@@ -13,6 +13,11 @@ ou contexto selecionado, relevância, motivo, origem, escopo, data de atualizaç
 e o trecho limitado realmente enviado. Um snapshot antigo permanece como
 auditoria; não é reutilizado silenciosamente como contexto atual.
 
+Quando disponível, o snapshot também identifica seleções do `project-index`:
+arquivos de evidência e símbolos incluem a execução do índice, a versão e o
+hash analisado. Se uma mudança de filesystem estiver aguardando processamento,
+o contexto é marcado como potencialmente desatualizado.
+
 Snapshots acompanham a conversa em exportações e restaurações válidas. Não
 contêm credenciais e são enviados como dados potencialmente desatualizados, não
 como instruções executáveis.

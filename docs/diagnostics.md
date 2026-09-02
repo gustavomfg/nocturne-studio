@@ -12,6 +12,8 @@ permissions. Raw Codex App Server traffic is not stored.
 
 In **Settings > Diagnostics**, users can copy or export a sanitized report with
 application/runtime versions, platform, architecture, session identifier,
-event counts, provider/model counts and timings. It does not contain credentials,
+event counts, provider/model counts and timings. It also includes only aggregate
+Code Intelligence counts and timings for indexing, incremental updates, parsers,
+cancellations, partial failures and validation. It does not contain credentials,
 prompts, file contents, diffs or conversation history. Review any local log
 before sending it outside the device.

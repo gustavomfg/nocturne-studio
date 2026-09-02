@@ -13,6 +13,11 @@ memory/context, relevance, reason, source, scope, update time and the bounded
 excerpt actually sent. A previous snapshot remains an audit record; it is not
 silently reused as the current context.
 
+When available, the snapshot also identifies `project-index` selections:
+evidence files and symbols include the index run, version and analyzed hash. If
+a filesystem change is waiting to be processed, the context is marked as
+potentially outdated.
+
 Snapshots follow conversations through valid export and restore. They contain
 no credentials and are passed as data that may be stale, not as executable
 instructions.

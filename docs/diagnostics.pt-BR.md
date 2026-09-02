@@ -14,6 +14,8 @@ permissões restritivas. O tráfego bruto do Codex App Server não é armazenado
 Em **Configurações > Diagnóstico**, é possível copiar ou exportar um relatório
 sanitizado com versões do aplicativo/runtimes, plataforma, arquitetura,
 identificador de sessão, contagens de eventos, contagens de Providers/modelos e
-tempos. Ele não contém credenciais, prompts, conteúdo de arquivos, diffs ou
-histórico de conversas. Revise qualquer log local antes de enviá-lo para fora do
-dispositivo.
+tempos. Quando disponível, inclui somente agregados do Code Intelligence:
+indexações, atualizações incrementais, parsers, cancelamentos, falhas parciais
+e validações. Ele não contém credenciais, prompts, conteúdo de arquivos, diffs
+ou histórico de conversas. Revise qualquer log local antes de enviá-lo para
+fora do dispositivo.
