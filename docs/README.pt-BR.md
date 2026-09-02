@@ -15,6 +15,7 @@ API, avisos e afirmações de segurança são mantidos iguais nos dois arquivos.
 - [Integração Codex CLI](codex-integration.pt-BR.md)
 - [Modos Review, Build e Docs](modes.pt-BR.md)
 - [Segundo Cérebro](second-brain.pt-BR.md) e [Awareness](awareness.pt-BR.md)
+- [Code Intelligence — Fase 2](code-intelligence.pt-BR.md)
 - [Backup, restauração e recuperação](backup-and-recovery.pt-BR.md)
 - [Atualizações](updates.pt-BR.md)
 - [Fronteiras de segurança](security.pt-BR.md) e [privacidade](privacy.pt-BR.md)

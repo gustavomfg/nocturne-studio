@@ -43,6 +43,13 @@ Workspaces restaurados não são autorizados automaticamente. O workspace ativo 
 observado por um único backend Chokidar, com diretórios gerados ignorados,
 reconciliação limitada e eventos semânticos agrupados.
 
+O Code Intelligence reutiliza esse watcher em três pipelines separadas:
+`WorkspaceDiscoveryService` descobre o escopo agnóstico de linguagem,
+`ProjectIndexService` processa somente arquivos necessários com adapters de
+parser e o `ValidationPipeline` executa checks escolhidos pelas evidências do
+stack. O índice é persistido localmente com hashes por arquivo, relações
+estruturais e falhas parciais; ele não depende do provedor de IA.
+
 ## Organização do runtime e do código
 
 O shell da aplicação no renderer em `src/App.tsx` é intencionalmente uma

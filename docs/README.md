@@ -15,6 +15,7 @@ API names, warnings and security claims are kept identical across the pair.
 - [Codex CLI integration](codex-integration.md)
 - [Review, Build and Docs modes](modes.md)
 - [Second Brain](second-brain.md) and [Awareness](awareness.md)
+- [Code Intelligence — Phase 2](code-intelligence.md)
 - [Backup, restore and recovery](backup-and-recovery.md)
 - [Updates](updates.md)
 - [Security boundaries](security.md) and [privacy](privacy.md)
