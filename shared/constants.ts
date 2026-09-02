@@ -1,4 +1,4 @@
-export const DATABASE_SCHEMA_VERSION = 15
+export const DATABASE_SCHEMA_VERSION = 17
 
 export const RENDERER_LIMITS = {
   activities: 300,
@@ -24,8 +24,19 @@ export const WORKSPACE_READ_LIMITS = Object.freeze({
   workspaceContextBytes: 256_000,
   projectMetadataBytes: 256_000,
   packageMetadataBytes: 1_000_000,
+  codeIndexBytes: 8_000_000,
   suggestionHistoryBytes: 1_000_000,
   documentBytes: 2_000_000,
+})
+
+export const CODE_INTELLIGENCE_LIMITS = Object.freeze({
+  maxFiles: 50_000,
+  maxExclusions: 2_000,
+  maxIndexedFileBytes: 8_000_000,
+  maxParseBytes: 2_000_000,
+  maxOutputCharacters: 20_000,
+  maxErrorCharacters: 2_000,
+  maxQueryResults: 100,
 })
 
 export const UI_TIMING = {

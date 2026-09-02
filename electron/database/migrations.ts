@@ -153,6 +153,168 @@ export const migrations: Migration[] = [
       SELECT 'created-' || id,id,'created',NULL,status,'Memória existente incorporada ao histórico.',created_at
       FROM brain_memories;
   `) },
+  { version: 16, up: (db) => db.exec(`
+    CREATE TABLE IF NOT EXISTS project_index_runs (
+      id TEXT PRIMARY KEY,
+      workspace TEXT NOT NULL,
+      index_version INTEGER NOT NULL CHECK(index_version >= 1),
+      kind TEXT NOT NULL CHECK(kind IN ('initial','incremental','reconcile','retry','manual')),
+      status TEXT NOT NULL CHECK(status IN ('queued','running','completed','cancelled','failed')),
+      phase TEXT NOT NULL CHECK(phase IN ('discovering','hashing','parsing','persisting','completed','cancelled')),
+      total_files INTEGER NOT NULL DEFAULT 0 CHECK(total_files >= 0),
+      processed_files INTEGER NOT NULL DEFAULT 0 CHECK(processed_files >= 0),
+      failed_files INTEGER NOT NULL DEFAULT 0 CHECK(failed_files >= 0),
+      unsupported_files INTEGER NOT NULL DEFAULT 0 CHECK(unsupported_files >= 0),
+      pending_files INTEGER NOT NULL DEFAULT 0 CHECK(pending_files >= 0),
+      started_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      completed_at TEXT,
+      error TEXT,
+      FOREIGN KEY (workspace) REFERENCES workspaces(path) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_index_runs_workspace
+      ON project_index_runs(workspace, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS project_index_files (
+      workspace TEXT NOT NULL,
+      relative_path TEXT NOT NULL,
+      classification TEXT NOT NULL CHECK(classification IN ('source','configuration','documentation','lockfile','asset','unknown')),
+      language TEXT NOT NULL,
+      extension TEXT NOT NULL,
+      size INTEGER NOT NULL CHECK(size >= 0),
+      mtime_ms REAL NOT NULL CHECK(mtime_ms >= 0),
+      ctime_ms REAL NOT NULL CHECK(ctime_ms >= 0),
+      mode INTEGER NOT NULL CHECK(mode >= 0),
+      observed_hash TEXT CHECK(observed_hash IS NULL OR length(observed_hash) = 64),
+      analyzed_hash TEXT CHECK(analyzed_hash IS NULL OR length(analyzed_hash) = 64),
+      state TEXT NOT NULL CHECK(state IN ('discovered','pending','processing','indexed','unsupported','failed','deleted','excluded')),
+      excluded INTEGER NOT NULL DEFAULT 0 CHECK(excluded IN (0,1)),
+      exclusion_reason TEXT,
+      parser_id TEXT,
+      parser_version TEXT,
+      error TEXT,
+      discovered_at TEXT NOT NULL,
+      analyzed_at TEXT,
+      PRIMARY KEY(workspace, relative_path),
+      FOREIGN KEY (workspace) REFERENCES workspaces(path) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_index_files_state
+      ON project_index_files(workspace, state, relative_path);
+    CREATE INDEX IF NOT EXISTS idx_project_index_files_language
+      ON project_index_files(workspace, language, relative_path);
+
+    CREATE TABLE IF NOT EXISTS project_index_symbols (
+      id TEXT PRIMARY KEY,
+      workspace TEXT NOT NULL,
+      relative_path TEXT NOT NULL,
+      analyzed_hash TEXT NOT NULL CHECK(length(analyzed_hash) = 64),
+      kind TEXT NOT NULL,
+      name TEXT NOT NULL,
+      qualified_name TEXT,
+      scope TEXT,
+      signature TEXT,
+      start_line INTEGER NOT NULL CHECK(start_line >= 1),
+      start_column INTEGER NOT NULL CHECK(start_column >= 1),
+      end_line INTEGER NOT NULL CHECK(end_line >= start_line),
+      end_column INTEGER NOT NULL CHECK(end_column >= 1),
+      exported INTEGER NOT NULL DEFAULT 0 CHECK(exported IN (0,1)),
+      parser_id TEXT NOT NULL,
+      parser_version TEXT NOT NULL,
+      FOREIGN KEY (workspace, relative_path) REFERENCES project_index_files(workspace, relative_path) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_index_symbols_file
+      ON project_index_symbols(workspace, relative_path, start_line);
+    CREATE INDEX IF NOT EXISTS idx_project_index_symbols_name
+      ON project_index_symbols(workspace, name);
+
+    CREATE TABLE IF NOT EXISTS project_index_imports (
+      id TEXT PRIMARY KEY,
+      workspace TEXT NOT NULL,
+      source_path TEXT NOT NULL,
+      source_hash TEXT NOT NULL CHECK(length(source_hash) = 64),
+      specifier TEXT NOT NULL,
+      target_path TEXT,
+      target_hash TEXT CHECK(target_hash IS NULL OR length(target_hash) = 64),
+      kind TEXT NOT NULL,
+      imported_names TEXT NOT NULL,
+      start_line INTEGER NOT NULL CHECK(start_line >= 1),
+      start_column INTEGER NOT NULL CHECK(start_column >= 1),
+      end_line INTEGER NOT NULL CHECK(end_line >= start_line),
+      end_column INTEGER NOT NULL CHECK(end_column >= 1),
+      resolution TEXT NOT NULL CHECK(resolution IN ('local','external','unresolved')),
+      FOREIGN KEY (workspace, source_path) REFERENCES project_index_files(workspace, relative_path) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_index_imports_source
+      ON project_index_imports(workspace, source_path, start_line);
+    CREATE INDEX IF NOT EXISTS idx_project_index_imports_target
+      ON project_index_imports(workspace, target_path);
+
+    CREATE TABLE IF NOT EXISTS project_index_exports (
+      id TEXT PRIMARY KEY,
+      workspace TEXT NOT NULL,
+      source_path TEXT NOT NULL,
+      source_hash TEXT NOT NULL CHECK(length(source_hash) = 64),
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      target_path TEXT,
+      target_hash TEXT CHECK(target_hash IS NULL OR length(target_hash) = 64),
+      start_line INTEGER NOT NULL CHECK(start_line >= 1),
+      start_column INTEGER NOT NULL CHECK(start_column >= 1),
+      end_line INTEGER NOT NULL CHECK(end_line >= start_line),
+      end_column INTEGER NOT NULL CHECK(end_column >= 1),
+      FOREIGN KEY (workspace, source_path) REFERENCES project_index_files(workspace, relative_path) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_index_exports_source
+      ON project_index_exports(workspace, source_path, start_line);
+
+    CREATE TABLE IF NOT EXISTS project_stack_evidence (
+      id TEXT PRIMARY KEY,
+      workspace TEXT NOT NULL,
+      category TEXT NOT NULL,
+      value TEXT NOT NULL,
+      confidence INTEGER NOT NULL CHECK(confidence BETWEEN 0 AND 100),
+      source_path TEXT NOT NULL,
+      source_hash TEXT NOT NULL CHECK(length(source_hash) = 64),
+      source_line INTEGER,
+      reason TEXT NOT NULL,
+      detected_at TEXT NOT NULL,
+      UNIQUE(workspace, category, value, source_path, source_hash, reason),
+      FOREIGN KEY (workspace) REFERENCES workspaces(path) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_stack_evidence_workspace
+      ON project_stack_evidence(workspace, category, value);
+
+    CREATE TABLE IF NOT EXISTS project_index_exclusions (
+      workspace TEXT NOT NULL,
+      relative_path TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      detected_at TEXT NOT NULL,
+      PRIMARY KEY(workspace, relative_path),
+      FOREIGN KEY (workspace) REFERENCES workspaces(path) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_index_exclusions_workspace
+      ON project_index_exclusions(workspace, relative_path);
+  `) },
+  { version: 17, up: (db) => db.exec(`
+    CREATE TABLE IF NOT EXISTS validation_runs (
+      id TEXT PRIMARY KEY,
+      workspace TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('typecheck','lint','test','build','smoke')),
+      command TEXT NOT NULL,
+      args_json TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('queued','running','passed','failed','cancelled','blocked')),
+      exit_code INTEGER,
+      duration_ms INTEGER CHECK(duration_ms IS NULL OR duration_ms >= 0),
+      output_summary TEXT NOT NULL,
+      artifacts_json TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      completed_at TEXT,
+      error TEXT,
+      FOREIGN KEY (workspace) REFERENCES workspaces(path) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_validation_runs_workspace
+      ON validation_runs(workspace, started_at DESC);
+  `) },
 ]
 
 export function migrateDatabase(db: Database.Database, currentVersion: number, availableMigrations: Migration[] = migrations) {
