@@ -46,7 +46,7 @@ export default defineConfig({
         entry: 'electron/main.ts',
         vite: {
           build: {
-            rolldownOptions: { external: ['better-sqlite3'] },
+            rolldownOptions: { external: ['better-sqlite3', 'typescript'] },
           },
         },
       },
