@@ -303,7 +303,7 @@ function summarizeOutput(stdout: string, stderr: string, truncated: boolean) {
 }
 
 async function discoverArtifacts(workspace: string, stdout: string, stderr: string): Promise<ValidationArtifact[]> {
-  const canonicalWorkspace = await fs.promises.realpath(workspace)
+  const canonicalWorkspace = fs.realpathSync.native(workspace)
   const candidates = new Set<string>()
   for (const line of `${stdout}\n${stderr}`.split(/\r?\n/)) {
     for (const token of line.split(/\s+/)) {
@@ -321,7 +321,9 @@ async function discoverArtifacts(workspace: string, stdout: string, stderr: stri
       const resolved = resolveInsideWorkspace(candidate, workspace)
       const stat = await fs.promises.stat(resolved)
       if (!stat.isFile()) continue
-      artifacts.push({ path: path.relative(canonicalWorkspace, resolved).replace(/\\/g, '/'), kind: path.extname(resolved).slice(1).toLowerCase(), size: stat.size })
+      const relativePath = path.relative(canonicalWorkspace, fs.realpathSync.native(resolved)).replace(/\\/g, '/')
+      if (relativePath === '..' || relativePath.startsWith('../') || path.isAbsolute(relativePath)) continue
+      artifacts.push({ path: relativePath, kind: path.extname(resolved).slice(1).toLowerCase(), size: stat.size })
     } catch {
       // Output often contains labels or paths that were not materialized; those
       // are intentionally not persisted as artifacts.
