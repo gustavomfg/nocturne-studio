@@ -9,7 +9,6 @@ import { useOffCanvasPanel } from '../../shared/useOffCanvasPanel'
 import { useI18n } from '../../shared/i18n'
 import { useRendererRenderCounter } from '../../shared/rendererDiagnostics'
 import { AgentActivityPanel } from './AgentActivityPanel'
-import { ProjectIndexPanel, type ProjectIndexPanelProps } from '../code-intelligence/ProjectIndexPanel'
 
 interface AgentPanelProps {
   open: boolean
@@ -34,13 +33,12 @@ interface AgentPanelProps {
   onSuggestionApply(suggestion: Suggestion): void
   onPlanChange(plan: PlanStep[]): void
   onPlanExecute(plan: PlanStep[]): void
-  projectIndex: ProjectIndexPanelProps
 }
 
-const tabs = ['activity', 'plan', 'suggestions', 'artifacts', 'project'] as const
+const tabs = ['activity', 'plan', 'suggestions', 'artifacts'] as const
 type AgentPanelTab = typeof tabs[number]
 
-export function AgentPanel({ open: isOpen, compact, triggerRef, gitInfo, artifactsHaveMore, suggestionsHaveMore, loadingCollection, onClose, onDecide, onError, onNotify, onGitRefresh, onArtifactsRefresh, onLoadMoreArtifacts, onLoadMoreSuggestions, onPreview, onArtifact, onDeleteArtifact, onSuggestionStatus, onSuggestionApply, onPlanChange, onPlanExecute, projectIndex }: AgentPanelProps) {
+export function AgentPanel({ open: isOpen, compact, triggerRef, gitInfo, artifactsHaveMore, suggestionsHaveMore, loadingCollection, onClose, onDecide, onError, onNotify, onGitRefresh, onArtifactsRefresh, onLoadMoreArtifacts, onLoadMoreSuggestions, onPreview, onArtifact, onDeleteArtifact, onSuggestionStatus, onSuggestionApply, onPlanChange, onPlanExecute }: AgentPanelProps) {
   useRendererRenderCounter('agentPanel')
   const { t } = useI18n()
   const { running, planCount, suggestionsCount, artifactsCount } = useAppStore(useShallow((state) => ({
@@ -71,20 +69,18 @@ export function AgentPanel({ open: isOpen, compact, triggerRef, gitInfo, artifac
       <TabButton id="plan" index={1} selected={tab === 'plan'} onKeyDown={moveTab} onSelect={setTab} icon={<ListChecks size={12}/>} label={t('agent.plan')} count={planCount}/>
       <TabButton id="suggestions" index={2} selected={tab === 'suggestions'} onKeyDown={moveTab} onSelect={setTab} icon={<ShieldCheck size={12}/>} label={t('agent.suggestions')} count={suggestionsCount}/>
       <TabButton id="artifacts" index={3} selected={tab === 'artifacts'} onKeyDown={moveTab} onSelect={setTab} icon={<PackageOpen size={12}/>} label={t('agent.artifacts')} count={artifactsCount}/>
-      <TabButton id="project" index={4} selected={tab === 'project'} onKeyDown={moveTab} onSelect={setTab} icon={<FileCode2 size={12}/>} label={t('projectIndex.tab')} ariaLabel={t('projectIndex.title')}/>
     </div>
     <div className="inspector-scroll">
       <div id="agent-panel-activity" aria-labelledby="agent-tab-activity" className="tab-panel activity-panel" role="tabpanel" hidden={tab !== 'activity'}><AgentActivityPanel gitInfo={gitInfo} onDecide={onDecide} onError={onError} onNotify={onNotify} onGitRefresh={onGitRefresh} onArtifactsRefresh={onArtifactsRefresh} onPreview={onPreview}/></div>
       {tab === 'plan' && <div id="agent-panel-plan" aria-labelledby="agent-tab-plan" role="tabpanel"><PlanTab onChange={onPlanChange} onExecute={onPlanExecute}/></div>}
       {tab === 'suggestions' && <div id="agent-panel-suggestions" aria-labelledby="agent-tab-suggestions" role="tabpanel"><SuggestionsTab hasMore={suggestionsHaveMore} loadingMore={loadingCollection === 'suggestions'} onLoadMore={onLoadMoreSuggestions} onStatus={onSuggestionStatus} onApply={onSuggestionApply} onOpenFile={onPreview} onNotify={onNotify}/></div>}
       {tab === 'artifacts' && <div id="agent-panel-artifacts" aria-labelledby="agent-tab-artifacts" role="tabpanel"><ArtifactsTab hasMore={artifactsHaveMore} loadingMore={loadingCollection === 'artifacts'} onLoadMore={onLoadMoreArtifacts} onOpen={onArtifact} onDelete={onDeleteArtifact}/></div>}
-      {tab === 'project' && <div id="agent-panel-project" aria-labelledby="agent-tab-project" role="tabpanel"><ProjectIndexPanel {...projectIndex}/></div>}
     </div>
   </aside>
 }
 
-function TabButton({ id, index, selected, onKeyDown, onSelect, icon, label, count, ariaLabel }: { id: AgentPanelTab; index: number; selected: boolean; onKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void; onSelect(tab: AgentPanelTab): void; icon: ReactNode; label: string; count?: number; ariaLabel?: string }) {
-  return <button id={`agent-tab-${id}`} role="tab" aria-label={ariaLabel} title={ariaLabel ?? label} aria-controls={`agent-panel-${id}`} aria-selected={selected} tabIndex={selected ? 0 : -1} className={selected ? 'active' : ''} onKeyDown={(event) => onKeyDown(event, index)} onClick={() => onSelect(id)}>{icon}<span className="tab-label">{label}</span>{count ? <span className="tab-count">{count}</span> : null}</button>
+function TabButton({ id, index, selected, onKeyDown, onSelect, icon, label, count }: { id: AgentPanelTab; index: number; selected: boolean; onKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void; onSelect(tab: AgentPanelTab): void; icon: ReactNode; label: string; count?: number }) {
+  return <button id={`agent-tab-${id}`} role="tab" title={label} aria-controls={`agent-panel-${id}`} aria-selected={selected} tabIndex={selected ? 0 : -1} className={selected ? 'active' : ''} onKeyDown={(event) => onKeyDown(event, index)} onClick={() => onSelect(id)}>{icon}<span className="tab-label">{label}</span>{count ? <span className="tab-count">{count}</span> : null}</button>
 }
 
 function PlanTab({ onChange, onExecute }: { onChange(plan: PlanStep[]): void; onExecute(plan: PlanStep[]): void }) {

@@ -236,16 +236,12 @@
   padding: 0 var(--spacing-md);
   background: #00000014;
   gap: 2px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  display: flex;
 }
 
 .inspector-tabs button {
   min-height: 48px;
   padding: 0 var(--spacing-xs);
   border-radius: var(--radius-xs) var(--radius-xs) 0 0;
-  flex: 0 0 auto;
   white-space: nowrap;
 }
 
@@ -647,10 +643,6 @@
     display: none;
   }
 
-  .inspector-tabs button {
-    padding-inline: var(--spacing-2xs);
-  }
-
   .suggestions {
     gap: var(--spacing-md);
   }
@@ -934,11 +926,12 @@
 }
 
 .inspector-tabs {
-  scrollbar-width: thin;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: grid;
 }
 
 .inspector-tabs button {
-  min-width: max-content;
+  min-width: 0;
 }
 
 .inspector-tabs .tab-count {

@@ -20,9 +20,10 @@ export interface ProjectIndexPanelProps {
   validationLoading: boolean
   onValidation(kind: ValidationKind): void
   onValidationCancel(): void
+  showTitle?: boolean
 }
 
-export function ProjectIndexPanel({ workspace, status, summary, stack, symbols, query, loading, onQuery, onSearch, onStart, onCancel, onRetry, validationRuns, validationLoading, onValidation, onValidationCancel }: ProjectIndexPanelProps) {
+export function ProjectIndexPanel({ workspace, status, summary, stack, symbols, query, loading, onQuery, onSearch, onStart, onCancel, onRetry, validationRuns, validationLoading, onValidation, onValidationCancel, showTitle = true }: ProjectIndexPanelProps) {
   const { t } = useI18n()
   const stackValues = useMemo(() => [...new Set(stack.filter((item) => item.category !== 'script' && item.category !== 'convention').map((item) => item.value))], [stack])
   const busy = status?.status === 'queued' || status?.status === 'running'
@@ -30,8 +31,8 @@ export function ProjectIndexPanel({ workspace, status, summary, stack, symbols, 
   const progress = status && status.totalFiles > 0 ? Math.min(1, status.processedFiles / status.totalFiles) : 0
   if (!workspace) return <div className="inspector-empty"><div><FileCode2 size={22}/></div><p>{t('projectIndex.noWorkspace')}</p></div>
   return <div className="project-index-panel">
-    <section className="project-index-status" aria-live="polite">
-      <header><div><FileCode2 size={15}/><strong>{t('projectIndex.title')}</strong></div><StatusIcon status={status}/></header>
+    <section className="project-index-status" aria-label={showTitle ? undefined : t('projectIndex.title')} aria-live="polite">
+      {showTitle && <header><div><FileCode2 size={15}/><strong>{t('projectIndex.title')}</strong></div><StatusIcon status={status}/></header>}
       {!status && <p>{t('projectIndex.waiting')}</p>}
       {status && <><div className="project-index-status-line"><span>{statusLabel(status.status, t)}</span><small>{status.processedFiles}/{status.totalFiles || '—'}</small></div><div className="project-index-progress"><span style={{ transform: `scaleX(${progress})` }}/></div>{status.currentPath && <small className="project-index-current">{status.currentPath}</small>}{status.error && <p className="project-index-error"><TriangleAlert size={13}/>{status.error}</p>}</>}
       <div className="project-index-actions">{busy ? <button type="button" onClick={onCancel}><Square size={13}/>{t('projectIndex.cancel')}</button> : <button type="button" onClick={onStart}><RefreshCw size={13}/>{t('projectIndex.reindex')}</button>}{status?.failedFiles ? <button type="button" onClick={onRetry}><RefreshCw size={13}/>{t('projectIndex.retry')}</button> : null}</div>

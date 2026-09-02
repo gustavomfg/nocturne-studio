@@ -31,6 +31,7 @@ import { useAppNotice } from './domains/app/useAppNotice'
 import { useAppTheme } from './domains/app/useAppTheme'
 import { useSettingsDialogPreload } from './domains/app/useSettingsDialogPreload'
 import { useProjectIndexSession } from './domains/code-intelligence/useProjectIndexSession'
+import { ProjectIndexPanel } from './domains/code-intelligence/ProjectIndexPanel'
 import './styles/components.css'
 import './domains/settings/settings.css'
 import './domains/agent/agent.css'
@@ -42,6 +43,7 @@ const AgentPanel = lazy(() => import('./domains/agent/AgentPanel').then((module)
 const BrainMemoryDialog = lazy(() => import('./domains/memory/BrainMemoryDialog').then((module) => ({ default: module.BrainMemoryDialog })))
 
 type OpenConversation = (id: string, conversationList?: Conversation[], workspaceList?: Workspace[]) => Promise<void>
+type WorkspaceView = 'chat' | 'project-index'
 
 function App() {
   useRendererRenderCounter('app')
@@ -56,6 +58,7 @@ function App() {
   const confirmation = useConfirmDialog()
   const { confirm } = confirmation
   const [search, setSearch] = useState('')
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('chat')
   const { compact: compactLayout, inspectorOpen: rightOpen, sidebarOpen, setInspectorVisibility, setSidebarVisibility } = useResponsivePanels()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -204,21 +207,41 @@ function App() {
 
   const title = active?.title ?? t('common.newConversation')
   const pathLabel = active?.workspace ?? workspace
+  const projectIndexPanel = {
+    workspace,
+    status: projectIndex.status,
+    summary: projectIndex.summary,
+    stack: projectIndex.stack,
+    symbols: projectIndex.symbols,
+    query: projectIndex.query,
+    loading: projectIndex.loading,
+    onQuery: projectIndex.setQuery,
+    onSearch: () => void projectIndex.searchSymbols(),
+    onStart: () => void projectIndex.start(),
+    onCancel: () => void projectIndex.cancel(),
+    onRetry: () => void projectIndex.retry(),
+    validationRuns: projectIndex.validationRuns,
+    validationLoading: projectIndex.validationLoading,
+    onValidation: (kind: Parameters<typeof projectIndex.runValidation>[0]) => void projectIndex.runValidation(kind),
+    onValidationCancel: () => void projectIndex.cancelValidation(),
+  }
 
   return <div className="app-shell">
     {compactLayout && sidebarOpen && <button tabIndex={-1} className="panel-backdrop sidebar-backdrop" aria-label={t('nav.closeSidebar')} onClick={() => setSidebarVisibility(false)}/>}
-    <Sidebar open={sidebarOpen} compact={compactLayout} triggerRef={sidebarTriggerRef} conversations={filtered} hasConversations={store.conversations.length > 0} hasMore={collections.conversationHasMore} loadingMore={collections.loading === 'conversations'} activeId={store.activeId} search={search} searchRef={searchRef} workspace={workspace} workspaces={workspaces} settings={settings} status={store.status} onClose={() => setSidebarVisibility(false)} onNew={() => void createConversation().finally(() => { if (compactLayout) setSidebarVisibility(false) })} onSearch={setSearch} onLoadMore={() => void collections.loadMoreConversations()} onConversation={(id) => void openConversation(id).finally(() => { if (compactLayout) setSidebarVisibility(false) })} onDelete={(id) => void removeConversation(id)} onWorkspace={() => void selectWorkspace().finally(() => { if (compactLayout) setSidebarVisibility(false) })} onSavedWorkspace={(path) => void chooseSavedWorkspace(path).finally(() => { if (compactLayout) setSidebarVisibility(false) })} onFavorite={(item) => void favoriteWorkspace(item)} onSettings={() => { if (compactLayout) setSidebarVisibility(false); setSettingsOpen(true) }}/>
+    <Sidebar open={sidebarOpen} compact={compactLayout} triggerRef={sidebarTriggerRef} conversations={filtered} hasConversations={store.conversations.length > 0} hasMore={collections.conversationHasMore} loadingMore={collections.loading === 'conversations'} activeId={store.activeId} search={search} searchRef={searchRef} workspace={workspace} workspaces={workspaces} settings={settings} status={store.status} projectIndexActive={workspaceView === 'project-index'} onClose={() => setSidebarVisibility(false)} onNew={() => { setWorkspaceView('chat'); void createConversation().finally(() => { if (compactLayout) setSidebarVisibility(false) }) }} onSearch={setSearch} onLoadMore={() => void collections.loadMoreConversations()} onConversation={(id) => { setWorkspaceView('chat'); void openConversation(id).finally(() => { if (compactLayout) setSidebarVisibility(false) }) }} onDelete={(id) => void removeConversation(id)} onProjectIndex={() => { setWorkspaceView('project-index'); if (compactLayout) setSidebarVisibility(false) }} onWorkspace={() => void selectWorkspace().finally(() => { if (compactLayout) setSidebarVisibility(false) })} onSavedWorkspace={(path) => void chooseSavedWorkspace(path).finally(() => { if (compactLayout) setSidebarVisibility(false) })} onFavorite={(item) => void favoriteWorkspace(item)} onSettings={() => { if (compactLayout) setSidebarVisibility(false); setSettingsOpen(true) }}/>
 
     <main className="main-panel">
-      <WorkspaceTopbar title={title} pathLabel={pathLabel} gitInfo={gitInfo} status={store.status} projectIndexStatus={projectIndex.status} sidebarOpen={sidebarOpen} inspectorOpen={rightOpen} compact={compactLayout} hasMemory={Boolean(memory.content)} sidebarTriggerRef={sidebarTriggerRef} inspectorTriggerRef={inspectorTriggerRef} onOpenSidebar={() => setSidebarVisibility(true)} onSelectWorkspace={() => void selectWorkspace()} onOpenTool={(tool) => void openWorkspaceTool(tool)} onMemory={() => store.activeId ? setMemoryOpen(true) : store.setError(t('common.noWorkspace'))} onSettings={() => setSettingsOpen(true)} onHelp={() => setHelpOpen(true)} onToggleInspector={() => setInspectorVisibility(!rightOpen)}/>
+      <WorkspaceTopbar title={workspaceView === 'project-index' ? t('projectIndex.title') : title} pathLabel={pathLabel} gitInfo={gitInfo} status={store.status} projectIndexStatus={projectIndex.status} sidebarOpen={sidebarOpen} inspectorOpen={rightOpen} compact={compactLayout} hasMemory={Boolean(memory.content)} sidebarTriggerRef={sidebarTriggerRef} inspectorTriggerRef={inspectorTriggerRef} onOpenSidebar={() => setSidebarVisibility(true)} onSelectWorkspace={() => void selectWorkspace()} onOpenTool={(tool) => void openWorkspaceTool(tool)} onMemory={() => store.activeId ? setMemoryOpen(true) : store.setError(t('common.noWorkspace'))} onSettings={() => setSettingsOpen(true)} onHelp={() => setHelpOpen(true)} onToggleInspector={() => setInspectorVisibility(!rightOpen)}/>
 
-      <ChatViewport active={Boolean(store.activeId)} messages={store.messages} error={store.error} historyHasMore={historyHasMore} historyHasNewer={historyHasNewer} historyLoading={historyLoading} newContent={newContent} chatScrollRef={chatScrollRef} endRef={endRef} stickToBottomRef={stickToBottomRef} onNew={() => void createConversation()} onWorkspace={() => void selectWorkspace()} onPrompt={preparePrompt} onLoadOlder={() => void loadOlderMessages()} onLoadLatest={() => void loadLatestMessages()} onScroll={handleChatScroll} onNewContent={setNewContent} onDismissError={() => store.setError(null)} onRetryError={retryAvailableForActiveConversation ? retryLastAttempt : undefined} onJumpLatest={jumpToLatest}/>
+      {workspaceView === 'project-index' ? <div id="project-index-view" className="project-index-view"><ProjectIndexPanel {...projectIndexPanel} showTitle={false}/></div> : <>
+        <ChatViewport active={Boolean(store.activeId)} messages={store.messages} error={store.error} historyHasMore={historyHasMore} historyHasNewer={historyHasNewer} historyLoading={historyLoading} newContent={newContent} chatScrollRef={chatScrollRef} endRef={endRef} stickToBottomRef={stickToBottomRef} onNew={() => void createConversation()} onWorkspace={() => void selectWorkspace()} onPrompt={preparePrompt} onLoadOlder={() => void loadOlderMessages()} onLoadLatest={() => void loadLatestMessages()} onScroll={handleChatScroll} onNewContent={setNewContent} onDismissError={() => store.setError(null)} onRetryError={retryAvailableForActiveConversation ? retryLastAttempt : undefined} onJumpLatest={jumpToLatest}/>
 
-      <Composer agentMode={agentMode} attachments={attachments} prompt={prompt} status={store.status} finalizing={store.finalizing} active={Boolean(store.activeId)} pendingApprovals={pendingApprovalCount} composerRef={composerRef} onMode={setAgentMode} onPrompt={setPrompt} onRemoveAttachment={removeAttachment} onAttach={attachFiles} onCancel={cancelRun} onSubmit={send} onQuick={preparePrompt}/>
+        <Composer agentMode={agentMode} attachments={attachments} prompt={prompt} status={store.status} finalizing={store.finalizing} active={Boolean(store.activeId)} pendingApprovals={pendingApprovalCount} composerRef={composerRef} onMode={setAgentMode} onPrompt={setPrompt} onRemoveAttachment={removeAttachment} onAttach={attachFiles} onCancel={cancelRun} onSubmit={send} onQuick={preparePrompt}/>
+      </>}
     </main>
     {compactLayout && rightOpen && <button tabIndex={-1} className="panel-backdrop inspector-backdrop" aria-label={t('topbar.closeAgent')} onClick={() => setInspectorVisibility(false)}/>}
 
-    <Suspense fallback={null}><AgentPanel open={rightOpen} compact={compactLayout} triggerRef={inspectorTriggerRef} gitInfo={gitInfo} artifactsHaveMore={collections.artifactHasMore} suggestionsHaveMore={collections.suggestionHasMore} loadingCollection={collections.loading} onClose={() => setInspectorVisibility(false)} onDecide={decide} onError={store.setError} onNotify={notify} onGitRefresh={refreshGit} onArtifactsRefresh={refreshArtifacts} onLoadMoreArtifacts={() => void collections.loadMoreArtifacts()} onLoadMoreSuggestions={() => void collections.loadMoreSuggestions()} onPreview={showFilePreview} onArtifact={showArtifact} onDeleteArtifact={deleteArtifact} onSuggestionStatus={updateSuggestion} onSuggestionApply={applySuggestion} onPlanChange={(plan) => store.setPlan(plan, useAppStore.getState().planExplanation)} onPlanExecute={(plan) => preparePrompt(`${t('quick.executePlan')}\n\n${plan.map((item, index) => `${index + 1}. ${item.step}`).join('\n')}`, 'build')} projectIndex={{ workspace, status: projectIndex.status, summary: projectIndex.summary, stack: projectIndex.stack, symbols: projectIndex.symbols, query: projectIndex.query, loading: projectIndex.loading, onQuery: projectIndex.setQuery, onSearch: () => void projectIndex.searchSymbols(), onStart: () => void projectIndex.start(), onCancel: () => void projectIndex.cancel(), onRetry: () => void projectIndex.retry(), validationRuns: projectIndex.validationRuns, validationLoading: projectIndex.validationLoading, onValidation: (kind) => void projectIndex.runValidation(kind), onValidationCancel: () => void projectIndex.cancelValidation() }}/></Suspense>
+    <Suspense fallback={null}><AgentPanel open={rightOpen} compact={compactLayout} triggerRef={inspectorTriggerRef} gitInfo={gitInfo} artifactsHaveMore={collections.artifactHasMore} suggestionsHaveMore={collections.suggestionHasMore} loadingCollection={collections.loading} onClose={() => setInspectorVisibility(false)} onDecide={decide} onError={store.setError} onNotify={notify} onGitRefresh={refreshGit} onArtifactsRefresh={refreshArtifacts} onLoadMoreArtifacts={() => void collections.loadMoreArtifacts()} onLoadMoreSuggestions={() => void collections.loadMoreSuggestions()} onPreview={showFilePreview} onArtifact={showArtifact} onDeleteArtifact={deleteArtifact} onSuggestionStatus={updateSuggestion} onSuggestionApply={applySuggestion} onPlanChange={(plan) => store.setPlan(plan, useAppStore.getState().planExplanation)} onPlanExecute={(plan) => preparePrompt(`${t('quick.executePlan')}\n\n${plan.map((item, index) => `${index + 1}. ${item.step}`).join('\n')}`, 'build')}/></Suspense>
     {confirmation.dialog}<AppOverlays settingsOpen={settingsOpen} settings={settings} workspaces={workspaces} memoryOpen={memoryOpen} memory={memory} preview={preview} onboardingOpen={onboardingOpen} helpOpen={helpOpen} activeId={store.activeId} workspace={workspace} onSettingsClose={() => setSettingsOpen(false)} onSaveSettings={saveSettings} onCodexModelChange={saveCodexModel} onNotify={notify} onOpenOnboarding={() => { setSettingsOpen(false); setOnboardingOpen(true) }} onMemoryClose={() => setMemoryOpen(false)} onOpenBrain={() => { setMemoryOpen(false); setBrainOpen(true) }} onSaveMemory={saveMemory} onPreviewClose={resetPreview} onError={store.setError} onWorkspace={async () => { await selectWorkspace() }} onOpenSettings={() => { setOnboardingOpen(false); setSettingsOpen(true) }} onDismissOnboarding={() => { setOnboardingOpen(false); composerRef.current?.focus() }} onCompleteOnboarding={() => { localStorage.setItem('nocturne.onboarding.completed', 'true'); setOnboardingOpen(false); notify(t('common.reloaded')); composerRef.current?.focus() }} onHelpClose={() => setHelpOpen(false)}/><Suspense fallback={null}>{brainOpen && store.activeId && <BrainMemoryDialog conversationId={store.activeId} onClose={() => setBrainOpen(false)} onNotify={notify}/>}</Suspense>{notice && <div className="product-toast" role="status" aria-live="polite"><span>{notice}</span><button aria-label={t('common.close')} onClick={dismissNotice}><X size={14}/></button></div>}
   </div>
 }

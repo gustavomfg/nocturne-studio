@@ -122,8 +122,23 @@ test.describe('renderer do produto', () => {
         const rect = element.getBoundingClientRect()
         return { left: rect.left, right: rect.right, top: rect.top }
       }))
+      expect(boxes).toHaveLength(4)
       expect(new Set(boxes.map((box) => Math.round(box.top))).size).toBe(1)
       expect(boxes.every((box, index) => index === 0 || box.left >= boxes[index - 1].right)).toBe(true)
+    }
+  })
+
+  test('abre a inteligência do projeto como visão principal pela barra lateral', async ({ page }) => {
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 720, height: 800 }]) {
+      await page.setViewportSize(viewport)
+      await ready(page)
+      if (viewport.width <= 980) await page.getByRole('button', { name: 'Abrir barra lateral' }).click()
+      await page.getByRole('button', { name: 'Inteligência do projeto' }).click()
+      await expect(page.locator('#project-index-view')).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Inteligência do projeto' })).toBeVisible()
+      await expect(page.locator('#agent-tab-project')).toHaveCount(0)
+      await expect(page.locator('#agent-inspector [role="tab"]')).toHaveCount(4)
+      if (viewport.width <= 980) await expect(page.locator('#workspace-sidebar')).toHaveClass(/collapsed/)
     }
   })
 

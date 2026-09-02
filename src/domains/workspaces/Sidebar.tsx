@@ -1,5 +1,5 @@
 import { useEffect, type RefObject } from 'react'
-import { AlertTriangle, ChevronRight, Code2, Folder, FolderOpen, History, Laptop, Menu, MessageSquarePlus, Search, Settings, Star, Trash2, X } from 'lucide-react'
+import { AlertTriangle, ChevronRight, Code2, FileCode2, Folder, FolderOpen, History, Laptop, Menu, MessageSquarePlus, Search, Settings, Star, Trash2, X } from 'lucide-react'
 import type { AppSettings, Conversation, Workspace } from '../../types'
 import type { AgentState } from '../../../shared/agentState'
 import { relativeTime } from '../../shared/format'
@@ -20,10 +20,11 @@ const statusLabelKeys: Record<AgentState, string> = {
 
 interface SidebarProps {
   open: boolean; compact: boolean; triggerRef: RefObject<HTMLElement | null>; conversations: Conversation[]; hasConversations: boolean; hasMore: boolean; loadingMore: boolean; activeId: string | null; search: string; searchRef: RefObject<HTMLInputElement | null>; workspace: string; workspaces: Workspace[]; settings: AppSettings; status: AgentState;
-  onClose(): void; onNew(): void; onSearch(value: string): void; onLoadMore(): void; onConversation(id: string): void; onDelete(id: string): void; onWorkspace(): void; onSavedWorkspace(path: string): void; onFavorite(item: Workspace): void; onSettings(): void
+  projectIndexActive: boolean
+  onClose(): void; onNew(): void; onSearch(value: string): void; onLoadMore(): void; onConversation(id: string): void; onDelete(id: string): void; onProjectIndex(): void; onWorkspace(): void; onSavedWorkspace(path: string): void; onFavorite(item: Workspace): void; onSettings(): void
 }
 
-export function Sidebar({ open, compact, triggerRef, conversations, hasConversations, hasMore, loadingMore, activeId, search, searchRef, workspace, workspaces, status, onClose, onNew, onSearch, onLoadMore, onConversation, onDelete, onWorkspace, onSavedWorkspace, onFavorite, onSettings }: SidebarProps) {
+export function Sidebar({ open, compact, triggerRef, conversations, hasConversations, hasMore, loadingMore, activeId, search, searchRef, workspace, workspaces, status, projectIndexActive, onClose, onNew, onSearch, onLoadMore, onConversation, onDelete, onProjectIndex, onWorkspace, onSavedWorkspace, onFavorite, onSettings }: SidebarProps) {
   const { t, language } = useI18n()
   const sidebarRef = useOffCanvasPanel<HTMLElement>({ open, modal: compact, onClose, triggerRef })
   const newShortcut = navigator.platform.toLowerCase().includes('mac') ? '⌘ N' : 'Ctrl N'
@@ -32,6 +33,9 @@ export function Sidebar({ open, compact, triggerRef, conversations, hasConversat
     <div className="brand"><div className="brand-mark"><img src="./nocturne.svg" alt=""/></div><span>Nocturne <b>Studio</b></span><button className="icon-button sidebar-toggle" aria-label={t('nav.collapseSidebar')} title={t('nav.collapseSidebar')} onClick={onClose}><Menu size={17}/></button></div>
     <button className="new-chat" onClick={onNew}><MessageSquarePlus size={17}/><span>{t('nav.newConversation')}</span><kbd>{newShortcut}</kbd></button>
     <label className="search-box"><Search size={15}/><span className="sr-only">{t('nav.searchConversations')}</span><input ref={searchRef} value={search} onChange={(event) => onSearch(event.target.value)} placeholder={t('nav.searchConversations')} aria-label={t('nav.searchConversations')}/>{search && <button type="button" aria-label={t('nav.clearSearch')} title={t('nav.clearSearch')} onClick={() => onSearch('')}><X size={13}/></button>}</label>
+    <nav className="sidebar-workspace-nav" aria-label={t('nav.workspaceTools')}>
+      <button type="button" className={`sidebar-tool ${projectIndexActive ? 'active' : ''}`} aria-current={projectIndexActive ? 'page' : undefined} onClick={onProjectIndex}><FileCode2 size={16}/><span>{t('projectIndex.title')}</span></button>
+    </nav>
     <div className="section-label"><span>{t('nav.recent')}</span><History size={13}/></div>
     <nav className="conversation-list">
       {conversations.map((conversation) => <div key={conversation.id} className={`conversation-item ${conversation.id === activeId ? 'active' : ''}`}>

@@ -75,6 +75,18 @@ button {
   width: 100%;
 }
 
+.sidebar-workspace-nav {
+  flex-direction: column;
+  display: flex;
+}
+
+.sidebar-tool {
+  text-align: left;
+  align-items: center;
+  width: 100%;
+  display: flex;
+}
+
 .section-label {
   text-transform: uppercase;
   justify-content: space-between;

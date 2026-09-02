@@ -104,6 +104,35 @@
   outline: none;
 }
 
+.sidebar-workspace-nav {
+  gap: var(--spacing-2xs);
+  margin-bottom: var(--spacing-lg);
+}
+
+.sidebar-tool {
+  min-height: 42px;
+  gap: var(--spacing-sm);
+  padding: 0 var(--spacing-md);
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-body);
+}
+
+.sidebar-tool:hover,
+.sidebar-tool.active {
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+}
+
+.sidebar-tool.active {
+  box-shadow: inset 2px 0 var(--color-accent), inset 0 0 0 1px rgb(155 124 246 / 10%);
+}
+
+.sidebar-tool svg {
+  flex: 0 0 auto;
+  color: var(--color-accent);
+}
+
 .section-label {
   padding: var(--spacing-xs) var(--spacing-sm) var(--spacing-sm);
   color: var(--color-text-muted);
