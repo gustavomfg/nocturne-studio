@@ -2,8 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import chokidar, { type FSWatcher } from 'chokidar'
 import type { WorkspaceChangeEvent } from '../../shared/types'
+import { isIgnoredWorkspacePath, isIgnoredWorkspaceRelativePath, relativeWorkspacePath } from './WorkspacePathPolicy'
 
-const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', 'dist', 'release', 'out', 'coverage'])
 const MAX_CHANGED_PATHS = 100
 
 interface WatchHandle {
@@ -21,21 +21,6 @@ type WatchFactory = (
 type WorkspaceSnapshot = Map<string, string>
 type SnapshotFactory = (workspace: string) => Promise<WorkspaceSnapshot>
 
-function relativeWorkspacePath(workspace: string, candidate: string) {
-  const root = path.resolve(workspace)
-  const resolved = path.isAbsolute(candidate)
-    ? path.resolve(candidate)
-    : path.resolve(root, candidate)
-  const relative = path.relative(root, resolved).replace(/\\/g, '/')
-  if (!relative || relative === '..' || relative.startsWith('../') || path.isAbsolute(relative)) return null
-  return relative
-}
-
-function isIgnoredPath(workspace: string, candidate: string) {
-  const relative = relativeWorkspacePath(workspace, candidate)
-  return relative ? IGNORED_DIRECTORIES.has(relative.split('/')[0]) : false
-}
-
 async function captureWorkspaceSnapshot(workspace: string): Promise<WorkspaceSnapshot> {
   const snapshot: WorkspaceSnapshot = new Map()
   const root = path.resolve(workspace)
@@ -44,7 +29,7 @@ async function captureWorkspaceSnapshot(workspace: string): Promise<WorkspaceSna
     const entries = await fs.promises.readdir(directory, { withFileTypes: true })
     for (const entry of entries) {
       const relative = prefix ? `${prefix}/${entry.name}` : entry.name
-      if (IGNORED_DIRECTORIES.has(relative.split('/')[0])) continue
+      if (isIgnoredWorkspaceRelativePath(relative)) continue
       const absolute = path.join(directory, entry.name)
       let stat: fs.Stats
       try {
@@ -79,7 +64,7 @@ function createWatchHandle(workspace: string, listener: (eventType: string, file
     atomic: true,
     followSymlinks: false,
     ignoreInitial: true,
-    ignored: (candidate) => isIgnoredPath(workspace, candidate),
+    ignored: (candidate) => isIgnoredWorkspacePath(workspace, candidate),
     // Keep the native directory watcher referenced for the whole workspace
     // lifecycle. On macOS, an unreferenced watcher may stop delivering events
     // immediately after Chokidar emits `ready` even while the Electron process
@@ -164,7 +149,7 @@ export class WorkspaceChangeWatcher {
       this.overflow = true
     } else {
       const relative = relativeWorkspacePath(this.workspace, filename)
-      if (!relative || IGNORED_DIRECTORIES.has(relative.split('/')[0])) return
+      if (!relative || isIgnoredWorkspaceRelativePath(relative)) return
       if (this.changedPaths.size < MAX_CHANGED_PATHS) this.changedPaths.add(relative)
       else this.overflow = true
     }
