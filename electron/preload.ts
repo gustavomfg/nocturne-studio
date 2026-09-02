@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS as channels } from '../shared/ipc/channels'
 import type { AgentEvent, WorkspaceChangeEvent } from '../shared/types'
+import type { ProjectIndexStatus, ValidationKind, ValidationRun } from '../shared/codeIntelligence'
 import type { AgentStatusEvent } from '../shared/agentLifecycle'
 import type {
   NocturneApi,
@@ -59,6 +60,27 @@ export const nocturneApi: NocturneApi = {
     openTool: (workspace: string, tool: 'editor' | 'terminal') => ipcRenderer.invoke(channels.workspace.openTool, { workspace, tool }),
     watch: (workspace: string | null) => ipcRenderer.invoke(channels.workspace.watch, workspace),
     onChanged: (listener: (event: WorkspaceChangeEvent) => void) => on(channels.workspace.changed, listener),
+  },
+  projectIndex: {
+    status: (workspace: string) => ipcRenderer.invoke(channels.projectIndex.status, { workspace }),
+    start: (workspace: string) => ipcRenderer.invoke(channels.projectIndex.start, { workspace }),
+    cancel: (workspace: string) => ipcRenderer.invoke(channels.projectIndex.cancel, { workspace }),
+    retry: (workspace: string) => ipcRenderer.invoke(channels.projectIndex.retry, { workspace }),
+    summary: (workspace: string) => ipcRenderer.invoke(channels.projectIndex.summary, { workspace }),
+    files: (workspace: string, limit = 50_000) => ipcRenderer.invoke(channels.projectIndex.files, { workspace, limit }),
+    symbols: (workspace: string, query = '', limit = 100) => ipcRenderer.invoke(channels.projectIndex.symbols, { workspace, query, limit }),
+    imports: (workspace: string, relativePath?: string) => ipcRenderer.invoke(channels.projectIndex.imports, { workspace, relativePath }),
+    exports: (workspace: string, relativePath?: string) => ipcRenderer.invoke(channels.projectIndex.exports, { workspace, relativePath }),
+    stack: (workspace: string) => ipcRenderer.invoke(channels.projectIndex.stack, { workspace }),
+    exclusions: (workspace: string) => ipcRenderer.invoke(channels.projectIndex.exclusions, { workspace }),
+    onStatus: (listener: (status: ProjectIndexStatus) => void) => on(channels.projectIndex.changed, listener),
+  },
+  validation: {
+    run: (workspace: string, kind: ValidationKind) => ipcRenderer.invoke(channels.validation.run, { workspace, kind }),
+    cancel: (workspace: string) => ipcRenderer.invoke(channels.validation.cancel, { workspace }),
+    list: (workspace: string, limit = 20) => ipcRenderer.invoke(channels.validation.list, { workspace, limit }),
+    latest: (workspace: string) => ipcRenderer.invoke(channels.validation.latest, { workspace }),
+    onStatus: (listener: (run: ValidationRun) => void) => on(channels.validation.changed, listener),
   },
   conversations: {
     list: () => ipcRenderer.invoke(channels.conversations.list),

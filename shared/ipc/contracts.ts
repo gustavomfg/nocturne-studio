@@ -1,4 +1,5 @@
 import type { AgentMode, Artifact, Attachment, AgentEvent, AppSettings, BuildRollbackStatus, CodexAccountStatus, CollectionPage, Conversation, DocumentUpdatePreview, FilePreview, GitInfo, Message, MessagePage, RendererPerformanceStats, Suggestion, SuggestionStatus, Workspace, WorkspaceChangeEvent, WorkspaceMemory } from '../types'
+import type { DiscoveryExclusion, ProjectExport, ProjectImport, ProjectIndexFile, ProjectIndexStatus, ProjectIndexSummary, ProjectSymbol, StackEvidence, ValidationKind, ValidationRun } from '../codeIntelligence'
 import type { ReviewComparison } from '../suggestions'
 import type { BrainMemory, BrainMemoryHistoryEntry, BrainMemoryKind, BrainMemoryScope, BrainMemoryStatus, UpdateBrainMemoryInput } from '../brainMemory'
 import type { ProviderAvailability, ProviderDiagnostic } from '../ai/provider'
@@ -35,6 +36,27 @@ export type ModelIpcResult<T> = IpcResult<T, { code: ModelIpcErrorCode; message:
 
 export interface NocturneApi {
   workspace: { select(expectedWorkspace?: string): Promise<string | null>; validate(value: string): Promise<string | null>; list(): Promise<Workspace[]>; remove(value: string): Promise<void>; favorite(value: string, favorite: boolean): Promise<void>; openTool(value: string, tool: 'editor' | 'terminal'): Promise<void>; watch(value: string | null): Promise<void>; onChanged(listener: (event: WorkspaceChangeEvent) => void): () => void }
+  projectIndex: {
+    status(workspace: string): Promise<ProjectIndexStatus | null>
+    start(workspace: string): Promise<void>
+    cancel(workspace: string): Promise<boolean>
+    retry(workspace: string): Promise<void>
+    summary(workspace: string): Promise<ProjectIndexSummary>
+    files(workspace: string, limit?: number): Promise<ProjectIndexFile[]>
+    symbols(workspace: string, query?: string, limit?: number): Promise<ProjectSymbol[]>
+    imports(workspace: string, relativePath?: string): Promise<ProjectImport[]>
+    exports(workspace: string, relativePath?: string): Promise<ProjectExport[]>
+    stack(workspace: string): Promise<StackEvidence[]>
+    exclusions(workspace: string): Promise<DiscoveryExclusion[]>
+    onStatus(listener: (status: ProjectIndexStatus) => void): () => void
+  }
+  validation: {
+    run(workspace: string, kind: ValidationKind): Promise<ValidationRun>
+    cancel(workspace: string): Promise<boolean>
+    list(workspace: string, limit?: number): Promise<ValidationRun[]>
+    latest(workspace: string): Promise<ValidationRun | null>
+    onStatus(listener: (run: ValidationRun) => void): () => void
+  }
   conversations: { list(): Promise<Conversation[]>; page(offset?: number, limit?: number): Promise<CollectionPage<Conversation>>; create(workspace: string): Promise<Conversation>; messages(id: string): Promise<Message[]>; messagePage(id: string, offset?: number, limit?: number): Promise<MessagePage>; delete(id: string): Promise<void> }
   ai: { send(conversationId: string, prompt: string, attachments?: string[], mode?: AgentMode): Promise<void>; cancel(conversationId: string): Promise<void>; saveAssistant(conversationId: string, content: string, metadata?: JsonValue): Promise<Message>; approve(key: string, accepted: boolean, forSession?: boolean): Promise<void>; rollbackStatus(conversationId: string): Promise<BuildRollbackStatus>; rollback(conversationId: string): Promise<{ restored: string[] } | null>; onEvent(listener: (event: AgentEvent) => void): () => void; onStatus(listener: (status: AgentStatusEvent) => void): () => void }
   codex: { status(): Promise<CodexAccountStatus>; login(): Promise<CodexAccountStatus>; logout(): Promise<CodexAccountStatus>; models(): Promise<CodexModel[]> }

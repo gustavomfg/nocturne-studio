@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import type { ValidationKind } from '../../shared/codeIntelligence'
 
 export async function installNocturneMock(page: Page, options: { empty?: boolean; unauthorized?: boolean; moved?: boolean; signedOut?: boolean; messageCount?: number; firstRun?: boolean } = {}) {
   await page.addInitScript(({ empty, unauthorized, moved, signedOut, messageCount, firstRun }) => {
@@ -10,6 +11,8 @@ export async function installNocturneMock(page: Page, options: { empty?: boolean
     const eventListeners: Array<(payload: unknown) => void> = []
     const statusListeners: Array<(payload: unknown) => void> = []
     const workspaceChangeListeners: Array<(payload: unknown) => void> = []
+    const projectIndexStatusListeners: Array<(payload: unknown) => void> = []
+    const validationStatusListeners: Array<(payload: unknown) => void> = []
     let authorized = !unauthorized && !moved
     let unavailable = Boolean(moved)
     let selectedWorkspace = workspace
@@ -60,6 +63,27 @@ export async function installNocturneMock(page: Page, options: { empty?: boolean
         openTool: noop,
         watch: noop,
         onChanged: (listener: (payload: unknown) => void) => { workspaceChangeListeners.push(listener); return () => { const index = workspaceChangeListeners.indexOf(listener); if (index >= 0) workspaceChangeListeners.splice(index, 1) } },
+      },
+      projectIndex: {
+        status: async () => null,
+        start: noop,
+        cancel: async () => false,
+        retry: noop,
+        summary: async () => ({ workspace: selectedWorkspace, indexVersion: 1, latestRun: null, files: 0, indexedFiles: 0, failedFiles: 0, unsupportedFiles: 0, symbols: 0, imports: 0, exports: 0, stack: null }),
+        files: async () => [],
+        symbols: async () => [],
+        imports: async () => [],
+        exports: async () => [],
+        stack: async () => [],
+        exclusions: async () => [],
+        onStatus: (listener: (payload: unknown) => void) => { projectIndexStatusListeners.push(listener); return () => { const index = projectIndexStatusListeners.indexOf(listener); if (index >= 0) projectIndexStatusListeners.splice(index, 1) } },
+      },
+      validation: {
+        run: async (_workspace: string, kind: ValidationKind) => ({ id: `validation-${kind}`, workspace: selectedWorkspace, kind, command: '', args: [], status: 'blocked' as const, exitCode: null, durationMs: 0, outputSummary: '', artifacts: [], startedAt: now, completedAt: now, error: 'Nenhum comando identificado.' }),
+        cancel: async () => false,
+        list: async () => [],
+        latest: async () => null,
+        onStatus: (listener: (payload: unknown) => void) => { validationStatusListeners.push(listener); return () => { const index = validationStatusListeners.indexOf(listener); if (index >= 0) validationStatusListeners.splice(index, 1) } },
       },
       conversations: {
         list: async () => empty ? [] : [conversation],
@@ -216,6 +240,8 @@ export async function installNocturneMock(page: Page, options: { empty?: boolean
       emitEvent: (payload: unknown) => eventListeners.forEach((listener) => listener(payload)),
       emitStatus: (payload: unknown) => statusListeners.forEach((listener) => listener(payload)),
       emitWorkspaceChange: (payload: unknown) => workspaceChangeListeners.forEach((listener) => listener(payload)),
+      emitProjectIndexStatus: (payload: unknown) => projectIndexStatusListeners.forEach((listener) => listener(payload)),
+      emitValidationStatus: (payload: unknown) => validationStatusListeners.forEach((listener) => listener(payload)),
       calls: () => ({ selectedExpected, memoryReads }),
       performanceReports: () => structuredClone(rendererPerformanceReports),
     } })

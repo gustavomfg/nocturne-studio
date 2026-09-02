@@ -1,5 +1,7 @@
 export const IPC_CHANNELS = {
   workspace: { select: 'workspace:select', validate: 'workspace:validate', list: 'workspaces:list', remove: 'workspaces:remove', favorite: 'workspaces:favorite', openTool: 'workspace:openTool', watch: 'workspace:watch', changed: 'workspace:changed' },
+  projectIndex: { status: 'projectIndex:status', start: 'projectIndex:start', cancel: 'projectIndex:cancel', retry: 'projectIndex:retry', summary: 'projectIndex:summary', files: 'projectIndex:files', symbols: 'projectIndex:symbols', imports: 'projectIndex:imports', exports: 'projectIndex:exports', stack: 'projectIndex:stack', exclusions: 'projectIndex:exclusions', changed: 'projectIndex:statusChanged' },
+  validation: { run: 'validation:run', cancel: 'validation:cancel', list: 'validation:list', latest: 'validation:latest', changed: 'validation:statusChanged' },
   conversations: { list: 'conversations:list', page: 'conversations:page', create: 'conversations:create', messages: 'conversations:messages', messagePage: 'conversations:messagePage', delete: 'conversations:delete' },
   ai: { send: 'ai:send', cancel: 'ai:cancel', event: 'ai:event', saveAssistant: 'ai:save-assistant', approve: 'ai:approve', status: 'ai:status', rollbackStatus: 'ai:rollbackStatus', rollback: 'ai:rollback' },
   codex: { status: 'codex:accountStatus', login: 'codex:login', logout: 'codex:logout', models: 'codex:models' },

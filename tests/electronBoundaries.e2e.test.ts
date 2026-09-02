@@ -253,7 +253,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
   }
 
   it('expõe somente a API nomeada e cruza preload, IPC e SQLite', async () => {
-    expect(Object.keys(api).sort()).toEqual(['ai', 'artifacts', 'brain', 'clipboard', 'codex', 'conversations', 'data', 'diagnostics', 'documents', 'files', 'git', 'memory', 'models', 'providers', 'settings', 'suggestions', 'workspace'])
+    expect(Object.keys(api).sort()).toEqual(['ai', 'artifacts', 'brain', 'clipboard', 'codex', 'conversations', 'data', 'diagnostics', 'documents', 'files', 'git', 'memory', 'models', 'projectIndex', 'providers', 'settings', 'suggestions', 'validation', 'workspace'])
     await api.clipboard.writeText('commit sugerido')
     await expect(api.clipboard.readText()).resolves.toBe('commit sugerido')
     electron.dialogs.open.push({ canceled: false, filePaths: [workspace] })

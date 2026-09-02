@@ -6,6 +6,7 @@ import { PROVIDER_CONFIGURATION_LIMITS } from '../ai/providerConfiguration'
 import { providerConfigurationInputSchema } from '../ai/providerConfigurationSchemas'
 import { MODEL_LIMITS } from '../ai/model'
 import { isJsonValueWithinLimit, type JsonValue } from '../json'
+import { validationKinds } from '../codeIntelligence'
 
 export const idSchema = z.string().uuid()
 export const pageSchema = z.object({ offset: z.number().int().min(0).max(1_000_000), limit: z.number().int().min(1).max(200) }).strict()
@@ -15,6 +16,11 @@ export const aiCancelSchema = z.object({ conversationId: idSchema }).strict()
 export const approvalSchema = z.object({ key: z.string().min(1), accepted: z.boolean(), forSession: z.boolean().optional() })
 export const workspaceFavoriteSchema = z.object({ workspace: z.string().min(1), favorite: z.boolean() })
 export const workspaceToolSchema = z.object({ workspace: z.string().min(1), tool: z.enum(['editor', 'terminal']) })
+export const projectIndexWorkspaceSchema = z.object({ workspace: z.string().trim().min(1).max(4_000) }).strict()
+export const projectIndexQuerySchema = projectIndexWorkspaceSchema.extend({ query: z.string().trim().max(500).default(''), limit: z.number().int().min(1).max(100).default(100) }).strict()
+export const projectIndexFileQuerySchema = projectIndexWorkspaceSchema.extend({ relativePath: z.string().trim().min(1).max(4_000).optional() }).strict()
+export const validationRunSchema = projectIndexWorkspaceSchema.extend({ kind: z.enum(validationKinds) }).strict()
+export const validationListSchema = projectIndexWorkspaceSchema.extend({ limit: z.number().int().min(1).max(100).default(20) }).strict()
 export const fileActionSchema = z.object({ conversationId: idSchema, filePath: z.string().min(1), action: z.enum(['file', 'folder', 'editor']) })
 export const filePreviewSchema = z.object({ conversationId: idSchema, filePath: z.string().min(1) })
 export const rendererStatsSchema = z.object({
