@@ -112,6 +112,21 @@ test.describe('renderer do produto', () => {
     expect(after.agentPanel - before.agentPanel).toBeLessThan(after.agentActivity - before.agentActivity)
   })
 
+  test('mantém as abas do inspetor em uma única linha', async ({ page }) => {
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 720, height: 800 }]) {
+      await page.setViewportSize(viewport)
+      await ready(page)
+      const inspector = page.locator('#agent-inspector')
+      if (await inspector.evaluate((element) => element.classList.contains('closed'))) await page.getByRole('button', { name: 'Mostrar painel do agente' }).click()
+      const boxes = await inspector.locator('.inspector-tabs [role="tab"]').evaluateAll((elements) => elements.map((element) => {
+        const rect = element.getBoundingClientRect()
+        return { left: rect.left, right: rect.right, top: rect.top }
+      }))
+      expect(new Set(boxes.map((box) => Math.round(box.top))).size).toBe(1)
+      expect(boxes.every((box, index) => index === 0 || box.left >= boxes[index - 1].right)).toBe(true)
+    }
+  })
+
   test('mantém somente um painel modal e restaura o foco', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await ready(page)
