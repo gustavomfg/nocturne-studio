@@ -64,7 +64,7 @@ describe('persistência SQLite', () => {
     expectUserOnlyMode(fs.statSync(databasePath).mode)
   })
   it('mantém migrações incrementais, ordenadas e sem lacunas', () => {
-    expect(migrations.map((migration) => migration.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+    expect(migrations.map((migration) => migration.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19])
     expect(migrations[migrations.length - 1]?.version).toBe(DATABASE_SCHEMA_VERSION)
   })
   it('persiste conversa, mensagens, memória e artefatos', () => {
@@ -581,11 +581,11 @@ describe('persistência SQLite', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-test-')); directories.push(directory)
     const file = path.join(directory, 'nocturne.db')
     const future = new Sqlite(file)
-    future.pragma('user_version = 19')
+    future.pragma('user_version = 20')
     future.close()
-    expect(() => new LocalDatabase(directory)).toThrow(new RegExp(`schema 19.*suporta até o schema ${DATABASE_SCHEMA_VERSION}`))
+    expect(() => new LocalDatabase(directory)).toThrow(new RegExp(`schema 20.*suporta até o schema ${DATABASE_SCHEMA_VERSION}`))
     const preserved = new Sqlite(file, { readonly: true })
-    expect(preserved.pragma('user_version', { simple: true })).toBe(19)
+    expect(preserved.pragma('user_version', { simple: true })).toBe(20)
     preserved.close()
   })
   it('reverte integralmente uma restauração inválida', () => {

@@ -19,10 +19,12 @@ export type DatabaseOperationObserver = (metric: DatabaseOperationMetric) => voi
 /** Owns the SQLite connection and its startup/shutdown invariants. */
 export class DatabaseRuntime {
   readonly databasePath: string
+  readonly dataDirectory: string
   readonly db: Database.Database
   private operationObserver: DatabaseOperationObserver | undefined
 
   constructor(userDataPath: string) {
+    this.dataDirectory = userDataPath
     this.databasePath = path.join(userDataPath, 'nocturne.db')
     restrictFileIfPresent(this.databasePath)
     this.db = new Database(this.databasePath)

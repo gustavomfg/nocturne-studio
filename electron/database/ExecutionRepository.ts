@@ -56,7 +56,7 @@ function selectSql(suffix: string) {
     e.retry_of retryOf,e.started_at startedAt,e.finished_at finishedAt,e.error,
     0 changeCount,
     0 validationCount,
-    0 checkpointCount
+    (SELECT COUNT(*) FROM checkpoints cp WHERE cp.execution_id=e.id) checkpointCount
     FROM executions e ${suffix}`
 }
 

@@ -337,6 +337,37 @@ export const migrations: Migration[] = [
     CREATE INDEX IF NOT EXISTS idx_executions_conversation_started
       ON executions(conversation_id, started_at DESC);
   `) },
+  { version: 19, up: (db) => db.exec(`
+    CREATE TABLE IF NOT EXISTS checkpoints (
+      id TEXT PRIMARY KEY,
+      execution_id TEXT NOT NULL,
+      workspace TEXT NOT NULL,
+      phase TEXT NOT NULL CHECK(phase IN ('before','after')),
+      status TEXT NOT NULL CHECK(status IN ('capturing','ready','failed')),
+      captured_at TEXT NOT NULL,
+      root_path TEXT NOT NULL,
+      error TEXT,
+      FOREIGN KEY (execution_id) REFERENCES executions(id) ON DELETE CASCADE,
+      FOREIGN KEY (workspace) REFERENCES workspaces(path) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_checkpoints_execution_phase
+      ON checkpoints(execution_id, phase, captured_at DESC);
+    CREATE TABLE IF NOT EXISTS checkpoint_files (
+      id TEXT PRIMARY KEY,
+      checkpoint_id TEXT NOT NULL,
+      relative_path TEXT NOT NULL,
+      exists_flag INTEGER NOT NULL CHECK(exists_flag IN (0,1)),
+      kind TEXT NOT NULL CHECK(kind IN ('file','directory','symlink','missing')),
+      size INTEGER,
+      mode INTEGER,
+      hash TEXT,
+      content_path TEXT,
+      UNIQUE(checkpoint_id, relative_path),
+      FOREIGN KEY (checkpoint_id) REFERENCES checkpoints(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_checkpoint_files_checkpoint
+      ON checkpoint_files(checkpoint_id, relative_path);
+  `) },
 ]
 
 export function migrateDatabase(db: Database.Database, currentVersion: number, availableMigrations: Migration[] = migrations) {
