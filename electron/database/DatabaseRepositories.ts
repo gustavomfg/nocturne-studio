@@ -14,6 +14,7 @@ import { WorkspaceModelBindingRepository } from './WorkspaceModelBindingReposito
 import { WorkspaceRepository } from './WorkspaceRepository'
 import { ProjectIndexRepository } from './ProjectIndexRepository'
 import { ValidationRepository } from './ValidationRepository'
+import { ExecutionRepository } from './ExecutionRepository'
 import type { DatabaseTransactionRunner } from './DatabaseTransaction'
 
 export interface DatabaseRepositories {
@@ -31,6 +32,7 @@ export interface DatabaseRepositories {
   workspaceModelBindings: WorkspaceModelBindingRepository
   projectIndex: ProjectIndexRepository
   validation: ValidationRepository
+  executions: ExecutionRepository
 }
 
 /** Composes domain repositories around one runtime-owned SQLite connection. */
@@ -58,5 +60,6 @@ export function createDatabaseRepositories(runtime: DatabaseRuntime): DatabaseRe
     workspaceModelBindings,
     projectIndex: new ProjectIndexRepository(database, transactions),
     validation: new ValidationRepository(database, transactions),
+    executions: new ExecutionRepository(database, transactions),
   }
 }

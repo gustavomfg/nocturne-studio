@@ -315,6 +315,28 @@ export const migrations: Migration[] = [
     CREATE INDEX IF NOT EXISTS idx_validation_runs_workspace
       ON validation_runs(workspace, started_at DESC);
   `) },
+  { version: 18, up: (db) => db.exec(`
+    CREATE TABLE IF NOT EXISTS executions (
+      id TEXT PRIMARY KEY,
+      workspace TEXT NOT NULL,
+      conversation_id TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      mode TEXT NOT NULL CHECK(mode IN ('build','review','docs')),
+      status TEXT NOT NULL CHECK(status IN ('created','planning','running','awaiting-review','validating','completed','failed','cancelled')),
+      decision TEXT NOT NULL CHECK(decision IN ('pending','accepted','partially-accepted','rejected','reverted','conflicted')),
+      retry_of TEXT,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      error TEXT,
+      FOREIGN KEY (workspace) REFERENCES workspaces(path) ON DELETE CASCADE,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+      FOREIGN KEY (retry_of) REFERENCES executions(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_executions_workspace_started
+      ON executions(workspace, started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_executions_conversation_started
+      ON executions(conversation_id, started_at DESC);
+  `) },
 ]
 
 export function migrateDatabase(db: Database.Database, currentVersion: number, availableMigrations: Migration[] = migrations) {

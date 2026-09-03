@@ -16,6 +16,7 @@ import { createDatabaseRepositories, type DatabaseRepositories } from './Databas
 import type { ConversationRow, MessageRow } from './ConversationRepository'
 import type { WorkspaceRow } from './WorkspaceRepository'
 import type { DatabaseImportData } from './BackupRepository'
+import type { ExecutionOverview, ExecutionRecord } from '../../shared/changeControl'
 export type { PersistedFileAnalysis } from './ProjectIndexRepository'
 
 export type { ConversationRow, MessageRow } from './ConversationRepository'
@@ -41,6 +42,7 @@ export class LocalDatabase {
   get workspaceModelBindings() { return this.repositories.workspaceModelBindings }
   get projectIndex() { return this.repositories.projectIndex }
   get validation() { return this.repositories.validation }
+  get executions() { return this.repositories.executions }
 
   constructor(userDataPath: string) {
     this.runtime = new DatabaseRuntime(userDataPath)
@@ -65,6 +67,22 @@ export class LocalDatabase {
 
   getConversation(id: string) {
     return this.runtime.measure('conversations.get', () => this.conversations.get(id))
+  }
+
+  createExecution(record: ExecutionRecord) {
+    this.executions.create(record)
+  }
+
+  saveExecution(record: ExecutionRecord) {
+    this.executions.save(record)
+  }
+
+  getExecution(id: string, workspace?: string): ExecutionOverview | null {
+    return this.executions.get(id, workspace)
+  }
+
+  listExecutions(workspace: string, conversationId?: string, limit = 50): ExecutionOverview[] {
+    return this.executions.list(workspace, conversationId, limit)
   }
 
   createRecoverySnapshot(retain = 5) {
