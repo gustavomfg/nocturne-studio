@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import { changeSetStatuses, changeStatuses, type ChangeRecord, type ChangeSetRecord } from '../../shared/changeControl'
+import { changeSetStatuses, changeStatuses, hunkStatuses, type ChangeHunkRecord, type ChangeRecord, type ChangeSetRecord } from '../../shared/changeControl'
 import type { DatabaseTransactionRunner } from './DatabaseTransaction'
 
 interface ChangeRow extends ChangeRecord {
@@ -96,6 +96,35 @@ export class ChangeSetRepository {
     this.database.prepare(`UPDATE changes SET status=@status,validation_status=@validationStatus,
       after_hash=@afterHash,after_size=@afterSize,updated_at=@updatedAt
       WHERE id=@id AND change_set_id=@changeSetId AND execution_id=@executionId`).run(change)
+  }
+
+  createHunk(hunk: ChangeHunkRecord) {
+    this.database.prepare(`INSERT INTO change_hunks(
+      id,change_id,sequence,base_hash,original_patch,final_patch,status,start_line,end_line,decision_at
+    ) VALUES(@id,@changeId,@sequence,@baseHash,@originalPatch,@finalPatch,@status,@startLine,@endLine,@decisionAt)`).run(hunk)
+  }
+
+  listHunks(changeId: string): ChangeHunkRecord[] {
+    const rows = this.database.prepare(`SELECT id,change_id changeId,sequence,base_hash baseHash,
+      original_patch originalPatch,final_patch finalPatch,status,start_line startLine,end_line endLine,
+      decision_at decisionAt FROM change_hunks WHERE change_id=? ORDER BY sequence`).all(changeId) as ChangeHunkRecord[]
+    return rows.map((row) => {
+      if (!hunkStatuses.includes(row.status)) throw new Error('O hunk persistido possui um estado inválido.')
+      return row
+    })
+  }
+
+  getHunk(id: string): ChangeHunkRecord | null {
+    const row = this.database.prepare(`SELECT id,change_id changeId,sequence,base_hash baseHash,
+      original_patch originalPatch,final_patch finalPatch,status,start_line startLine,end_line endLine,
+      decision_at decisionAt FROM change_hunks WHERE id=?`).get(id) as ChangeHunkRecord | undefined
+    if (row && !hunkStatuses.includes(row.status)) throw new Error('O hunk persistido possui um estado inválido.')
+    return row ?? null
+  }
+
+  updateHunk(hunk: ChangeHunkRecord) {
+    this.database.prepare(`UPDATE change_hunks SET final_patch=@finalPatch,status=@status,decision_at=@decisionAt
+      WHERE id=@id AND change_id=@changeId`).run(hunk)
   }
 
   saveDecision(changeSet: ChangeSetRecord, change: ChangeRecord) {

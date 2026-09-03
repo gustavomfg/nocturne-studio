@@ -1,6 +1,6 @@
 import type { AgentMode, Artifact, Attachment, AgentEvent, AppSettings, BuildRollbackStatus, CodexAccountStatus, CollectionPage, Conversation, DocumentUpdatePreview, FilePreview, GitInfo, Message, MessagePage, RendererPerformanceStats, Suggestion, SuggestionStatus, Workspace, WorkspaceChangeEvent, WorkspaceMemory } from '../types'
 import type { DiscoveryExclusion, ProjectExport, ProjectImport, ProjectIndexFile, ProjectIndexStatus, ProjectIndexSummary, ProjectSymbol, StackEvidence, ValidationKind, ValidationRun } from '../codeIntelligence'
-import type { ChangeRecord, ChangeSetRecord, FileDiff } from '../changeControl'
+import type { ChangeHunkRecord, ChangeRecord, ChangeSetRecord, FileDiff } from '../changeControl'
 import type { ReviewComparison } from '../suggestions'
 import type { BrainMemory, BrainMemoryHistoryEntry, BrainMemoryKind, BrainMemoryScope, BrainMemoryStatus, UpdateBrainMemoryInput } from '../brainMemory'
 import type { ProviderAvailability, ProviderDiagnostic } from '../ai/provider'
@@ -62,6 +62,9 @@ export interface NocturneApi {
     get(conversationId: string, executionId: string): Promise<ChangeSetRecord | null>
     changes(conversationId: string, changeSetId: string): Promise<ChangeRecord[]>
     diff(conversationId: string, changeId: string): Promise<FileDiff | null>
+    hunks(conversationId: string, changeId: string): Promise<ChangeHunkRecord[]>
+    editHunk(conversationId: string, hunkId: string, finalPatch: string): Promise<ChangeHunkRecord>
+    decideHunk(conversationId: string, hunkId: string, status: 'accepted' | 'rejected'): Promise<ChangeHunkRecord>
     decide(conversationId: string, changeId: string, status: 'accepted' | 'rejected'): Promise<{ changeSet: ChangeSetRecord; change: ChangeRecord }>
     onChanged(listener: (value: { executionId: string; changeSetId: string }) => void): () => void
   }

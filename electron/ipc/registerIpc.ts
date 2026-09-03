@@ -42,6 +42,7 @@ import { ExecutionChangeControlService } from '../change-control/ExecutionChange
 import { ChangeDiffService } from '../change-control/ChangeDiffService'
 import { ChangeDecisionService } from '../change-control/ChangeDecisionService'
 import { registerChangeControlIpc } from './registerChangeControlIpc'
+import { ChangeHunkService } from '../change-control/ChangeHunkService'
 
 export function registerIpc(
   win: BrowserWindow,
@@ -163,6 +164,7 @@ export function registerIpc(
   const changeControl = new ExecutionChangeControlService(checkpoints, new ChangeCaptureService(checkpoints, database.changeSets))
   const changeDiffs = new ChangeDiffService(checkpoints, database.changeSets)
   const changeDecisions = new ChangeDecisionService(database.changeSets)
+  const changeHunks = new ChangeHunkService(checkpoints, changeDiffs, database.changeSets)
   const documentUpdates = new DocumentUpdateService()
   const codexAccount = new CodexAccountService()
   const aiExecutions = new AiExecutionCoordinator(
@@ -213,7 +215,7 @@ export function registerIpc(
     },
     ipcMain,
   )
-  const disposeChangeControl = registerChangeControlIpc(win, { database, diffs: changeDiffs, decisions: changeDecisions }, ipcMain)
+  const disposeChangeControl = registerChangeControlIpc(win, { database, diffs: changeDiffs, decisions: changeDecisions, hunks: changeHunks }, ipcMain)
   const disposeSettings = registerSettingsIpc(win, database, logger, ipcMain)
   const disposeDocuments = registerDocumentsIpc(win, database, documentUpdates, ipcMain)
 

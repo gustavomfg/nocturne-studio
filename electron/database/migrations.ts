@@ -453,6 +453,24 @@ export const migrations: Migration[] = [
     CREATE INDEX IF NOT EXISTS idx_execution_validation_links_change
       ON execution_validation_links(change_id, created_at);
   `) },
+  { version: 22, up: (db) => db.exec(`
+    CREATE TABLE IF NOT EXISTS change_hunks (
+      id TEXT PRIMARY KEY,
+      change_id TEXT NOT NULL,
+      sequence INTEGER NOT NULL CHECK(sequence >= 1),
+      base_hash TEXT NOT NULL CHECK(length(base_hash) = 64),
+      original_patch TEXT NOT NULL,
+      final_patch TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','accepted','rejected','edited','conflicted')),
+      start_line INTEGER NOT NULL CHECK(start_line >= 1),
+      end_line INTEGER NOT NULL CHECK(end_line >= start_line),
+      decision_at TEXT,
+      UNIQUE(change_id, sequence),
+      FOREIGN KEY (change_id) REFERENCES changes(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_change_hunks_change
+      ON change_hunks(change_id, sequence);
+  `) },
 ]
 
 export function migrateDatabase(db: Database.Database, currentVersion: number, availableMigrations: Migration[] = migrations) {
