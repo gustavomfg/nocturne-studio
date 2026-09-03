@@ -13,6 +13,7 @@ interface Dependencies {
   diffs: ChangeDiffService
   decisions: ChangeDecisionService
   hunks: ChangeHunkService
+  resolveExecution(executionId: string): boolean
 }
 
 /** Exposes bounded ChangeSet reads and explicit decisions to the renderer. */

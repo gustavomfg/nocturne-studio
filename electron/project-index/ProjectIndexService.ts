@@ -63,6 +63,7 @@ export interface ProjectIndexServiceOptions {
   maxParseBytes?: number
   onStatus?(status: ProjectIndexStatus): void
   onMetric?(metric: ProjectIndexMetric): void
+  isChangeControlPending?(workspace: string): boolean
 }
 
 type FileProcessingResult = 'indexed' | 'unsupported' | 'failed' | 'skipped'
@@ -105,10 +106,12 @@ export class ProjectIndexService {
     this.maxParseBytes = options.maxParseBytes ?? CODE_INTELLIGENCE_LIMITS.maxParseBytes
     this.onStatus = options.onStatus
     this.onMetric = options.onMetric
+    this.isChangeControlPending = options.isChangeControlPending
   }
 
   private readonly onStatus: ((status: ProjectIndexStatus) => void) | undefined
   private readonly onMetric: ((metric: ProjectIndexMetric) => void) | undefined
+  private readonly isChangeControlPending: ((workspace: string) => boolean) | undefined
 
   ensureIndexed(workspace: string) {
     const normalizedWorkspace = path.resolve(workspace)
@@ -183,7 +186,7 @@ export class ProjectIndexService {
     const summary = this.repository.summary(normalizedWorkspace)
     const run = summary.latestRun
     if (!run || !summary.files) return null
-    const potentiallyOutdated = run.status !== 'completed' || Boolean(run.error) || this.pending.has(normalizedWorkspace)
+    const potentiallyOutdated = run.status !== 'completed' || Boolean(run.error) || this.pending.has(normalizedWorkspace) || Boolean(this.isChangeControlPending?.(normalizedWorkspace))
     const tokens = new Set(prompt.toLocaleLowerCase().split(/[^\p{L}\p{N}_$]+/u).filter((token) => token.length >= 3))
     const indexedFiles = this.repository.listFiles(normalizedWorkspace).filter((file) => file.analyzedHash && ['indexed', 'unsupported'].includes(file.state)).slice(0, 16)
     const allSymbols = this.repository.listSymbols(normalizedWorkspace, '', 100)

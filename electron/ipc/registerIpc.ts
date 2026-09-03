@@ -43,6 +43,7 @@ import { ChangeDiffService } from '../change-control/ChangeDiffService'
 import { ChangeDecisionService } from '../change-control/ChangeDecisionService'
 import { registerChangeControlIpc } from './registerChangeControlIpc'
 import { ChangeHunkService } from '../change-control/ChangeHunkService'
+import { WorkspaceChangeGate } from '../change-control/WorkspaceChangeGate'
 
 export function registerIpc(
   win: BrowserWindow,
@@ -60,7 +61,9 @@ export function registerIpc(
       else logger.debug('ipc', 'Operação IPC concluída.', details)
     },
   })
+  let changeGate: WorkspaceChangeGate | undefined
   const projectIndex = new ProjectIndexService(database.projectIndex, {
+    isChangeControlPending: (workspace) => changeGate?.isHeld(workspace) ?? false,
     onStatus: (status) => win.webContents.send(IPC_CHANNELS.projectIndex.changed, status),
     onMetric: (metric) => logger.info('index', 'Métrica de indexação concluída.', {
       runId: metric.runId,
@@ -75,6 +78,7 @@ export function registerIpc(
       parserDurationsMs: metric.parserDurationsMs,
     }),
   })
+  changeGate = new WorkspaceChangeGate((event) => projectIndex.enqueueChange(event))
   const disposeProjectIndex = registerProjectIndexIpc(
     win,
     projectIndex,
@@ -108,7 +112,7 @@ export function registerIpc(
       ensureWorkspace: ensureNocturneWorkspace,
       assertKnownWorkspace: (value) => getAuthorizedWorkspace(database, value),
       run: runWorkspaceCommand,
-      onWorkspaceChanged: (event) => projectIndex.enqueueChange(event),
+      onWorkspaceChanged: (event) => changeGate?.enqueue(event),
       onWorkspaceWatch: (workspace) => {
         void projectIndex.ensureIndexed(workspace).catch((error) => logger.warn('index', 'A indexação não pôde ser iniciada.', { reason: error instanceof Error ? error.message : String(error) }))
       },
@@ -161,7 +165,7 @@ export function registerIpc(
   const approvalDetails = new Map<string, { command?: string; risk?: string }>()
   const buildRollback = new BuildRollbackService()
   const checkpoints = new CheckpointService(database.checkpoints, new WorkspaceCheckpointStore(path.join(database.dataDirectory, 'change-checkpoints')))
-  const changeControl = new ExecutionChangeControlService(checkpoints, new ChangeCaptureService(checkpoints, database.changeSets))
+  const changeControl = new ExecutionChangeControlService(checkpoints, new ChangeCaptureService(checkpoints, database.changeSets), changeGate)
   const changeDiffs = new ChangeDiffService(checkpoints, database.changeSets)
   const changeDecisions = new ChangeDecisionService(database.changeSets)
   const changeHunks = new ChangeHunkService(checkpoints, changeDiffs, database.changeSets)
@@ -215,7 +219,7 @@ export function registerIpc(
     },
     ipcMain,
   )
-  const disposeChangeControl = registerChangeControlIpc(win, { database, diffs: changeDiffs, decisions: changeDecisions, hunks: changeHunks }, ipcMain)
+  const disposeChangeControl = registerChangeControlIpc(win, { database, diffs: changeDiffs, decisions: changeDecisions, hunks: changeHunks, resolveExecution: (executionId) => changeControl.resolve(executionId) }, ipcMain)
   const disposeSettings = registerSettingsIpc(win, database, logger, ipcMain)
   const disposeDocuments = registerDocumentsIpc(win, database, documentUpdates, ipcMain)
 
