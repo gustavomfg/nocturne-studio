@@ -77,7 +77,7 @@ export const nocturneApi: NocturneApi = {
     onStatus: (listener: (status: ProjectIndexStatus) => void) => on(channels.projectIndex.changed, listener),
   },
   validation: {
-    run: (workspace: string, kind: ValidationKind) => ipcRenderer.invoke(channels.validation.run, { workspace, kind }),
+    run: (workspace: string, kind: ValidationKind, executionId?: string) => ipcRenderer.invoke(channels.validation.run, { workspace, kind, ...(executionId ? { executionId } : {}) }),
     cancel: (workspace: string) => ipcRenderer.invoke(channels.validation.cancel, { workspace }),
     list: (workspace: string, limit = 20) => ipcRenderer.invoke(channels.validation.list, { workspace, limit }),
     latest: (workspace: string) => ipcRenderer.invoke(channels.validation.latest, { workspace }),

@@ -57,4 +57,20 @@ describe('SnapshotRollbackService', () => {
     expect(result).toEqual({ status: 'conflicted', restored: [], conflicts: ['tracked.txt'] })
     expect(fs.readFileSync(path.join(value.workspace, 'tracked.txt'), 'utf8')).toBe('usuário\n')
   })
+
+  it('restaura apenas o caminho rejeitado quando o restante da execução deve permanecer', async () => {
+    const value = await fixture()
+    fs.writeFileSync(path.join(value.workspace, 'keep.txt'), 'antes keep\n')
+    fs.writeFileSync(path.join(value.workspace, 'reject.txt'), 'antes reject\n')
+    const before = await value.checkpoints.capture(value.executionId, value.workspace, 'before')
+    fs.writeFileSync(path.join(value.workspace, 'keep.txt'), 'depois keep\n')
+    fs.writeFileSync(path.join(value.workspace, 'reject.txt'), 'depois reject\n')
+    const after = await value.checkpoints.capture(value.executionId, value.workspace, 'after', ['keep.txt', 'reject.txt'])
+
+    const result = await value.rollback.rollbackPaths(value.executionId, value.workspace, before.checkpoint.id, after.checkpoint.id, ['reject.txt'])
+
+    expect(result).toEqual({ status: 'restored', restored: ['reject.txt'], conflicts: [] })
+    expect(fs.readFileSync(path.join(value.workspace, 'keep.txt'), 'utf8')).toBe('depois keep\n')
+    expect(fs.readFileSync(path.join(value.workspace, 'reject.txt'), 'utf8')).toBe('antes reject\n')
+  })
 })

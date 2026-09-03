@@ -61,6 +61,11 @@ export class ExecutionEvidenceRepository {
   }
 
   linkValidation(link: ExecutionValidationLink) {
+    const exists = this.database.prepare(`SELECT 1 FROM execution_validation_links
+      WHERE execution_id=? AND validation_id=? AND phase=? AND (change_id IS ? OR change_id=?)`).get(
+      link.executionId, link.validationId, link.phase, link.changeId, link.changeId,
+    )
+    if (exists) return
     this.database.prepare(`INSERT INTO execution_validation_links(
       id,execution_id,change_id,validation_id,phase,created_at
     ) VALUES(@id,@executionId,@changeId,@validationId,@phase,@createdAt)`).run({

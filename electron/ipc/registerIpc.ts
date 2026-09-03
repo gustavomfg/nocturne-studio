@@ -44,6 +44,7 @@ import { ChangeDecisionService } from '../change-control/ChangeDecisionService'
 import { registerChangeControlIpc } from './registerChangeControlIpc'
 import { ChangeHunkService } from '../change-control/ChangeHunkService'
 import { WorkspaceChangeGate } from '../change-control/WorkspaceChangeGate'
+import { SnapshotRollbackService } from '../change-control/SnapshotRollbackService'
 
 export function registerIpc(
   win: BrowserWindow,
@@ -89,7 +90,22 @@ export function registerIpc(
     database.validation,
     (workspace) => projectIndex.listStackEvidence(workspace),
     {
-      onStatus: (run) => win.webContents.send(IPC_CHANNELS.validation.changed, run),
+      onStatus: (run) => {
+        win.webContents.send(IPC_CHANNELS.validation.changed, run)
+        if (run.completedAt && run.executionId) {
+          try {
+            const latestChangeSet = database.changeSets.list(run.executionId)[0]
+            const changes = latestChangeSet ? database.changeSets.listChanges(latestChangeSet.id) : []
+            if (changes.length) {
+              for (const change of changes) database.executionEvidence.linkValidation({ executionId: run.executionId, changeId: change.id, validationId: run.id, phase: 'proposed' })
+            } else {
+              database.executionEvidence.linkValidation({ executionId: run.executionId, changeId: null, validationId: run.id, phase: 'proposed' })
+            }
+          } catch (error) {
+            logger.warn('validation', 'O resultado foi preservado, mas não pôde ser associado à execução.', { executionId: run.executionId, validationId: run.id, reason: error instanceof Error ? error.message : String(error) })
+          }
+        }
+      },
       onMetric: (metric) => logger.info('validation', 'Métrica de validação concluída.', {
         validationKind: metric.validationKind,
         durationMs: metric.durationMs,
@@ -100,7 +116,12 @@ export function registerIpc(
   const disposeValidation = registerValidationIpc(
     win,
     validation,
-    { assertAuthorized: (value) => getAuthorizedWorkspace(database, value) },
+    {
+      assertAuthorized: (value) => getAuthorizedWorkspace(database, value),
+      assertExecutionAuthorized: (executionId, workspace) => {
+        if (!database.getExecution(executionId, workspace)) throw new Error('A validação não pode ser associada a uma execução desconhecida.')
+      },
+    },
     ipcMain,
   )
   const disposeData = registerDataIpc(win, database, logger, ipcMain)
@@ -165,6 +186,7 @@ export function registerIpc(
   const approvalDetails = new Map<string, { command?: string; risk?: string }>()
   const buildRollback = new BuildRollbackService()
   const checkpoints = new CheckpointService(database.checkpoints, new WorkspaceCheckpointStore(path.join(database.dataDirectory, 'change-checkpoints')))
+  const snapshotRollback = new SnapshotRollbackService(checkpoints)
   const changeControl = new ExecutionChangeControlService(checkpoints, new ChangeCaptureService(checkpoints, database.changeSets), changeGate)
   const changeDiffs = new ChangeDiffService(checkpoints, database.changeSets)
   const changeDecisions = new ChangeDecisionService(database.changeSets)
@@ -183,7 +205,8 @@ export function registerIpc(
         buildRollback.complete(snapshot.conversationId, snapshot.files)
         if (snapshot.executionId) {
           try {
-            await changeControl.complete(snapshot.executionId, snapshot.workspace, 'codex-command')
+            const captured = await changeControl.complete(snapshot.executionId, snapshot.workspace, 'codex-command')
+            if (captured) persistExecutionDecision(database, snapshot.executionId, captured.changeSet.status)
           } catch (error) {
             database.executionEvidence.createError({
               id: randomUUID(), executionId: snapshot.executionId, stage: 'persistence',
@@ -203,7 +226,7 @@ export function registerIpc(
 
   const disposeCodex = registerCodexIpc(win, codexAccount, aiExecutions, ipcMain)
   const disposeFiles = registerFilesIpc(win, database, ipcMain)
-  const disposeDiagnostics = registerDiagnosticsIpc(win, logger, providerConfigurations, modelRegistry, ipcMain, () => ({ index: projectIndex.getMetrics(), validation: validation.getMetrics() }))
+  const disposeDiagnostics = registerDiagnosticsIpc(win, logger, providerConfigurations, modelRegistry, ipcMain, () => ({ index: projectIndex.getMetrics(), validation: validation.getMetrics(), changeControl: changeControl.getMetrics() }))
   const disposeAi = registerAiIpc(
     win,
     {
@@ -219,7 +242,7 @@ export function registerIpc(
     },
     ipcMain,
   )
-  const disposeChangeControl = registerChangeControlIpc(win, { database, diffs: changeDiffs, decisions: changeDecisions, hunks: changeHunks, resolveExecution: (executionId) => changeControl.resolve(executionId) }, ipcMain)
+  const disposeChangeControl = registerChangeControlIpc(win, { database, diffs: changeDiffs, decisions: changeDecisions, hunks: changeHunks, rollback: snapshotRollback, resolveExecution: (executionId) => changeControl.resolve(executionId) }, ipcMain)
   const disposeSettings = registerSettingsIpc(win, database, logger, ipcMain)
   const disposeDocuments = registerDocumentsIpc(win, database, documentUpdates, ipcMain)
 
@@ -262,4 +285,10 @@ function persistExecutionLifecycle(database: LocalDatabase, executionId: string,
     finishedAt: isTerminalAgentState(lifecycle.state) ? lifecycle.updatedAt : current.finishedAt,
     error: lifecycle.error ?? current.error,
   })
+}
+
+function persistExecutionDecision(database: LocalDatabase, executionId: string, status: 'pending' | 'accepted' | 'partially-accepted' | 'rejected' | 'conflicted') {
+  const current = database.getExecution(executionId)
+  if (!current) return
+  database.saveExecution({ ...current, decision: status === 'partially-accepted' ? 'partially-accepted' : status })
 }

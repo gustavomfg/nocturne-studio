@@ -11,10 +11,12 @@ import { writeAtomicFile } from '../persistence/AtomicFile'
 import { safeIpcMain, type SafeIpcMain } from './safeIpc'
 import type { ProjectIndexMetricsSnapshot } from '../project-index/ProjectIndexService'
 import type { ValidationMetricsSnapshot } from '../validation/ValidationPipeline'
+import type { ExecutionChangeControlMetrics } from '../change-control/ExecutionChangeControlService'
 
 export interface CodeIntelligenceMetrics {
   index: ProjectIndexMetricsSnapshot
   validation: ValidationMetricsSnapshot
+  changeControl: ExecutionChangeControlMetrics
 }
 
 export function registerDiagnosticsIpc(win: BrowserWindow, logger: Logger, providerConfigurations: ProviderConfigurationOperations, modelRegistry: ModelRegistry, registrar?: SafeIpcMain, codeIntelligenceMetrics?: () => CodeIntelligenceMetrics) {

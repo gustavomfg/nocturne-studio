@@ -272,6 +272,35 @@
 
 .change-control-item > footer .closed { transform: rotate(-90deg); }
 
+.change-control-hunk {
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--color-border-subtle);
+  display: grid;
+  gap: var(--spacing-xs);
+}
+
+.change-control-hunk > header,
+.change-control-hunk > footer {
+  align-items: center;
+  gap: var(--spacing-xs);
+  display: flex;
+}
+
+.change-control-hunk > header .change-control-status { margin-left: auto; }
+
+.change-control-hunk textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: var(--spacing-sm);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  font: var(--font-caption)/1.5 var(--font-mono);
+  resize: vertical;
+}
+
 .activity-section .files-panel, .activity-section .diff-panel, .activity-section .git-panel, .activity-section .document-panel {
   box-shadow: none;
   border: 0;

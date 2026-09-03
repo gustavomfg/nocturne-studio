@@ -47,6 +47,7 @@ describe('ExecutionChangeControlService', () => {
     expect(control.resolve(executionId)).toBe(true)
     expect(gate.isHeld(workspace)).toBe(false)
     expect(released).toHaveLength(1)
+    expect(control.getMetrics()).toMatchObject({ executionsStarted: 1, captures: 1, changedFiles: 1, conflicts: 0, resolutions: 1, pendingChangeSets: 0, lastCaptureDurationMs: expect.any(Number) })
     expect(await control.complete(executionId, workspace, 'codex-command')).toBeNull()
   })
 })

@@ -475,6 +475,10 @@ export const migrations: Migration[] = [
     if (!hasColumn(db, 'changes', 'policy')) db.exec("ALTER TABLE changes ADD COLUMN policy TEXT NOT NULL DEFAULT 'allowed' CHECK(policy IN ('allowed','requires-approval','blocked'))")
     if (!hasColumn(db, 'changes', 'policy_reason')) db.exec('ALTER TABLE changes ADD COLUMN policy_reason TEXT')
   } },
+  { version: 24, up: (db) => {
+    if (!hasColumn(db, 'validation_runs', 'execution_id')) db.exec('ALTER TABLE validation_runs ADD COLUMN execution_id TEXT REFERENCES executions(id) ON DELETE SET NULL')
+    db.exec('CREATE INDEX IF NOT EXISTS idx_validation_runs_execution ON validation_runs(execution_id, started_at DESC)')
+  } },
 ]
 
 export function migrateDatabase(db: Database.Database, currentVersion: number, availableMigrations: Migration[] = migrations) {

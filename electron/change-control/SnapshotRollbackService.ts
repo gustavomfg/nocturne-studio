@@ -23,13 +23,22 @@ export class SnapshotRollbackService {
   constructor(private readonly checkpoints: CheckpointService) {}
 
   async rollback(executionId: string, workspace: string, beforeId: string, afterId: string): Promise<SnapshotRollbackResult> {
+    return this.rollbackPaths(executionId, workspace, beforeId, afterId)
+  }
+
+  async rollbackPaths(executionId: string, workspace: string, beforeId: string, afterId: string, requestedPaths?: readonly string[]): Promise<SnapshotRollbackResult> {
     const before = this.checkpoints.get(beforeId, executionId)
     const after = this.checkpoints.get(afterId, executionId)
     if (!before || !after || before.status !== 'ready' || after.status !== 'ready') throw new Error('Os checkpoints necessários para o rollback não estão disponíveis.')
     if (before.workspace !== workspace || after.workspace !== workspace) throw new Error('O rollback não corresponde ao workspace autorizado.')
     const beforeFiles = new Map(this.checkpoints.listFiles(before.id).map((file) => [file.relativePath, file]))
     const afterFiles = new Map(this.checkpoints.listFiles(after.id).map((file) => [file.relativePath, file]))
-    const paths = [...new Set([...beforeFiles.keys(), ...afterFiles.keys()])].sort()
+    const paths = requestedPaths
+      ? [...new Set(requestedPaths.map((relativePath) => {
+        resolveInsideWorkspace(relativePath, workspace)
+        return relativePath
+      }))].sort()
+      : [...new Set([...beforeFiles.keys(), ...afterFiles.keys()])].sort()
     const conflicts: string[] = []
     const restorations: Array<{ relativePath: string; before: CheckpointFileRecord; after: CheckpointFileRecord }> = []
     for (const relativePath of paths) {

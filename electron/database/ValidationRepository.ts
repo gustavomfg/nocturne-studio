@@ -6,6 +6,7 @@ import type { DatabaseTransactionRunner } from './DatabaseTransaction'
 interface ValidationRunRow {
   id: string
   workspace: string
+  executionId: string | null
   kind: ValidationRun['kind']
   command: string
   argsJson: string
@@ -28,15 +29,15 @@ export class ValidationRepository {
 
   create(run: ValidationRun) {
     this.database.prepare(`INSERT INTO validation_runs(
-      id,workspace,kind,command,args_json,status,exit_code,duration_ms,output_summary,
+      id,workspace,execution_id,kind,command,args_json,status,exit_code,duration_ms,output_summary,
       artifacts_json,started_at,completed_at,error
-    ) VALUES(@id,@workspace,@kind,@command,@argsJson,@status,@exitCode,@durationMs,@outputSummary,
+    ) VALUES(@id,@workspace,@executionId,@kind,@command,@argsJson,@status,@exitCode,@durationMs,@outputSummary,
       @artifactsJson,@startedAt,@completedAt,@error)`).run(toParameters(run))
   }
 
   update(run: ValidationRun) {
     this.database.prepare(`UPDATE validation_runs SET
-      command=@command,args_json=@argsJson,status=@status,exit_code=@exitCode,duration_ms=@durationMs,
+      execution_id=@executionId,command=@command,args_json=@argsJson,status=@status,exit_code=@exitCode,duration_ms=@durationMs,
       output_summary=@outputSummary,artifacts_json=@artifactsJson,completed_at=@completedAt,error=@error
       WHERE id=@id AND workspace=@workspace`).run(toParameters(run))
   }
@@ -62,7 +63,7 @@ export class ValidationRepository {
 }
 
 function selectSql(suffix: string) {
-  return `SELECT id,workspace,kind,command,args_json argsJson,status,exit_code exitCode,
+  return `SELECT id,workspace,execution_id executionId,kind,command,args_json argsJson,status,exit_code exitCode,
     duration_ms durationMs,output_summary outputSummary,artifacts_json artifactsJson,
     started_at startedAt,completed_at completedAt,error
     FROM validation_runs ${suffix}`
@@ -72,6 +73,7 @@ function toParameters(run: ValidationRun) {
   return {
     id: run.id,
     workspace: run.workspace,
+    executionId: run.executionId ?? null,
     kind: run.kind,
     command: run.command,
     argsJson: JSON.stringify(run.args),
@@ -90,6 +92,7 @@ function fromRow(row: ValidationRunRow): ValidationRun {
   return {
     id: row.id,
     workspace: row.workspace,
+    ...(row.executionId ? { executionId: row.executionId } : {}),
     kind: row.kind,
     command: row.command,
     args: parseArgs(row.argsJson),

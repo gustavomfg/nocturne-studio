@@ -4,6 +4,7 @@ import { IPC_CHANNELS } from '../../shared/ipc/channels'
 import type { ChangeDiffService } from '../change-control/ChangeDiffService'
 import type { ChangeDecisionService } from '../change-control/ChangeDecisionService'
 import type { ChangeHunkService } from '../change-control/ChangeHunkService'
+import type { SnapshotRollbackService } from '../change-control/SnapshotRollbackService'
 import type { LocalDatabase } from '../database/Database'
 import { getAuthorizedConversation } from './conversationAccess'
 import { safeIpcMain, type SafeIpcMain } from './safeIpc'
@@ -13,6 +14,7 @@ interface Dependencies {
   diffs: ChangeDiffService
   decisions: ChangeDecisionService
   hunks: ChangeHunkService
+  rollback: SnapshotRollbackService
   resolveExecution(executionId: string): boolean
 }
 
@@ -78,15 +80,27 @@ export function registerChangeControlIpc(win: BrowserWindow, dependencies: Depen
     const change = hunk ? dependencies.database.changeSets.getChange(hunk.changeId) : null
     const executionRecord = change ? dependencies.database.getExecution(change.executionId, conversation.workspace) : null
     if (!executionRecord || executionRecord.conversationId !== conversation.id) throw new Error('O hunk não pertence à conversa autorizada.')
-    return dependencies.hunks.decide(data.hunkId, data.status, executionRecord.id)
+    const result = dependencies.hunks.decide(data.hunkId, data.status, executionRecord.id)
+    win.webContents.send(IPC_CHANNELS.changeControl.changed, { executionId: executionRecord.id, changeSetId: change!.changeSetId })
+    return result
   })
-  ipcMain.handle(IPC_CHANNELS.changeControl.decide, (_event, value: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.changeControl.decide, async (_event, value: unknown) => {
     const data = changeControlDecisionSchema.parse(value)
     const conversation = getAuthorizedConversation(dependencies.database, data.conversationId)
     const persisted = dependencies.database.changeSets.getChange(data.changeId)
     const executionRecord = persisted ? dependencies.database.getExecution(persisted.executionId, conversation.workspace) : null
     if (!executionRecord || executionRecord.conversationId !== conversation.id) throw new Error('A mudança não pertence à conversa autorizada.')
+    if (data.status === 'rejected') {
+      const changeSet = dependencies.database.changeSets.get(persisted!.changeSetId, executionRecord.id)
+      if (!changeSet) throw new Error('O ChangeSet da mudança não está disponível para rollback.')
+      const rollback = await dependencies.rollback.rollbackPaths(executionRecord.id, conversation.workspace, changeSet.beforeCheckpointId, changeSet.afterCheckpointId, [persisted!.relativePath])
+      if (rollback.status === 'conflicted') throw new Error(`O rollback seguro encontrou conflito em: ${rollback.conflicts.join(', ')}.`)
+    }
     const result = dependencies.decisions.decide(executionRecord.id, data.changeId, data.status)
+    const resolvedChanges = dependencies.database.changeSets.listChanges(result.changeSet.id)
+    if (resolvedChanges.length > 0 && resolvedChanges.every((item) => item.status === 'accepted' || item.status === 'rejected')) {
+      dependencies.resolveExecution(executionRecord.id)
+    }
     win.webContents.send(IPC_CHANNELS.changeControl.changed, { executionId: executionRecord.id, changeSetId: result.changeSet.id })
     return result
   })

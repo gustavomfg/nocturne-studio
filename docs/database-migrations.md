@@ -40,6 +40,13 @@ a restauração falhar, eles voltam aos caminhos originais.
 | 15 | Histórico auditável do ciclo de vida das memórias do Segundo Cérebro |
 | 16 | Índice incremental do projeto, símbolos, relações import/export, evidências do stack e exclusões |
 | 17 | Resultados estruturados do Validation Pipeline |
+| 18 | Identidade e ciclo de vida das execuções do agente |
+| 19 | Checkpoints privados por execução |
+| 20 | ChangeSets e mudanças por arquivo |
+| 21 | Comandos, erros e vínculos de validação das execuções |
+| 22 | Estado persistido de hunks revisáveis |
+| 23 | Política e motivo de segurança por mudança |
+| 24 | Associação opcional entre validação e execução |
 
 As migrações são progressivas. Reversão para uma versão antiga do aplicativo
 deve usar um backup criado por essa versão; não se remove schema novo

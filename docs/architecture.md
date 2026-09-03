@@ -49,6 +49,14 @@ and `ValidationPipeline` runs checks selected from stack evidence. The index
 is stored locally with per-file hashes, structural relations and partial
 failures; it does not depend on the AI provider.
 
+Build Mode uses `ExecutionChangeControlService` to associate an intention with
+private BEFORE/AFTER checkpoints. `ChangeCaptureService` records file-level
+changes and `WorkspaceChangeGate` holds watcher events while a decision is
+pending. The renderer reviews that ChangeSet inside Agent Mode; rejection uses
+per-file rollback with current-hash verification, and conflicts never silently
+overwrite the workspace. `ValidationPipeline` can carry an execution ID so its
+structured result is retained as execution evidence.
+
 ## Runtime and code organization
 
 The renderer application shell in `src/App.tsx` is intentionally a composition

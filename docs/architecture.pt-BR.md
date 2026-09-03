@@ -50,6 +50,14 @@ parser e o `ValidationPipeline` executa checks escolhidos pelas evidências do
 stack. O índice é persistido localmente com hashes por arquivo, relações
 estruturais e falhas parciais; ele não depende do provedor de IA.
 
+No Build, `ExecutionChangeControlService` associa a intenção a checkpoints
+BEFORE/AFTER privados, `ChangeCaptureService` registra mudanças por arquivo e
+`WorkspaceChangeGate` segura eventos do watcher enquanto há decisão pendente.
+O renderer revisa esse ChangeSet dentro do Agent Mode; rejeições usam rollback
+por caminho com verificação do hash atual, e conflitos não sobrescrevem o
+workspace. O `ValidationPipeline` pode carregar o ID da execução e o resultado
+é registrado como evidência estruturada.
+
 ## Organização do runtime e do código
 
 O shell da aplicação no renderer em `src/App.tsx` é intencionalmente uma

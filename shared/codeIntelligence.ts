@@ -187,6 +187,7 @@ export interface ValidationArtifact {
 export interface ValidationRun {
   id: string
   workspace: string
+  executionId?: string
   kind: ValidationKind
   command: string
   args: string[]

@@ -32,8 +32,9 @@ describe('ExecutionEvidenceRepository', () => {
     }
     database.executionEvidence.createError(error)
     const validation = database.validation
-    const run = { id: '00000000-0000-4000-8000-000000000053', workspace, kind: 'test' as const, command: 'npm', args: ['test'], status: 'passed' as const, exitCode: 0, durationMs: 12, outputSummary: 'ok', artifacts: [], startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), error: null }
+    const run = { id: '00000000-0000-4000-8000-000000000053', workspace, executionId, kind: 'test' as const, command: 'npm', args: ['test'], status: 'passed' as const, exitCode: 0, durationMs: 12, outputSummary: 'ok', artifacts: [], startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), error: null }
     validation.create(run)
+    database.executionEvidence.linkValidation({ executionId, changeId: null, validationId: run.id, phase: 'proposed' })
     database.executionEvidence.linkValidation({ executionId, changeId: null, validationId: run.id, phase: 'proposed' })
 
     expect(database.executionEvidence.listCommands(executionId)).toEqual([command])

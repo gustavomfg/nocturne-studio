@@ -41,6 +41,20 @@ describe('Validation Pipeline', () => {
     expect(pipeline.latest(fixture.workspace)?.id).toBe(run.id)
   })
 
+  it('preserva a execução de origem para ligar a validação à evidência do turno', async () => {
+    const fixture = createFixture()
+    const conversation = fixture.database.createConversation(fixture.workspace)
+    const executionId = '00000000-0000-4000-8000-000000000090'
+    fixture.database.createExecution({ id: executionId, workspace: fixture.workspace, conversationId: conversation.id, prompt: 'validar', mode: 'build', status: 'running', decision: 'pending', retryOf: null, startedAt: new Date().toISOString(), finishedAt: null, error: null })
+    fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [evidence(fixture.workspace, 'script', 'test=vitest')])
+    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner: { run: async () => successfulResult('', '') } })
+
+    const run = await pipeline.run(fixture.workspace, 'test', executionId)
+
+    expect(run.executionId).toBe(executionId)
+    expect(fixture.database.validation.latest(fixture.workspace)?.executionId).toBe(executionId)
+  })
+
   it('bloqueia validação sem comando identificado e mantém resultado estruturado', async () => {
     const fixture = createFixture()
     const pipeline = new ValidationPipeline(fixture.database.validation, () => [], { runner: throwingRunner() })

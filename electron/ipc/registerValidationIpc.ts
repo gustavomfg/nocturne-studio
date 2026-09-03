@@ -6,6 +6,7 @@ import { safeIpcMain, type SafeIpcMain } from './safeIpc'
 
 interface Dependencies {
   assertAuthorized(value: string): string
+  assertExecutionAuthorized?(executionId: string, workspace: string): void
 }
 
 export function registerValidationIpc(win: BrowserWindow, pipeline: ValidationPipeline, dependencies: Dependencies, registrar?: SafeIpcMain) {
@@ -15,7 +16,9 @@ export function registerValidationIpc(win: BrowserWindow, pipeline: ValidationPi
 
   ipcMain.handle(IPC_CHANNELS.validation.run, (_event, value: unknown) => {
     const data = validationRunSchema.parse(value)
-    return pipeline.run(dependencies.assertAuthorized(data.workspace), data.kind)
+    const authorizedWorkspace = dependencies.assertAuthorized(data.workspace)
+    if (data.executionId) dependencies.assertExecutionAuthorized?.(data.executionId, authorizedWorkspace)
+    return pipeline.run(authorizedWorkspace, data.kind, data.executionId)
   })
   ipcMain.handle(IPC_CHANNELS.validation.cancel, (_event, value: unknown) => pipeline.cancel(workspace(value)))
   ipcMain.handle(IPC_CHANNELS.validation.latest, (_event, value: unknown) => pipeline.latest(workspace(value)))

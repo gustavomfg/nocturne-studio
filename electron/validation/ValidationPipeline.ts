@@ -71,13 +71,13 @@ export class ValidationPipeline {
     this.onMetric = options.onMetric
   }
 
-  run(workspace: string, kind: ValidationKind) {
+  run(workspace: string, kind: ValidationKind, executionId?: string) {
     const normalizedWorkspace = path.resolve(workspace)
     const current = this.active.get(normalizedWorkspace)
     if (current) return current.promise
     if (this.disposed) return Promise.reject(new Error('O pipeline de validação já foi encerrado.'))
     const controller = new AbortController()
-    const promise = this.execute(normalizedWorkspace, kind, controller.signal)
+    const promise = this.execute(normalizedWorkspace, kind, controller.signal, executionId)
       .finally(() => this.active.delete(normalizedWorkspace))
     this.active.set(normalizedWorkspace, { controller, promise })
     return promise
@@ -108,12 +108,13 @@ export class ValidationPipeline {
     return Promise.all([...this.active.values()].map(({ promise }) => promise.catch(() => undefined))).then(() => undefined)
   }
 
-  private async execute(workspace: string, kind: ValidationKind, signal: AbortSignal): Promise<ValidationRun> {
+  private async execute(workspace: string, kind: ValidationKind, signal: AbortSignal, executionId?: string): Promise<ValidationRun> {
     const startedAt = new Date().toISOString()
     const plan = planValidation(this.stackEvidence(workspace), kind)
     const run: ValidationRun = {
       id: crypto.randomUUID(),
       workspace,
+      ...(executionId ? { executionId } : {}),
       kind,
       command: plan?.command ?? '',
       args: plan?.args ?? [],
