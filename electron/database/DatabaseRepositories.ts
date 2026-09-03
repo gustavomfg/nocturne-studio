@@ -17,6 +17,7 @@ import { ValidationRepository } from './ValidationRepository'
 import { ExecutionRepository } from './ExecutionRepository'
 import { CheckpointRepository } from './CheckpointRepository'
 import { ChangeSetRepository } from './ChangeSetRepository'
+import { ExecutionEvidenceRepository } from './ExecutionEvidenceRepository'
 import type { DatabaseTransactionRunner } from './DatabaseTransaction'
 
 export interface DatabaseRepositories {
@@ -37,6 +38,7 @@ export interface DatabaseRepositories {
   executions: ExecutionRepository
   checkpoints: CheckpointRepository
   changeSets: ChangeSetRepository
+  executionEvidence: ExecutionEvidenceRepository
 }
 
 /** Composes domain repositories around one runtime-owned SQLite connection. */
@@ -67,5 +69,6 @@ export function createDatabaseRepositories(runtime: DatabaseRuntime): DatabaseRe
     executions: new ExecutionRepository(database, transactions),
     checkpoints: new CheckpointRepository(database, transactions),
     changeSets: new ChangeSetRepository(database, transactions),
+    executionEvidence: new ExecutionEvidenceRepository(database, transactions),
   }
 }

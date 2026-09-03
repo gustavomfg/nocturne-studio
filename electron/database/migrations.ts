@@ -409,6 +409,50 @@ export const migrations: Migration[] = [
     CREATE INDEX IF NOT EXISTS idx_changes_execution_updated
       ON changes(execution_id, updated_at DESC);
   `) },
+  { version: 21, up: (db) => db.exec(`
+    CREATE TABLE IF NOT EXISTS execution_commands (
+      id TEXT PRIMARY KEY,
+      execution_id TEXT NOT NULL,
+      command TEXT NOT NULL,
+      args_json TEXT NOT NULL,
+      source TEXT NOT NULL CHECK(source IN ('agent','validation','system')),
+      status TEXT NOT NULL CHECK(status IN ('running','passed','failed','cancelled')),
+      exit_code INTEGER,
+      duration_ms INTEGER CHECK(duration_ms IS NULL OR duration_ms >= 0),
+      output_summary TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      FOREIGN KEY (execution_id) REFERENCES executions(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_execution_commands_execution
+      ON execution_commands(execution_id, started_at);
+    CREATE TABLE IF NOT EXISTS execution_errors (
+      id TEXT PRIMARY KEY,
+      execution_id TEXT NOT NULL,
+      stage TEXT NOT NULL CHECK(stage IN ('planning','mutation','validation','decision','rollback','persistence')),
+      message TEXT NOT NULL,
+      path TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (execution_id) REFERENCES executions(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_execution_errors_execution
+      ON execution_errors(execution_id, created_at);
+    CREATE TABLE IF NOT EXISTS execution_validation_links (
+      id TEXT PRIMARY KEY,
+      execution_id TEXT NOT NULL,
+      change_id TEXT,
+      validation_id TEXT NOT NULL,
+      phase TEXT NOT NULL CHECK(phase IN ('before','proposed','after-decision')),
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (execution_id) REFERENCES executions(id) ON DELETE CASCADE,
+      FOREIGN KEY (change_id) REFERENCES changes(id) ON DELETE CASCADE,
+      FOREIGN KEY (validation_id) REFERENCES validation_runs(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_execution_validation_links_execution
+      ON execution_validation_links(execution_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_execution_validation_links_change
+      ON execution_validation_links(change_id, created_at);
+  `) },
 ]
 
 export function migrateDatabase(db: Database.Database, currentVersion: number, availableMigrations: Migration[] = migrations) {

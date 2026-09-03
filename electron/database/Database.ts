@@ -45,6 +45,7 @@ export class LocalDatabase {
   get executions() { return this.repositories.executions }
   get checkpoints() { return this.repositories.checkpoints }
   get changeSets() { return this.repositories.changeSets }
+  get executionEvidence() { return this.repositories.executionEvidence }
 
   constructor(userDataPath: string) {
     this.runtime = new DatabaseRuntime(userDataPath)
