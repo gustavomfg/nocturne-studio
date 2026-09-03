@@ -43,6 +43,8 @@ export type ChangeOrigin =
   | 'documents'
   | 'manual'
 
+export type ChangePolicy = 'allowed' | 'requires-approval' | 'blocked'
+
 export type ExecutionCommandSource = 'agent' | 'validation' | 'system'
 
 export interface ExecutionRecord {
@@ -120,6 +122,8 @@ export interface ChangeRecord {
   afterSize: number | null
   status: ChangeStatus
   validationStatus: 'unknown' | 'pending' | 'passed' | 'failed' | 'blocked'
+  policy: ChangePolicy
+  policyReason: string | null
   createdAt: string
   updatedAt: string
 }

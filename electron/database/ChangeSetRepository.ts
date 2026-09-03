@@ -30,9 +30,9 @@ export class ChangeSetRepository {
       this.database.prepare('DELETE FROM changes WHERE change_set_id=?').run(changeSetId)
       const statement = this.database.prepare(`INSERT INTO changes(
         id,change_set_id,execution_id,checkpoint_id,relative_path,original_path,operation,origin,
-        before_hash,after_hash,before_size,after_size,status,validation_status,created_at,updated_at
-      ) VALUES(@id,@changeSetId,@executionId,@checkpointId,@relativePath,@originalPath,@operation,@origin,
-        @beforeHash,@afterHash,@beforeSize,@afterSize,@status,@validationStatus,@createdAt,@updatedAt)`)
+      before_hash,after_hash,before_size,after_size,status,validation_status,created_at,updated_at
+        ,policy,policy_reason) VALUES(@id,@changeSetId,@executionId,@checkpointId,@relativePath,@originalPath,@operation,@origin,
+        @beforeHash,@afterHash,@beforeSize,@afterSize,@status,@validationStatus,@createdAt,@updatedAt,@policy,@policyReason)`)
       for (const change of changes) statement.run(change)
     })
   }
@@ -45,9 +45,9 @@ export class ChangeSetRepository {
       this.database.prepare('DELETE FROM changes WHERE change_set_id=?').run(changeSet.id)
       const statement = this.database.prepare(`INSERT INTO changes(
         id,change_set_id,execution_id,checkpoint_id,relative_path,original_path,operation,origin,
-        before_hash,after_hash,before_size,after_size,status,validation_status,created_at,updated_at
+        before_hash,after_hash,before_size,after_size,status,validation_status,created_at,updated_at,policy,policy_reason
       ) VALUES(@id,@changeSetId,@executionId,@checkpointId,@relativePath,@originalPath,@operation,@origin,
-        @beforeHash,@afterHash,@beforeSize,@afterSize,@status,@validationStatus,@createdAt,@updatedAt)`)
+        @beforeHash,@afterHash,@beforeSize,@afterSize,@status,@validationStatus,@createdAt,@updatedAt,@policy,@policyReason)`)
       for (const change of changes) statement.run(change)
     })
   }
@@ -74,7 +74,7 @@ export class ChangeSetRepository {
     const rows = this.database.prepare(`SELECT id,change_set_id changeSetId,execution_id executionId,
       checkpoint_id checkpointId,relative_path relativePath,original_path originalPath,operation,origin,
       before_hash beforeHash,after_hash afterHash,before_size beforeSize,after_size afterSize,status,
-      validation_status validationStatus,created_at createdAt,updated_at updatedAt
+      validation_status validationStatus,created_at createdAt,updated_at updatedAt,policy,policy_reason policyReason
       FROM changes WHERE change_set_id=? ORDER BY relative_path`).all(changeSetId) as ChangeRow[]
     return rows.map((row) => {
       if (!changeStatuses.includes(row.status)) throw new Error('A mudança persistida possui um estado inválido.')
@@ -86,7 +86,7 @@ export class ChangeSetRepository {
     const row = this.database.prepare(`SELECT id,change_set_id changeSetId,execution_id executionId,
       checkpoint_id checkpointId,relative_path relativePath,original_path originalPath,operation,origin,
       before_hash beforeHash,after_hash afterHash,before_size beforeSize,after_size afterSize,status,
-      validation_status validationStatus,created_at createdAt,updated_at updatedAt
+      validation_status validationStatus,created_at createdAt,updated_at updatedAt,policy,policy_reason policyReason
       FROM changes WHERE id=? AND (? IS NULL OR execution_id=?)`).get(id, executionId ?? null, executionId ?? null) as ChangeRow | undefined
     if (row && !changeStatuses.includes(row.status)) throw new Error('A mudança persistida possui um estado inválido.')
     return row ?? null

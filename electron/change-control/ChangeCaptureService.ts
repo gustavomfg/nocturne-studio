@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { ChangeOperation, ChangeOrigin, ChangeRecord, ChangeSetRecord, CheckpointFileRecord } from '../../shared/changeControl'
 import type { ChangeSetRepository } from '../database/ChangeSetRepository'
 import type { CheckpointService } from './CheckpointService'
+import { assessChangePolicy } from './ChangePolicyService'
 
 /** Builds a bounded, file-level ChangeSet from two durable checkpoint manifests. */
 export class ChangeCaptureService {
@@ -22,11 +23,15 @@ export class ChangeCaptureService {
       const next = afterFiles.get(relativePath) ?? missingFile(afterResult.checkpoint.id, relativePath)
       if (sameState(original, next)) return []
       const now = this.now().toISOString()
+      const operation = operationFor(original, next)
+      const policy = assessChangePolicy(relativePath, operation)
       const change: ChangeRecord = {
         id: randomUUID(), executionId, changeSetId: '', checkpointId: before.id, relativePath,
-        originalPath: null, operation: operationFor(original, next), origin,
+        originalPath: null, operation, origin,
         beforeHash: original.hash, afterHash: next.hash, beforeSize: original.size, afterSize: next.size,
-        status: 'pending', validationStatus: 'unknown', createdAt: now, updatedAt: now,
+        status: policy.policy === 'blocked' ? 'conflicted' : 'pending',
+        validationStatus: policy.policy === 'blocked' ? 'blocked' : 'unknown',
+        policy: policy.policy, policyReason: policy.reason, createdAt: now, updatedAt: now,
       }
       return [change]
     })

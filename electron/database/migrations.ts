@@ -471,6 +471,10 @@ export const migrations: Migration[] = [
     CREATE INDEX IF NOT EXISTS idx_change_hunks_change
       ON change_hunks(change_id, sequence);
   `) },
+  { version: 23, up: (db) => {
+    if (!hasColumn(db, 'changes', 'policy')) db.exec("ALTER TABLE changes ADD COLUMN policy TEXT NOT NULL DEFAULT 'allowed' CHECK(policy IN ('allowed','requires-approval','blocked'))")
+    if (!hasColumn(db, 'changes', 'policy_reason')) db.exec('ALTER TABLE changes ADD COLUMN policy_reason TEXT')
+  } },
 ]
 
 export function migrateDatabase(db: Database.Database, currentVersion: number, availableMigrations: Migration[] = migrations) {
