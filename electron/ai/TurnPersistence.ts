@@ -6,6 +6,7 @@ import { isJsonValueWithinLimit } from '../../shared/json'
 import type { LocalDatabase, MessageRow } from '../database/Database'
 
 export interface CompletedTurnSnapshot {
+  executionId?: string
   conversationId: string
   workspace: string
   mode: AgentMode

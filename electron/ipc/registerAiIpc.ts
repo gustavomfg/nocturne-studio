@@ -19,6 +19,7 @@ import { safeIpcMain, type SafeIpcMain } from './safeIpc'
 import type { ProviderConfigurationOperations } from './registerProviderIpc'
 import type { ProjectIndexService } from '../project-index/ProjectIndexService'
 import type { ExecutionRecord } from '../../shared/changeControl'
+import type { ExecutionChangeControlService } from '../change-control/ExecutionChangeControlService'
 
 interface WorkspaceContext {
   content: string
@@ -32,6 +33,7 @@ interface AiIpcDependencies {
   providerConfigurations: ProviderConfigurationOperations
   aiExecutions: AiExecutionCoordinator
   buildRollback: BuildRollbackService
+  changeControl: ExecutionChangeControlService
   approvalDetails: Map<string, { command?: string; risk?: string }>
   readWorkspaceContext(workspace: string): Promise<WorkspaceContext>
   projectIndex: ProjectIndexService
@@ -40,7 +42,7 @@ interface AiIpcDependencies {
 export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencies, registrar?: SafeIpcMain) {
   const ipcMain = registrar ?? safeIpcMain(win)
   const ownsRegistrar = !registrar
-  const { database, logger, providerConfigurations, aiExecutions, buildRollback, approvalDetails, readWorkspaceContext, projectIndex } = dependencies
+  const { database, logger, providerConfigurations, aiExecutions, buildRollback, changeControl, approvalDetails, readWorkspaceContext, projectIndex } = dependencies
 
   ipcMain.handle(IPC_CHANNELS.ai.send, async (_event, value: unknown) => {
     const { conversationId, prompt, attachments, mode } = aiSendSchema.parse(value)
@@ -135,7 +137,10 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
 
     if (useCodex) {
       const settings = database.getSettings()
-      if (mode === 'build') await buildRollback.begin(conversationId, conversation.workspace)
+      if (mode === 'build') {
+        await changeControl.begin(executionId, conversation.workspace)
+        await buildRollback.begin(conversationId, conversation.workspace)
+      }
       try {
         await aiExecutions.startCodex({
           conversationId,
@@ -156,7 +161,10 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
           },
         })
       } catch (error) {
-        if (mode === 'build') buildRollback.abort(conversationId)
+        if (mode === 'build') {
+          changeControl.abort(executionId)
+          buildRollback.abort(conversationId)
+        }
         throw error
       }
       database.markBrainMemoriesUsed(brainMemory.memoryIds)

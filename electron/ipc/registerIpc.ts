@@ -1,4 +1,6 @@
 import type { BrowserWindow } from 'electron'
+import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { LocalDatabase } from '../database/Database'
 import { Logger } from '../logging/Logger'
 import { registerDataIpc } from './registerDataIpc'
@@ -33,6 +35,10 @@ import { ensureNocturneWorkspace, readWorkspaceContext, recordSuggestionDecision
 import { ProjectIndexService } from '../project-index/ProjectIndexService'
 import { IPC_CHANNELS } from '../../shared/ipc/channels'
 import { ValidationPipeline } from '../validation/ValidationPipeline'
+import { CheckpointService } from '../change-control/CheckpointService'
+import { WorkspaceCheckpointStore } from '../change-control/WorkspaceCheckpointStore'
+import { ChangeCaptureService } from '../change-control/ChangeCaptureService'
+import { ExecutionChangeControlService } from '../change-control/ExecutionChangeControlService'
 
 export function registerIpc(
   win: BrowserWindow,
@@ -150,6 +156,8 @@ export function registerIpc(
 
   const approvalDetails = new Map<string, { command?: string; risk?: string }>()
   const buildRollback = new BuildRollbackService()
+  const checkpoints = new CheckpointService(database.checkpoints, new WorkspaceCheckpointStore(path.join(database.dataDirectory, 'change-checkpoints')))
+  const changeControl = new ExecutionChangeControlService(checkpoints, new ChangeCaptureService(checkpoints, database.changeSets))
   const documentUpdates = new DocumentUpdateService()
   const codexAccount = new CodexAccountService()
   const aiExecutions = new AiExecutionCoordinator(
@@ -158,9 +166,22 @@ export function registerIpc(
     providerRegistry,
     logger,
     approvalDetails,
-    (snapshot) => {
+    async (snapshot) => {
       const persisted = persistCompletedTurn(database, snapshot)
-      if (snapshot.mode === 'build') buildRollback.complete(snapshot.conversationId, snapshot.files)
+      if (snapshot.mode === 'build') {
+        buildRollback.complete(snapshot.conversationId, snapshot.files)
+        if (snapshot.executionId) {
+          try {
+            await changeControl.complete(snapshot.executionId, snapshot.workspace, 'codex-command')
+          } catch (error) {
+            database.executionEvidence.createError({
+              id: randomUUID(), executionId: snapshot.executionId, stage: 'persistence',
+              message: error instanceof Error ? error.message : String(error), path: null, createdAt: new Date().toISOString(),
+            })
+            logger.error('persistence', 'A captura AFTER da execução falhou; o resultado do turno foi preservado.', error)
+          }
+        }
+      }
       return persisted
     },
     (conversationId, threadId) => database.setConversationCodexThread(conversationId, threadId),
@@ -180,6 +201,7 @@ export function registerIpc(
       providerConfigurations,
       aiExecutions,
       buildRollback,
+      changeControl,
       approvalDetails,
       readWorkspaceContext,
       projectIndex,

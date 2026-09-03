@@ -384,6 +384,7 @@ export class AiExecutionCoordinator {
     active.finishing = true
     try {
       const persisted = await this.finalizeTurn({
+        ...(active.executionId ? { executionId: active.executionId } : {}),
         conversationId: active.conversationId,
         workspace: active.workspace,
         mode: active.mode,
