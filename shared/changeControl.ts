@@ -124,6 +124,21 @@ export interface ChangeRecord {
   updatedAt: string
 }
 
+export type FileDiffKind = 'text' | 'binary' | 'large' | 'missing' | 'unsupported'
+
+export interface FileDiff {
+  changeId: string
+  relativePath: string
+  operation: ChangeOperation
+  beforeHash: string | null
+  afterHash: string | null
+  kind: FileDiffKind
+  unifiedDiff: string
+  additions: number
+  deletions: number
+  truncated: boolean
+}
+
 export interface ChangeSetRecord {
   id: string
   executionId: string

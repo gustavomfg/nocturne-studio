@@ -82,6 +82,16 @@ export class ChangeSetRepository {
     })
   }
 
+  getChange(id: string, executionId?: string): ChangeRecord | null {
+    const row = this.database.prepare(`SELECT id,change_set_id changeSetId,execution_id executionId,
+      checkpoint_id checkpointId,relative_path relativePath,original_path originalPath,operation,origin,
+      before_hash beforeHash,after_hash afterHash,before_size beforeSize,after_size afterSize,status,
+      validation_status validationStatus,created_at createdAt,updated_at updatedAt
+      FROM changes WHERE id=? AND (? IS NULL OR execution_id=?)`).get(id, executionId ?? null, executionId ?? null) as ChangeRow | undefined
+    if (row && !changeStatuses.includes(row.status)) throw new Error('A mudança persistida possui um estado inválido.')
+    return row ?? null
+  }
+
   updateChange(change: ChangeRecord) {
     this.database.prepare(`UPDATE changes SET status=@status,validation_status=@validationStatus,
       after_hash=@afterHash,after_size=@afterSize,updated_at=@updatedAt
