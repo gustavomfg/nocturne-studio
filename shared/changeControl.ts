@@ -30,6 +30,9 @@ export type ChangeOperation = typeof changeOperations[number]
 export const changeStatuses = ['pending', 'accepted', 'rejected', 'edited', 'conflicted'] as const
 export type ChangeStatus = typeof changeStatuses[number]
 
+export const changeSetStatuses = ['pending', 'accepted', 'partially-accepted', 'rejected', 'conflicted'] as const
+export type ChangeSetStatus = typeof changeSetStatuses[number]
+
 export const hunkStatuses = ['pending', 'accepted', 'rejected', 'edited', 'conflicted'] as const
 export type HunkStatus = typeof hunkStatuses[number]
 
@@ -105,6 +108,7 @@ export interface CheckpointFileRecord {
 export interface ChangeRecord {
   id: string
   executionId: string
+  changeSetId: string
   checkpointId: string | null
   relativePath: string
   originalPath: string | null
@@ -116,6 +120,16 @@ export interface ChangeRecord {
   afterSize: number | null
   status: ChangeStatus
   validationStatus: 'unknown' | 'pending' | 'passed' | 'failed' | 'blocked'
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ChangeSetRecord {
+  id: string
+  executionId: string
+  beforeCheckpointId: string
+  afterCheckpointId: string
+  status: ChangeSetStatus
   createdAt: string
   updatedAt: string
 }

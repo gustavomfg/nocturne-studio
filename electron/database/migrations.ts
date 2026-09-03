@@ -368,6 +368,47 @@ export const migrations: Migration[] = [
     CREATE INDEX IF NOT EXISTS idx_checkpoint_files_checkpoint
       ON checkpoint_files(checkpoint_id, relative_path);
   `) },
+  { version: 20, up: (db) => db.exec(`
+    CREATE TABLE IF NOT EXISTS change_sets (
+      id TEXT PRIMARY KEY,
+      execution_id TEXT NOT NULL,
+      before_checkpoint_id TEXT NOT NULL,
+      after_checkpoint_id TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','accepted','partially-accepted','rejected','conflicted')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (execution_id) REFERENCES executions(id) ON DELETE CASCADE,
+      FOREIGN KEY (before_checkpoint_id) REFERENCES checkpoints(id) ON DELETE RESTRICT,
+      FOREIGN KEY (after_checkpoint_id) REFERENCES checkpoints(id) ON DELETE RESTRICT
+    );
+    CREATE INDEX IF NOT EXISTS idx_change_sets_execution_updated
+      ON change_sets(execution_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS changes (
+      id TEXT PRIMARY KEY,
+      change_set_id TEXT NOT NULL,
+      execution_id TEXT NOT NULL,
+      checkpoint_id TEXT,
+      relative_path TEXT NOT NULL,
+      original_path TEXT,
+      operation TEXT NOT NULL CHECK(operation IN ('create','modify','delete','rename')),
+      origin TEXT NOT NULL CHECK(origin IN ('codex-file-change','codex-command','validation','documents','manual')),
+      before_hash TEXT,
+      after_hash TEXT,
+      before_size INTEGER,
+      after_size INTEGER,
+      status TEXT NOT NULL CHECK(status IN ('pending','accepted','rejected','edited','conflicted')),
+      validation_status TEXT NOT NULL CHECK(validation_status IN ('unknown','pending','passed','failed','blocked')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (change_set_id) REFERENCES change_sets(id) ON DELETE CASCADE,
+      FOREIGN KEY (execution_id) REFERENCES executions(id) ON DELETE CASCADE,
+      FOREIGN KEY (checkpoint_id) REFERENCES checkpoints(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_changes_change_set_path
+      ON changes(change_set_id, relative_path);
+    CREATE INDEX IF NOT EXISTS idx_changes_execution_updated
+      ON changes(execution_id, updated_at DESC);
+  `) },
 ]
 
 export function migrateDatabase(db: Database.Database, currentVersion: number, availableMigrations: Migration[] = migrations) {

@@ -54,7 +54,7 @@ export class ExecutionRepository {
 function selectSql(suffix: string) {
   return `SELECT e.id,e.workspace,e.conversation_id conversationId,e.prompt,e.mode,e.status,e.decision,
     e.retry_of retryOf,e.started_at startedAt,e.finished_at finishedAt,e.error,
-    0 changeCount,
+    (SELECT COUNT(*) FROM changes c WHERE c.execution_id=e.id) changeCount,
     0 validationCount,
     (SELECT COUNT(*) FROM checkpoints cp WHERE cp.execution_id=e.id) checkpointCount
     FROM executions e ${suffix}`
