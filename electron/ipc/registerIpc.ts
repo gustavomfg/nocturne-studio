@@ -24,6 +24,7 @@ import { registerCodexIpc } from './registerCodexIpc'
 import { registerFilesIpc } from './registerFilesIpc'
 import { registerDiagnosticsIpc } from './registerDiagnosticsIpc'
 import { registerAiIpc } from './registerAiIpc'
+import { isTerminalAgentState, type AgentRunState } from '../../shared/agentLifecycle'
 import { registerSettingsIpc } from './registerSettingsIpc'
 import { registerDocumentsIpc } from './registerDocumentsIpc'
 import { registerProjectIndexIpc } from './registerProjectIndexIpc'
@@ -163,6 +164,9 @@ export function registerIpc(
       return persisted
     },
     (conversationId, threadId) => database.setConversationCodexThread(conversationId, threadId),
+    undefined,
+    undefined,
+    (executionId, lifecycle) => persistExecutionLifecycle(database, executionId, lifecycle),
   )
 
   const disposeCodex = registerCodexIpc(win, codexAccount, aiExecutions, ipcMain)
@@ -211,4 +215,16 @@ export function registerIpc(
       disposeDocuments(),
     ]).then(() => undefined)
   }
+}
+
+function persistExecutionLifecycle(database: LocalDatabase, executionId: string, lifecycle: AgentRunState) {
+  const current = database.getExecution(executionId)
+  if (!current) return
+  const status = lifecycle.state === 'waiting-approval' || lifecycle.state === 'cancelling' ? 'running' : lifecycle.state
+  database.saveExecution({
+    ...current,
+    status,
+    finishedAt: isTerminalAgentState(lifecycle.state) ? lifecycle.updatedAt : current.finishedAt,
+    error: lifecycle.error ?? current.error,
+  })
 }

@@ -1,4 +1,5 @@
 import { dialog, type BrowserWindow } from 'electron'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import type { AwarenessSnapshot } from '../../shared/awareness'
 import { AI_TASK_LIMITS, type NormalizedTaskInput } from '../../shared/ai/task'
@@ -17,6 +18,7 @@ import { artifactType, assertInsideWorkspace } from './fileAccess'
 import { safeIpcMain, type SafeIpcMain } from './safeIpc'
 import type { ProviderConfigurationOperations } from './registerProviderIpc'
 import type { ProjectIndexService } from '../project-index/ProjectIndexService'
+import type { ExecutionRecord } from '../../shared/changeControl'
 
 interface WorkspaceContext {
   content: string
@@ -97,7 +99,22 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
         ...(projectContext?.selections ?? []),
       ],
     }
-    database.addMessage(conversationId, 'user', prompt, { attachments, awareness })
+    const executionId = randomUUID()
+    const execution: ExecutionRecord = {
+      id: executionId,
+      workspace: conversation.workspace,
+      conversationId,
+      prompt,
+      mode,
+      status: 'created',
+      decision: 'pending',
+      retryOf: null,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      error: null,
+    }
+    database.createExecution(execution)
+    database.addMessage(conversationId, 'user', prompt, { executionId, attachments, awareness })
     if (conversation.title === 'Nova conversa') database.renameFromPrompt(conversationId, prompt)
 
     const attachmentMessages = await buildAttachmentMessages(attachments, conversation.workspace)
@@ -122,6 +139,7 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
       try {
         await aiExecutions.startCodex({
           conversationId,
+          executionId,
           workspace: conversation.workspace,
           prompt,
           initialPrompt: buildCodexPrompt(history, prompt),
@@ -145,7 +163,7 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
       return
     }
 
-    await aiExecutions.startProvider(conversationId, taskInput, bindings!)
+    await aiExecutions.startProvider(conversationId, taskInput, bindings!, executionId)
     database.markBrainMemoriesUsed(brainMemory.memoryIds)
   })
 

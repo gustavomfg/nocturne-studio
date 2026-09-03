@@ -20,6 +20,7 @@ export type ApprovalDetails = Map<string, { command?: string; risk?: string }>
 
 interface ActiveExecution {
   runId: string
+  executionId: string | null
   conversationId: string
   workspace: string
   mode: AgentMode
@@ -39,6 +40,7 @@ interface ActiveExecution {
 
 interface CodexTurnInput {
   conversationId: string
+  executionId?: string
   workspace: string
   prompt: string
   initialPrompt: string
@@ -64,6 +66,7 @@ export class AiExecutionCoordinator {
     private readonly persistCodexThread: (conversationId: string, threadId: string) => void = () => undefined,
     private readonly createRunId: () => string = randomUUID,
     private readonly now: () => Date = () => new Date(),
+    private readonly persistExecutionState: (executionId: string, lifecycle: AgentRunState) => void = () => undefined,
   ) {
     this.codex.on('event', this.onCodexEvent)
     this.codex.on('status', this.onCodexStatus)
@@ -72,7 +75,7 @@ export class AiExecutionCoordinator {
   }
 
   async startCodex(input: CodexTurnInput) {
-    const active = this.reserve(input.conversationId, input.workspace, input.mode, 'codex')
+    const active = this.reserve(input.conversationId, input.workspace, input.mode, 'codex', input.executionId)
     const runId = active.runId
     try {
       const settings = input.settings as unknown as Record<string, string>
@@ -149,8 +152,9 @@ export class AiExecutionCoordinator {
     conversationId: string,
     taskInput: NormalizedTaskInput,
     bindings: WorkspaceModelBindings,
+    executionId?: string,
   ) {
-    const active = this.reserve(conversationId, taskInput.workspace.id, taskInput.mode === 'review' ? 'review' : 'build', 'provider')
+    const active = this.reserve(conversationId, taskInput.workspace.id, taskInput.mode === 'review' ? 'review' : 'build', 'provider', executionId)
     const runId = active.runId
     try {
       const turn = await startAiTurn(
@@ -230,13 +234,14 @@ export class AiExecutionCoordinator {
     this.approvalDetails.clear()
   }
 
-  private reserve(conversationId: string, workspace: string, mode: AgentMode, kind: ActiveExecution['kind']) {
+  private reserve(conversationId: string, workspace: string, mode: AgentMode, kind: ActiveExecution['kind'], executionId?: string) {
     if (this.disposed) throw new Error('O coordenador de execuções já foi descartado.')
     if (this.active) {
       throw new Error('Já existe uma execução em andamento. Cancele-a antes de iniciar outra.')
     }
     const active: ActiveExecution = {
       runId: this.createRunId(),
+      executionId: executionId ?? null,
       conversationId,
       workspace,
       mode,
@@ -255,7 +260,7 @@ export class AiExecutionCoordinator {
       },
     }
     this.active = active
-    this.applyLifecycle(active, { type: 'run.started', workspace, mode })
+    this.applyLifecycle(active, { type: 'run.started', workspace, mode, ...(executionId ? { executionId } : {}) })
     this.pushStatusForRun(active, 'planning')
     return active
   }
@@ -341,12 +346,14 @@ export class AiExecutionCoordinator {
       this.win.webContents.send(IPC_CHANNELS.ai.event, {
         method,
         runId: active.runId,
+        ...(active.executionId ? { executionId: active.executionId } : {}),
         sequence,
         timestamp,
         params: {
           ...params,
           conversationId: active.conversationId,
           runId: active.runId,
+          ...(active.executionId ? { executionId: active.executionId } : {}),
           sequence,
           timestamp,
         },
@@ -416,6 +423,7 @@ export class AiExecutionCoordinator {
         status,
         conversationId: active.conversationId,
         runId: active.runId,
+        ...(active.executionId ? { executionId: active.executionId } : {}),
         sequence,
         timestamp,
         ...(error ? { error } : {}),
@@ -449,6 +457,7 @@ export class AiExecutionCoordinator {
       ...details,
       runId: active.runId,
       conversationId: active.conversationId,
+      ...(active.executionId ? { executionId: active.executionId } : {}),
       sequence: this.nextSequence(active),
       timestamp: this.now().toISOString(),
     } as AgentLifecycleEvent
@@ -464,6 +473,7 @@ export class AiExecutionCoordinator {
       return false
     }
     active.lifecycle = transition.state
+    if (active.executionId) this.persistExecutionState(active.executionId, transition.state)
     return true
   }
 

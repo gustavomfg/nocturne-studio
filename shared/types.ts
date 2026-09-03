@@ -47,6 +47,7 @@ export interface AgentEvent {
   params: Record<string, unknown>
   conversationId?: string
   runId?: string
+  executionId?: string
   sequence?: number
   timestamp?: string
 }

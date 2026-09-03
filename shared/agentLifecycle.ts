@@ -17,6 +17,7 @@ export interface AgentStatusEvent {
   status: AgentState
   conversationId?: string
   runId?: string
+  executionId?: string
   sequence: number
   timestamp: string
   error?: string
@@ -25,6 +26,7 @@ export interface AgentStatusEvent {
 export interface AgentRunState {
   runId: string
   conversationId: string
+  executionId?: string
   workspace: string
   mode: AgentMode
   state: AgentExecutionState
@@ -46,6 +48,7 @@ export type AgentLifecycleDetails =
     type: 'run.started'
     workspace: string
     mode: AgentMode
+    executionId?: string
   }
   | {
     type: 'run.stateChanged'
@@ -98,6 +101,7 @@ export function reduceAgentLifecycle(current: AgentRunState | null, event: Agent
       state: {
         runId: event.runId,
         conversationId: event.conversationId,
+        ...(event.executionId ? { executionId: event.executionId } : {}),
         workspace: event.workspace,
         mode: event.mode,
         state: 'planning',
