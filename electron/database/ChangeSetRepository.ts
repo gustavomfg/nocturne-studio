@@ -97,4 +97,11 @@ export class ChangeSetRepository {
       after_hash=@afterHash,after_size=@afterSize,updated_at=@updatedAt
       WHERE id=@id AND change_set_id=@changeSetId AND execution_id=@executionId`).run(change)
   }
+
+  saveDecision(changeSet: ChangeSetRecord, change: ChangeRecord) {
+    this.transactions.run('changes.decision', () => {
+      this.update(changeSet)
+      this.updateChange(change)
+    })
+  }
 }

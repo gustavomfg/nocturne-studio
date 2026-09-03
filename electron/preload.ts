@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS as channels } from '../shared/ipc/channels'
 import type { AgentEvent, WorkspaceChangeEvent } from '../shared/types'
 import type { ProjectIndexStatus, ValidationKind, ValidationRun } from '../shared/codeIntelligence'
+import type { ChangeRecord, ChangeSetRecord, FileDiff } from '../shared/changeControl'
 import type { AgentStatusEvent } from '../shared/agentLifecycle'
 import type {
   NocturneApi,
@@ -81,6 +82,13 @@ export const nocturneApi: NocturneApi = {
     list: (workspace: string, limit = 20) => ipcRenderer.invoke(channels.validation.list, { workspace, limit }),
     latest: (workspace: string) => ipcRenderer.invoke(channels.validation.latest, { workspace }),
     onStatus: (listener: (run: ValidationRun) => void) => on(channels.validation.changed, listener),
+  },
+  changeControl: {
+    get: (conversationId: string, executionId: string) => ipcRenderer.invoke(channels.changeControl.get, { conversationId, executionId }) as Promise<ChangeSetRecord | null>,
+    changes: (conversationId: string, changeSetId: string) => ipcRenderer.invoke(channels.changeControl.changes, { conversationId, changeSetId }) as Promise<ChangeRecord[]>,
+    diff: (conversationId: string, changeId: string) => ipcRenderer.invoke(channels.changeControl.diff, { conversationId, changeId }) as Promise<FileDiff | null>,
+    decide: (conversationId: string, changeId: string, status: 'accepted' | 'rejected') => ipcRenderer.invoke(channels.changeControl.decide, { conversationId, changeId, status }),
+    onChanged: (listener: (value: { executionId: string; changeSetId: string }) => void) => on(channels.changeControl.changed, listener),
   },
   conversations: {
     list: () => ipcRenderer.invoke(channels.conversations.list),

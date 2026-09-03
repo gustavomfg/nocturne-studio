@@ -1,5 +1,6 @@
 import type { AgentMode, Artifact, Attachment, AgentEvent, AppSettings, BuildRollbackStatus, CodexAccountStatus, CollectionPage, Conversation, DocumentUpdatePreview, FilePreview, GitInfo, Message, MessagePage, RendererPerformanceStats, Suggestion, SuggestionStatus, Workspace, WorkspaceChangeEvent, WorkspaceMemory } from '../types'
 import type { DiscoveryExclusion, ProjectExport, ProjectImport, ProjectIndexFile, ProjectIndexStatus, ProjectIndexSummary, ProjectSymbol, StackEvidence, ValidationKind, ValidationRun } from '../codeIntelligence'
+import type { ChangeRecord, ChangeSetRecord, FileDiff } from '../changeControl'
 import type { ReviewComparison } from '../suggestions'
 import type { BrainMemory, BrainMemoryHistoryEntry, BrainMemoryKind, BrainMemoryScope, BrainMemoryStatus, UpdateBrainMemoryInput } from '../brainMemory'
 import type { ProviderAvailability, ProviderDiagnostic } from '../ai/provider'
@@ -56,6 +57,13 @@ export interface NocturneApi {
     list(workspace: string, limit?: number): Promise<ValidationRun[]>
     latest(workspace: string): Promise<ValidationRun | null>
     onStatus(listener: (run: ValidationRun) => void): () => void
+  }
+  changeControl: {
+    get(conversationId: string, executionId: string): Promise<ChangeSetRecord | null>
+    changes(conversationId: string, changeSetId: string): Promise<ChangeRecord[]>
+    diff(conversationId: string, changeId: string): Promise<FileDiff | null>
+    decide(conversationId: string, changeId: string, status: 'accepted' | 'rejected'): Promise<{ changeSet: ChangeSetRecord; change: ChangeRecord }>
+    onChanged(listener: (value: { executionId: string; changeSetId: string }) => void): () => void
   }
   conversations: { list(): Promise<Conversation[]>; page(offset?: number, limit?: number): Promise<CollectionPage<Conversation>>; create(workspace: string): Promise<Conversation>; messages(id: string): Promise<Message[]>; messagePage(id: string, offset?: number, limit?: number): Promise<MessagePage>; delete(id: string): Promise<void> }
   ai: { send(conversationId: string, prompt: string, attachments?: string[], mode?: AgentMode): Promise<void>; cancel(conversationId: string): Promise<void>; saveAssistant(conversationId: string, content: string, metadata?: JsonValue): Promise<Message>; approve(key: string, accepted: boolean, forSession?: boolean): Promise<void>; rollbackStatus(conversationId: string): Promise<BuildRollbackStatus>; rollback(conversationId: string): Promise<{ restored: string[] } | null>; onEvent(listener: (event: AgentEvent) => void): () => void; onStatus(listener: (status: AgentStatusEvent) => void): () => void }

@@ -39,6 +39,9 @@ import { CheckpointService } from '../change-control/CheckpointService'
 import { WorkspaceCheckpointStore } from '../change-control/WorkspaceCheckpointStore'
 import { ChangeCaptureService } from '../change-control/ChangeCaptureService'
 import { ExecutionChangeControlService } from '../change-control/ExecutionChangeControlService'
+import { ChangeDiffService } from '../change-control/ChangeDiffService'
+import { ChangeDecisionService } from '../change-control/ChangeDecisionService'
+import { registerChangeControlIpc } from './registerChangeControlIpc'
 
 export function registerIpc(
   win: BrowserWindow,
@@ -158,6 +161,8 @@ export function registerIpc(
   const buildRollback = new BuildRollbackService()
   const checkpoints = new CheckpointService(database.checkpoints, new WorkspaceCheckpointStore(path.join(database.dataDirectory, 'change-checkpoints')))
   const changeControl = new ExecutionChangeControlService(checkpoints, new ChangeCaptureService(checkpoints, database.changeSets))
+  const changeDiffs = new ChangeDiffService(checkpoints, database.changeSets)
+  const changeDecisions = new ChangeDecisionService(database.changeSets)
   const documentUpdates = new DocumentUpdateService()
   const codexAccount = new CodexAccountService()
   const aiExecutions = new AiExecutionCoordinator(
@@ -208,6 +213,7 @@ export function registerIpc(
     },
     ipcMain,
   )
+  const disposeChangeControl = registerChangeControlIpc(win, { database, diffs: changeDiffs, decisions: changeDecisions }, ipcMain)
   const disposeSettings = registerSettingsIpc(win, database, logger, ipcMain)
   const disposeDocuments = registerDocumentsIpc(win, database, documentUpdates, ipcMain)
 
@@ -233,6 +239,7 @@ export function registerIpc(
       disposeFiles(),
       disposeDiagnostics(),
       disposeAi(),
+      disposeChangeControl(),
       disposeSettings(),
       disposeDocuments(),
     ]).then(() => undefined)
