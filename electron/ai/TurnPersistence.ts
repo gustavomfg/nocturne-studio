@@ -28,6 +28,7 @@ export function persistCompletedTurn(database: LocalDatabase, snapshot: Complete
   let assistantContent = snapshot.content.slice(0, PERSISTENCE_LIMITS.assistantCharacters)
   const files = [...new Set(snapshot.files)].slice(-300)
   const metadata = {
+    ...(snapshot.executionId ? { executionId: snapshot.executionId } : {}),
     diff: snapshot.diff.slice(-PERSISTENCE_LIMITS.metadataCharacters),
     files: files.map((filePath) => ({ path: filePath, kind: 'modified' })),
     plan: snapshot.plan.slice(-100),

@@ -162,6 +162,116 @@
   margin-left: 0;
 }
 
+.change-control-heading {
+  cursor: default;
+}
+
+.change-control-heading > span:last-child {
+  margin-left: auto;
+}
+
+.change-control-panel {
+  padding: var(--spacing-sm);
+  display: grid;
+  gap: var(--spacing-sm);
+}
+
+.change-control-summary,
+.change-control-loading,
+.change-control-notice {
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-caption);
+  display: flex;
+}
+
+.change-control-list {
+  display: grid;
+  gap: var(--spacing-sm);
+}
+
+.change-control-item {
+  min-width: 0;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-panel);
+}
+
+.change-control-item > header,
+.change-control-item > footer {
+  align-items: center;
+  gap: var(--spacing-xs);
+  display: flex;
+}
+
+.change-control-item > header strong {
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.change-control-status {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: var(--font-caption);
+}
+
+.change-control-status.accepted { color: var(--color-success); }
+.change-control-status.rejected,
+.change-control-status.conflicted { color: var(--color-danger); }
+
+.change-control-item > p {
+  margin: var(--spacing-xs) 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-caption);
+}
+
+.change-control-policy {
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--color-warning) !important;
+  display: flex;
+}
+
+.change-control-policy.blocked { color: var(--color-danger) !important; }
+
+.change-control-item > footer {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.change-control-item > footer button {
+  min-height: 30px;
+  padding: 0 var(--spacing-sm);
+  align-items: center;
+  gap: var(--spacing-2xs);
+  display: inline-flex;
+}
+
+.change-control-item > footer button.primary {
+  color: var(--color-success);
+}
+
+.change-control-diff {
+  max-height: 260px;
+  margin: var(--spacing-sm) 0 0;
+  padding: var(--spacing-sm);
+  color: var(--color-text-secondary);
+  font: var(--font-caption)/1.5 var(--font-mono);
+  white-space: pre-wrap;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: auto;
+}
+
+.change-control-diff::first-line { color: var(--color-text-muted); }
+
+.change-control-item > footer .closed { transform: rotate(-90deg); }
+
 .activity-section .files-panel, .activity-section .diff-panel, .activity-section .git-panel, .activity-section .document-panel {
   box-shadow: none;
   border: 0;

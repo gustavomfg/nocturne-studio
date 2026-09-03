@@ -4,6 +4,7 @@ import { Activity as ActivityIcon, Check, Command, Eye, ExternalLink, FileCode2,
 import type { Activity, Approval, BuildRollbackStatus, ChangedFile, DocumentUpdatePreview, GitInfo } from '../../types'
 import { useAppStore } from '../../store'
 import { errorMessage } from '../../shared/format'
+import { ChangeControlPanel } from './ChangeControlPanel'
 import { parseAwarenessSnapshot } from '../../../shared/awareness'
 import { useI18n } from '../../shared/i18n'
 import { DocumentUpdateDialog } from './DocumentUpdateDialog'
@@ -23,12 +24,13 @@ interface AgentActivityPanelProps {
 export function AgentActivityPanel({ gitInfo, onDecide, onError, onNotify, onGitRefresh, onArtifactsRefresh, onPreview }: AgentActivityPanelProps) {
   useRendererRenderCounter('agentActivity')
   const { t, language } = useI18n()
-  const { activities, approvals, diff, files, activeId, documentContent, awarenessMetadata } = useAppStore(useShallow((state) => ({
+  const { activities, approvals, diff, files, activeId, executionId, documentContent, awarenessMetadata } = useAppStore(useShallow((state) => ({
     activities: state.activities,
     approvals: state.approvals,
     diff: state.diff,
     files: state.files,
     activeId: state.activeId,
+    executionId: state.executionId,
     documentContent: [...state.messages].reverse().find((message) => message.role === 'assistant')?.content || '',
     awarenessMetadata: [...state.messages].reverse().find((message) => message.role === 'user')?.metadata ?? null,
   })))
@@ -126,6 +128,7 @@ export function AgentActivityPanel({ gitInfo, onDecide, onError, onNotify, onGit
     {(pendingApprovals.length > 0 || currentActivity) && <section className="activity-priority agent-priority-block" aria-labelledby="agent-priority-title"><h2 id="agent-priority-title"><ShieldCheck size={15}/>{pendingApprovals.length > 0 ? t('agent.nextAction') : t('agent.currentOperation')}</h2>{currentActivity && <div className={`current-operation ${currentActivity.status}`} role="status" aria-live="polite"><span>{currentActivity.status === 'running' ? <LoaderCircle size={15}/> : currentActivity.status === 'failed' ? <X size={15}/> : <Check size={15}/>}</span><div><small>{t('agent.currentState')}</small><strong>{currentActivity.label}</strong></div></div>}{pendingApprovals.length > 0 && <section aria-labelledby="pending-approvals-title"><h3 id="pending-approvals-title">{t('agent.pendingDecisions')} <span>{pendingApprovals.length}</span></h3><p className="priority-hint">{t('agent.pendingApprovalHint')}</p>{pendingApprovals.map((approval) => <ApprovalCard key={approval.key} approval={approval} onDecide={onDecide}/>)}</section>}</section>}
     <ActivityTimeline activities={activities}/>
     {awareness && <details className="activity-section awareness-section"><summary><Sparkles size={14}/>{t('agent.contextUsed')} <span>{awareness.selections.length}</span></summary><div className="awareness-panel">{awareness.selections.length ? awareness.selections.map((selection) => <article key={`${selection.source}-${selection.id}`}><header><strong>{selection.title}</strong><span>{selection.relevance}% {t('agent.relevant')}</span></header><p>{selection.reason}</p><small>{t('agent.source')}: {awarenessSourceLabel(selection.sourceType, t)} · {t('agent.scope')}: {selection.scope === 'conversation' ? t('agent.conversation') : t('agent.workspace')}{selection.updatedAt ? ` · ${t('agent.updatedAt')} ${new Date(selection.updatedAt).toLocaleString(language === 'en' ? 'en-US' : 'pt-BR')}` : ''}</small><details><summary>{t('agent.usedExcerpt')}</summary><pre>{selection.contentPreview}</pre></details></article>) : <p>{t('agent.noRelevantMemory')}</p>}</div></details>}
+    <ChangeControlPanel conversationId={activeId} executionId={executionId} onError={onError} onNotify={onNotify}/>
     {rollback?.createdAt && <details className="activity-section"><summary><RotateCcw size={14}/>{t('agent.lastBuildRollback')}</summary><div className="document-panel"><p>{rollback.available ? t('agent.canRestoreFiles', { count: rollback.files.length }) : rollback.reason}</p><button disabled={!rollback.available || rollingBack} onClick={() => void rollbackBuild()}>{rollingBack ? t('agent.reverting') : t('agent.revertChanges')}</button></div></details>}
     {!!files.length && <details className="activity-section" open><summary><FileCode2 size={14}/>{t('agent.changedFiles')} <span>{files.length}</span></summary><div className="files-panel">{files.slice(-300).map((file) => <ChangedFileRow key={file.path} file={file} onPreview={onPreview} onOpen={open}/>)}</div></details>}
     {diff && <DiffSection diff={diff}/>}

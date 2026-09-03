@@ -172,6 +172,7 @@ export function useAgentRunController({ hasNewerMessages, composerRef, isInterac
 
   const handleAgentEvent = useCallback((event: AgentEvent) => {
     const store = useAppStore.getState()
+    if (event.executionId) store.setExecutionId(event.executionId)
     const conversationId = typeof event.params.conversationId === 'string' ? event.params.conversationId : undefined
     const runId = typeof event.runId === 'string'
       ? event.runId
@@ -247,7 +248,7 @@ export function useAgentRunController({ hasNewerMessages, composerRef, isInterac
   const retryAvailableForActiveConversation = runRetryAvailable && lastAttemptRef.current?.conversationId === activeConversationId
 
   useEffect(() => {
-    const offStatus = window.nocturne.ai.onStatus(({ status, conversationId, runId, sequence, error }) => {
+    const offStatus = window.nocturne.ai.onStatus(({ status, conversationId, runId, sequence, executionId, error }) => {
       if (runId && retiredRunIdsRef.current.has(runId)) return
       if (!acceptSequence(runId, sequence)) return
       if (conversationId && conversationId !== activeTurnRef.current?.conversationId) return
@@ -259,6 +260,7 @@ export function useAgentRunController({ hasNewerMessages, composerRef, isInterac
         }
       }
       const store = useAppStore.getState()
+      if (executionId) store.setExecutionId(executionId)
       store.setStatus(status)
       if (status === 'completed' && activeTurnRef.current) store.setFinalizing(true)
       if (error) store.setError(error)
