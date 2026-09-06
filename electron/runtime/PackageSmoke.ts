@@ -33,10 +33,14 @@ export async function runPackageSmoke(output: string, dependencies: PackageSmoke
     const lifecycle = await recreateWindowForPackageSmoke(dependencies)
     const window = dependencies.getWindow()
     const preferences = (window?.webContents as Electron.WebContents & { getLastWebPreferences(): Electron.WebPreferences } | undefined)?.getLastWebPreferences()
-    const security = { contextIsolation: preferences?.contextIsolation === true, nodeIntegration: preferences?.nodeIntegration === false, sandbox: preferences?.sandbox === true }
+    const security = {
+      contextIsolationEnabled: preferences?.contextIsolation === true,
+      nodeIntegrationDisabled: preferences?.nodeIntegration === false,
+      sandboxEnabled: preferences?.sandbox === true,
+    }
     const finalUrl = window?.webContents.getURL()
     const navigation = { externalWindowsDenied: preload?.externalWindowsDenied === true, unexpectedNavigationBlocked: Boolean(originalUrl && finalUrl === originalUrl), originalUrl, finalUrl }
-    const ok = Boolean(preload?.available && preload.settings && preload.geolocation === 'denied' && sqlite && lifecycle.closed && lifecycle.activated && lifecycle.secondInstanceReused && lifecycle.api && lifecycle.settings && Object.values(security).every(Boolean) && navigation && Object.values(navigation).every(Boolean))
+    const ok = Boolean(preload?.available && preload.settings && preload.geolocation === 'denied' && sqlite && lifecycle.closed && lifecycle.activated && lifecycle.secondInstanceReused && lifecycle.api && lifecycle.settings && security.contextIsolationEnabled && security.nodeIntegrationDisabled && security.sandboxEnabled && navigation && Object.values(navigation).every(Boolean))
     fs.writeFileSync(output, `${JSON.stringify({ ok, packaged: app.isPackaged, preload, sqlite, lifecycle, security, navigation })}\n`, { encoding: 'utf8', mode: 0o600 })
     app.quit()
   } catch (error) {

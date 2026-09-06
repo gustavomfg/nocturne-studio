@@ -32,8 +32,10 @@ async function smokePackage() {
     if (result.code !== 0) throw new Error(`O aplicativo encerrou com código ${result.code}.\n${result.stderr}`)
     if (!fs.existsSync(resultPath)) throw new Error(`O aplicativo não produziu o resultado do smoke test.\n${result.stderr}`)
     const report = JSON.parse(fs.readFileSync(resultPath, 'utf8'))
-    const expectedChannels = ['ai', 'artifacts', 'brain', 'clipboard', 'codex', 'conversations', 'data', 'diagnostics', 'documents', 'files', 'git', 'memory', 'models', 'projectIndex', 'providers', 'settings', 'suggestions', 'validation', 'workspace']
-    if (!report.ok || !report.packaged || !report.sqlite || !report.lifecycle?.closed || !report.lifecycle?.activated || !report.lifecycle?.secondInstanceReused || !report.lifecycle?.api || !report.lifecycle?.settings || report.preload?.geolocation !== 'denied' || !report.security?.contextIsolation || !report.security?.sandbox || report.security?.nodeIntegration !== true || !report.navigation?.externalWindowsDenied || !report.navigation?.unexpectedNavigationBlocked || JSON.stringify(report.preload?.channels) !== JSON.stringify(expectedChannels)) {
+    const expectedChannels = ['ai', 'artifacts', 'brain', 'changeControl', 'clipboard', 'codex', 'conversations', 'data', 'diagnostics', 'documents', 'files', 'git', 'memory', 'models', 'projectIndex', 'providers', 'settings', 'suggestions', 'validation', 'workspace']
+    const securityValid = report.security?.contextIsolationEnabled === true && report.security?.nodeIntegrationDisabled === true && report.security?.sandboxEnabled === true
+    const channelsValid = JSON.stringify(report.preload?.channels) === JSON.stringify(expectedChannels)
+    if (!report.ok || !report.packaged || !report.sqlite || !report.lifecycle?.closed || !report.lifecycle?.activated || !report.lifecycle?.secondInstanceReused || !report.lifecycle?.api || !report.lifecycle?.settings || report.preload?.geolocation !== 'denied' || !securityValid || !report.navigation?.externalWindowsDenied || !report.navigation?.unexpectedNavigationBlocked || !channelsValid) {
       throw new Error(`Smoke test inválido: ${JSON.stringify(report)}`)
     }
     process.stdout.write(`Pacote validado: ${executable}\nSQLite, preload, isolamento e ciclo de vida do BrowserWindow responderam corretamente.\n`)
