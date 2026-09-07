@@ -14,6 +14,7 @@ import type { WorkspaceModelBindings } from '../ai/bindings'
 import type { CodexModel } from '../codexModels'
 import type { JsonValue } from '../json'
 import type { AgentStatusEvent } from '../agentLifecycle'
+import type { UpdateState } from '../updates'
 
 export interface ProviderConfigurationIpcError {
   code: ProviderConfigurationErrorCode
@@ -86,6 +87,7 @@ export interface NocturneApi {
   data: { export(): Promise<string | null>; import(): Promise<boolean> }
   diagnostics: { openLogs(): Promise<string>; copy(): Promise<string>; export(): Promise<string | null>; rendererError(value: { type: 'error' | 'unhandledRejection'; message: string; stack?: string }): Promise<void>; rendererStats(value: RendererPerformanceStats): Promise<void> }
   settings: { get(): Promise<AppSettings>; set(settings: Partial<AppSettings>): Promise<AppSettings> }
+  updates: { getState(): Promise<UpdateState>; check(): Promise<UpdateState>; download(): Promise<UpdateState>; retry(): Promise<UpdateState>; install(): Promise<UpdateState>; onStateChanged(listener: (state: UpdateState) => void): () => void }
   providers: {
     list(): Promise<ProviderConfigurationSummary[]>
     create(configuration: ProviderConfigurationInput, credential?: string): Promise<ProviderConfigurationSummary>

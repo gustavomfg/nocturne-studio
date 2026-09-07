@@ -14,6 +14,7 @@ export const IPC_CHANNELS = {
   data: { export: 'data:export', import: 'data:import' },
   diagnostics: { openLogs: 'diagnostics:openLogs', copy: 'diagnostics:copy', export: 'diagnostics:export', rendererError: 'diagnostics:rendererError', rendererStats: 'diagnostics:rendererStats' },
   settings: { get: 'settings:get', set: 'settings:set' },
+  updates: { getState: 'updates:getState', check: 'updates:check', download: 'updates:download', retry: 'updates:retry', install: 'updates:install', changed: 'updates:stateChanged' },
   providers: { list: 'providers:list', create: 'providers:create', update: 'providers:update', remove: 'providers:remove', testConnection: 'providers:testConnection', diagnose: 'providers:diagnose' },
   models: { list: 'models:list', refresh: 'models:refresh', bindings: 'models:bindings', setBindings: 'models:setBindings' },
   git: { status: 'git:status', commit: 'git:commit' },

@@ -5,7 +5,7 @@ import path from 'node:path'
 import { LocalDatabase } from './database/Database'
 import { registerIpc } from './ipc/registerIpc'
 import { diagnosticFingerprint, Logger, redactLogText } from './logging/Logger'
-import { startUpdateService } from './updates/UpdateService'
+import { startUpdateService, type UpdateService } from './updates/UpdateService'
 import { ModelRegistry } from './ai/ModelRegistry'
 import { ProviderRegistry } from './ai/ProviderRegistry'
 import { ProviderConfigurationService } from './ai/ProviderConfigurationService'
@@ -51,6 +51,7 @@ let packageSmokeScheduled = false
 let packagedRecoveryScheduled = false
 let packagedRecoveryStage = 'bootstrap'
 let disposeUpdates: (() => void) | null = null
+let updateService: UpdateService | null = null
 let providerConfigurations: ProviderConfigurationService | null = null
 let providerRegistry: ProviderRegistry | null = null
 let modelRegistry: ModelRegistry | null = null
@@ -72,6 +73,7 @@ async function shutdownResources() {
       failures.push(error)
     } finally {
       disposeUpdates = null
+      updateService = null
     }
     try {
       await disposeWindowIpc()
@@ -253,6 +255,7 @@ function createWindow() {
     },
     modelRegistry,
     providerRegistry,
+    updateService ?? undefined,
   )
   if (
     app.isPackaged &&
@@ -432,8 +435,12 @@ if (!hasSingleInstanceLock) app.quit()
 else void app.whenReady().then(() => {
   return initializeServices()
 }).then(() => {
+  if (logger) {
+    updateService = startUpdateService(logger, () => win, undefined, { autoStart: false })
+    disposeUpdates = () => updateService?.dispose()
+  }
   createWindow()
-  if (logger) disposeUpdates = startUpdateService(logger, () => win)
+  updateService?.start()
 }).catch((error) => {
   if (app.isPackaged && process.env.NOCTURNE_PACKAGED_RECOVERY_OUTPUT) {
     packagedRecovery.writeStartupFailure(error)

@@ -45,6 +45,8 @@ import { registerChangeControlIpc } from './registerChangeControlIpc'
 import { ChangeHunkService } from '../change-control/ChangeHunkService'
 import { WorkspaceChangeGate } from '../change-control/WorkspaceChangeGate'
 import { SnapshotRollbackService } from '../change-control/SnapshotRollbackService'
+import { registerUpdateIpc } from './registerUpdateIpc'
+import type { UpdateService } from '../updates/UpdateService'
 
 export function registerIpc(
   win: BrowserWindow,
@@ -54,6 +56,7 @@ export function registerIpc(
   modelCatalog: ModelCatalogOperations,
   modelRegistry: ModelRegistry,
   providerRegistry: ProviderRegistry,
+  updateService?: UpdateService,
 ) {
   const ipcMain = safeIpcMain(win, {
     onCompleted: ({ channel, durationMs, failed }) => {
@@ -245,6 +248,7 @@ export function registerIpc(
   const disposeChangeControl = registerChangeControlIpc(win, { database, diffs: changeDiffs, decisions: changeDecisions, hunks: changeHunks, rollback: snapshotRollback, resolveExecution: (executionId) => changeControl.resolve(executionId) }, ipcMain)
   const disposeSettings = registerSettingsIpc(win, database, logger, ipcMain)
   const disposeDocuments = registerDocumentsIpc(win, database, documentUpdates, ipcMain)
+  const disposeUpdates = registerUpdateIpc(win, updateService, ipcMain)
 
   return () => {
     aiExecutions.dispose()
@@ -271,6 +275,7 @@ export function registerIpc(
       disposeChangeControl(),
       disposeSettings(),
       disposeDocuments(),
+      disposeUpdates(),
     ]).then(() => undefined)
   }
 }

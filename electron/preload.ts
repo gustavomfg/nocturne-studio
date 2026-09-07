@@ -136,6 +136,14 @@ export const nocturneApi: NocturneApi = {
   data: { export: () => ipcRenderer.invoke(channels.data.export), import: () => ipcRenderer.invoke(channels.data.import) },
   diagnostics: { openLogs: () => ipcRenderer.invoke(channels.diagnostics.openLogs), copy: () => ipcRenderer.invoke(channels.diagnostics.copy), export: () => ipcRenderer.invoke(channels.diagnostics.export), rendererError: (value: unknown) => ipcRenderer.invoke(channels.diagnostics.rendererError, value), rendererStats: (value: unknown) => ipcRenderer.invoke(channels.diagnostics.rendererStats, value) },
   settings: { get: () => ipcRenderer.invoke(channels.settings.get), set: (settings: unknown) => ipcRenderer.invoke(channels.settings.set, settings) },
+  updates: {
+    getState: () => ipcRenderer.invoke(channels.updates.getState),
+    check: () => ipcRenderer.invoke(channels.updates.check),
+    download: () => ipcRenderer.invoke(channels.updates.download),
+    retry: () => ipcRenderer.invoke(channels.updates.retry),
+    install: () => ipcRenderer.invoke(channels.updates.install),
+    onStateChanged: (listener) => on(channels.updates.changed, listener),
+  },
   providers: {
     list: () => providerResult(ipcRenderer.invoke(channels.providers.list)),
     create: (configuration, credential) => providerResult(ipcRenderer.invoke(

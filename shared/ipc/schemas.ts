@@ -9,6 +9,7 @@ import { isJsonValueWithinLimit, type JsonValue } from '../json'
 import { validationKinds } from '../codeIntelligence'
 
 export const idSchema = z.string().uuid()
+export const updateCommandArgsSchema = z.tuple([])
 export const pageSchema = z.object({ offset: z.number().int().min(0).max(1_000_000), limit: z.number().int().min(1).max(200) }).strict()
 export const conversationPageSchema = pageSchema.extend({ conversationId: idSchema })
 export const aiSendSchema = z.object({ conversationId: idSchema, prompt: z.string().trim().min(1).max(100_000), attachments: z.array(z.string().trim().min(1).max(4_000)).max(10).default([]), mode: z.enum(agentModes).default('build') }).strict()
