@@ -64,6 +64,14 @@ const report = {
   },
   preservedData: null,
   credentialsCopied: false,
+  updateArchitecture: {
+    stateContract: 'UpdateState',
+    ipcDomain: 'updates',
+    automaticDialogs: false,
+    preloadStateHydration: true,
+    autoDownload: false,
+    autoInstallOnAppQuit: true,
+  },
   logs: [],
 }
 
@@ -126,6 +134,9 @@ async function main() {
     process.env.APPIMAGE = oldAppImage
   }
   updater = createUpdater(configPath, server.baseUrl, report.currentAppVersion)
+  if (updater.autoDownload !== false || updater.autoInstallOnAppQuit !== true) {
+    throw new Error('A configuração do rehearsal não preservou autoDownload=false e autoInstallOnAppQuit=true.')
+  }
   const check = await updater.checkForUpdates()
   report.allowPrerelease = updater.allowPrerelease
   report.channel = updater.channel || ''
@@ -163,6 +174,9 @@ async function main() {
   await disposeUpdater()
   const candidateResult = await launchPackagedApp(paths.candidateApp, 'candidate')
   report.candidateStartup = candidateResult.report
+  if (!candidateResult.report.preload?.updates || candidateResult.report.preload?.updateState?.status !== 'unsupported') {
+    throw new Error('O pacote candidato não expôs o estado unsupported do updater pelo preload.')
+  }
   const after = snapshotUserData()
   report.preservedData = comparePreservedData(before, after)
   if (!report.preservedData.ok) throw new Error(report.preservedData.reason)
@@ -410,7 +424,7 @@ function createUpdater(configPath, baseUrl, versionOverride) {
   updater.setFeedURL({ provider: 'github', owner: 'fixture', repo: 'rehearsal', protocol: 'http', host: new URL(baseUrl).host })
   updater.forceDevUpdateConfig = true
   updater.autoDownload = false
-  updater.autoInstallOnAppQuit = false
+  updater.autoInstallOnAppQuit = true
   updater.disableDifferentialDownload = true
   // The harness itself runs under the development Electron binary.  Override
   // only the adapter's identity so the real updater evaluates the packaged

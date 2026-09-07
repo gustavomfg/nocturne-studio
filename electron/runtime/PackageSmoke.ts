@@ -14,8 +14,9 @@ export async function runPackageSmoke(output: string, dependencies: PackageSmoke
       const api = window.nocturne
       const geolocation = await navigator.permissions.query({ name: 'geolocation' }).then((result) => result.state).catch(() => 'denied')
       const externalWindowsDenied = window.open('about:blank', '_blank') === null
-      return { available: Boolean(api), settings: typeof api?.settings?.get === 'function', channels: api ? Object.keys(api).sort() : [], geolocation, externalWindowsDenied }
-    })()` ) as { available: boolean; settings: boolean; channels: string[]; geolocation: PermissionState; externalWindowsDenied: boolean } | undefined
+      const updateState = typeof api?.updates?.getState === 'function' ? await api.updates.getState().catch(() => null) : null
+      return { available: Boolean(api), settings: typeof api?.settings?.get === 'function', updates: typeof api?.updates?.getState === 'function' && typeof api?.updates?.onStateChanged === 'function', updateState, channels: api ? Object.keys(api).sort() : [], geolocation, externalWindowsDenied }
+    })()` ) as { available: boolean; settings: boolean; updates: boolean; updateState: unknown; channels: string[]; geolocation: PermissionState; externalWindowsDenied: boolean } | undefined
     const originalUrl = currentWindow?.webContents.getURL()
     await currentWindow?.webContents.executeJavaScript(`(() => {
       const link = document.createElement('a')
@@ -40,7 +41,7 @@ export async function runPackageSmoke(output: string, dependencies: PackageSmoke
     }
     const finalUrl = window?.webContents.getURL()
     const navigation = { externalWindowsDenied: preload?.externalWindowsDenied === true, unexpectedNavigationBlocked: Boolean(originalUrl && finalUrl === originalUrl), originalUrl, finalUrl }
-    const ok = Boolean(preload?.available && preload.settings && preload.geolocation === 'denied' && sqlite && lifecycle.closed && lifecycle.activated && lifecycle.secondInstanceReused && lifecycle.api && lifecycle.settings && security.contextIsolationEnabled && security.nodeIntegrationDisabled && security.sandboxEnabled && navigation && Object.values(navigation).every(Boolean))
+    const ok = Boolean(preload?.available && preload.settings && preload.updates && preload.updateState && preload.geolocation === 'denied' && sqlite && lifecycle.closed && lifecycle.activated && lifecycle.secondInstanceReused && lifecycle.api && lifecycle.settings && lifecycle.updates && security.contextIsolationEnabled && security.nodeIntegrationDisabled && security.sandboxEnabled && navigation && Object.values(navigation).every(Boolean))
     fs.writeFileSync(output, `${JSON.stringify({ ok, packaged: app.isPackaged, preload, sqlite, lifecycle, security, navigation })}\n`, { encoding: 'utf8', mode: 0o600 })
     app.quit()
   } catch (error) {
@@ -66,9 +67,11 @@ async function recreateWindowForPackageSmoke(dependencies: PackageSmokeDependenc
     const api = window.nocturne
     let settings = false
     try { await api?.settings?.get(); settings = true } catch { /* handler ausente */ }
-    return { recreated: true, api: Boolean(api), settings }
-  })()` ) as { recreated: boolean; api: boolean; settings: boolean }
-  return { closed: true, activated: result.recreated, secondInstanceReused, api: result.api, settings: result.settings }
+    let updates = false
+    try { await api?.updates?.getState(); updates = typeof api?.updates?.onStateChanged === 'function' } catch { /* handler ausente */ }
+    return { recreated: true, api: Boolean(api), settings, updates }
+  })()` ) as { recreated: boolean; api: boolean; settings: boolean; updates: boolean }
+  return { closed: true, activated: result.recreated, secondInstanceReused, api: result.api, settings: result.settings, updates: result.updates }
 }
 
 async function waitForWindowLoad(window: BrowserWindow) {
