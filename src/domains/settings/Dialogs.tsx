@@ -52,7 +52,7 @@ export function OnboardingDialog({ workspace, onWorkspace, onSettings, onDismiss
   const blockers = items.filter((item) => item.required && !item.ok).length
   return <div className="modal-backdrop"><div ref={dialogRef} className="settings-dialog onboarding-dialog" role="dialog" aria-modal="true" aria-labelledby="onboarding-title" tabIndex={-1}>
     <div className="modal-title"><MoonStar size={18}/><strong id="onboarding-title">{t('onboarding.title')}</strong><button onClick={onDismiss}>{t('onboarding.notNow')}</button></div>
-    <div className={`readiness-summary ${blockers ? 'pending' : 'ready'}`} role="status"><span>{blockers ? t('onboarding.stepsNeedAttention', { count: blockers }) : t('onboarding.ready')}</span><small>{blockers ? t('onboarding.pendingCanExit') : t('onboarding.allComplete')}</small></div>
+    <div className={`readiness-summary ${blockers ? 'pending' : 'ready'}`} role="status"><strong className="readiness-summary-title">{blockers ? t('onboarding.stepsNeedAttention', { count: blockers }) : t('onboarding.ready')}</strong><small className="readiness-summary-description">{blockers ? t('onboarding.pendingCanExit') : t('onboarding.allComplete')}</small></div>
     <div className="onboarding-progress" role="progressbar" aria-valuemin={1} aria-valuemax={items.length} aria-valuenow={step + 1} aria-label={t('onboarding.progress')}>{items.map((_, index) => <span key={index} className={index <= step ? 'active' : ''}/>)}</div>
     <div className={`onboarding-check ${current.ok ? 'ok' : 'failed'}`} aria-hidden="true">{current.ok ? <Check size={18}/> : <X size={18}/>}</div><h2>{current.title}</h2><p>{current.body}</p>
     {!current.ok && current.fix && <code className="onboarding-fix">{current.fix}</code>}
