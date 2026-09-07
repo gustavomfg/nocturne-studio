@@ -25,8 +25,12 @@ describe('políticas de execução', () => {
     const updater = fs.readFileSync(path.join(process.cwd(), 'electron/updates/UpdateService.ts'), 'utf8')
     expect(builder).toContain('"provider": "github"')
     expect(builder).toContain('"repo": "Nocturne-Codex"')
-    expect(updater).toContain('if (!app.isPackaged || process.env.NOCTURNE_PACKAGE_SMOKE_OUTPUT)')
+    expect(updater).toContain('const packaged = options.packaged ?? app.isPackaged')
+    expect(updater).toContain('const packageSmoke = Boolean(process.env.NOCTURNE_PACKAGE_SMOKE_OUTPUT)')
     expect(updater).toContain('updater.autoDownload = false')
+    expect(updater).toContain('updater.autoInstallOnAppQuit = true')
+    expect(updater).toContain("status: 'unsupported'")
+    expect(updater).not.toContain('showMessageBox')
   })
   it('exercita bloqueios de janela e navegação no smoke empacotado', () => {
     const main = fs.readFileSync(path.join(process.cwd(), 'electron/main.ts'), 'utf8')

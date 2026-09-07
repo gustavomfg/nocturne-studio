@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test'
 import type { ValidationKind } from '../../shared/codeIntelligence'
+import type { UpdateState } from '../../shared/updates'
 
 export async function installNocturneMock(page: Page, options: { empty?: boolean; unauthorized?: boolean; moved?: boolean; signedOut?: boolean; messageCount?: number; firstRun?: boolean } = {}) {
   await page.addInitScript(({ empty, unauthorized, moved, signedOut, messageCount, firstRun }) => {
@@ -13,11 +14,13 @@ export async function installNocturneMock(page: Page, options: { empty?: boolean
     const workspaceChangeListeners: Array<(payload: unknown) => void> = []
     const projectIndexStatusListeners: Array<(payload: unknown) => void> = []
     const validationStatusListeners: Array<(payload: unknown) => void> = []
+    const updateStateListeners: Array<(payload: UpdateState) => void> = []
     let authorized = !unauthorized && !moved
     let unavailable = Boolean(moved)
     let selectedWorkspace = workspace
     let selectedExpected: string | undefined
     let memoryReads = 0
+    let updateState: UpdateState = { status: 'up-to-date', currentVersion: '1.0.0', platform: 'linux', lastCheckedAt: now }
     const rendererPerformanceReports: unknown[] = []
     type MockBrainMemory = { id: string; workspaceId: string; conversationId: string | null; kind: 'fact' | 'decision' | 'preference' | 'constraint' | 'learning'; scope: 'workspace' | 'conversation'; status: 'candidate' | 'active' | 'outdated' | 'archived'; content: string; confidence: number; sourceType: 'manual' | 'agent'; sourceId: string | null; createdAt: string; updatedAt: string; lastConfirmedAt: string | null; lastUsedAt: string | null; useCount: number }
     type MockProviderConfiguration = { id: string; providerType: 'openai-compatible'; displayName: string; source: 'local' | 'remote'; baseUrl: string; enabled: boolean; requiresAuthentication: boolean; credentialConfigured: boolean; timeoutMs: number; createdAt: string; updatedAt: string }
@@ -173,6 +176,28 @@ export async function installNocturneMock(page: Page, options: { empty?: boolean
           return { ...appSettings }
         },
       },
+      updates: {
+        getState: async () => structuredClone(updateState),
+        check: async () => {
+          updateState = { status: 'up-to-date', currentVersion: updateState.currentVersion, platform: updateState.platform, lastCheckedAt: now }
+          updateStateListeners.forEach((listener) => listener(structuredClone(updateState)))
+          return structuredClone(updateState)
+        },
+        download: async () => {
+          if (updateState.status !== 'available') throw new Error('Nenhuma atualização disponível.')
+          updateState = { status: 'downloading', currentVersion: updateState.currentVersion, platform: updateState.platform, version: updateState.version, percent: 0, transferred: null, total: null, bytesPerSecond: null }
+          updateStateListeners.forEach((listener) => listener(structuredClone(updateState)))
+          return structuredClone(updateState)
+        },
+        retry: async () => {
+          if (updateState.status !== 'error') throw new Error('Nenhum download interrompido.')
+          updateState = { status: 'downloading', currentVersion: updateState.currentVersion, platform: updateState.platform, version: updateState.version ?? '1.1.0', percent: 0, transferred: null, total: null, bytesPerSecond: null }
+          updateStateListeners.forEach((listener) => listener(structuredClone(updateState)))
+          return structuredClone(updateState)
+        },
+        install: async () => structuredClone(updateState),
+        onStateChanged: (listener: (state: UpdateState) => void) => { updateStateListeners.push(listener); return () => { const index = updateStateListeners.indexOf(listener); if (index >= 0) updateStateListeners.splice(index, 1) } },
+      },
       providers: {
         list: async () => providerConfigurations.map((item) => ({ ...item })),
         create: async (configuration: Omit<MockProviderConfiguration, 'id' | 'credentialConfigured' | 'createdAt' | 'updatedAt'>, credential?: string) => {
@@ -242,6 +267,8 @@ export async function installNocturneMock(page: Page, options: { empty?: boolean
       emitWorkspaceChange: (payload: unknown) => workspaceChangeListeners.forEach((listener) => listener(payload)),
       emitProjectIndexStatus: (payload: unknown) => projectIndexStatusListeners.forEach((listener) => listener(payload)),
       emitValidationStatus: (payload: unknown) => validationStatusListeners.forEach((listener) => listener(payload)),
+      emitUpdateState: (payload: UpdateState) => { updateState = structuredClone(payload); updateStateListeners.forEach((listener) => listener(structuredClone(updateState))) },
+      updateSubscriptionCount: () => updateStateListeners.length,
       calls: () => ({ selectedExpected, memoryReads }),
       performanceReports: () => structuredClone(rendererPerformanceReports),
     } })

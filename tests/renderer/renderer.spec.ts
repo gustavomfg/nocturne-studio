@@ -32,6 +32,71 @@ test.describe('renderer do produto', () => {
     await expect(page.getByRole('dialog', { name: 'Ajuda e atalhos' })).toBeVisible()
   })
 
+  test('mostra update disponível na interface sem modal nativo e acompanha o download', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await ready(page)
+    await page.evaluate(() => (window as unknown as { __nocturneTest: { emitUpdateState(payload: unknown): void } }).__nocturneTest.emitUpdateState({
+      status: 'available', currentVersion: '1.0.0', platform: 'linux', version: '1.1.0', releaseNotes: 'Melhorias de estabilidade.', releaseDate: null, discoveredBy: 'automatic',
+    }))
+    const toast = page.locator('.update-toast')
+    await expect(toast).toContainText('Nocturne Studio 1.1.0 está disponível')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await toast.getByRole('button', { name: 'Ver detalhes' }).click()
+    await expect(toast).toContainText('Melhorias de estabilidade.')
+    await toast.getByRole('button', { name: 'Baixar atualização' }).click()
+    await expect(page.locator('.update-toast')).toContainText('Baixando Nocturne Studio 1.1.0')
+
+    await page.evaluate(() => (window as unknown as { __nocturneTest: { emitUpdateState(payload: unknown): void } }).__nocturneTest.emitUpdateState({
+      status: 'downloading', currentVersion: '1.0.0', platform: 'linux', version: '1.1.0', percent: 68, transferred: 680, total: 1_000, bytesPerSecond: 100,
+    }))
+    await expect(page.locator('.update-toast')).toContainText('68%')
+  })
+
+  test('mantém update pronta como indicação discreta quando o usuário adia', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await ready(page)
+    await page.evaluate(() => (window as unknown as { __nocturneTest: { emitUpdateState(payload: unknown): void } }).__nocturneTest.emitUpdateState({
+      status: 'ready', currentVersion: '1.0.0', platform: 'linux', version: '1.1.0', releaseNotes: '', releaseDate: null,
+    }))
+    const toast = page.locator('.update-toast')
+    await expect(toast).toContainText('Atualização pronta')
+    await toast.getByRole('button', { name: 'Mais tarde' }).click()
+    await expect(page.locator('.update-indicator')).toContainText('Atualização pronta')
+  })
+
+  test('permite adiar um erro de download sem perder o retry no Settings', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await ready(page)
+    await page.evaluate(() => (window as unknown as { __nocturneTest: { emitUpdateState(payload: unknown): void } }).__nocturneTest.emitUpdateState({
+      status: 'error', currentVersion: '1.0.0', platform: 'linux', stage: 'download', message: 'erro', recoverable: true, version: '1.1.0',
+    }))
+    const toast = page.locator('.update-toast-error')
+    await expect(toast).toContainText('Download interrompido')
+    await toast.getByRole('button', { name: 'Mais tarde' }).click()
+    await expect(page.locator('.update-toast-error')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Abrir configurações' }).last().click()
+    const dialog = page.getByRole('dialog', { name: 'Configurações' })
+    await dialog.getByRole('button', { name: 'Aplicativo' }).click()
+    await expect(dialog.getByRole('region', { name: 'Atualizações' })).toContainText('O download da atualização foi interrompido.')
+  })
+
+  test('expõe check manual e subscription de updates no Settings', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await ready(page)
+    const count = () => page.evaluate(() => (window as unknown as { __nocturneTest: { updateSubscriptionCount(): number } }).__nocturneTest.updateSubscriptionCount())
+    await expect.poll(count).toBe(1)
+    await page.getByRole('button', { name: 'Abrir configurações' }).last().click()
+    const dialog = page.getByRole('dialog', { name: 'Configurações' })
+    await dialog.getByRole('button', { name: 'Aplicativo' }).click()
+    await expect(dialog.getByRole('region', { name: 'Atualizações' })).toBeVisible()
+    await expect(dialog).toContainText('Você está usando a versão mais recente.')
+    await dialog.getByRole('button', { name: 'Verificar atualizações' }).click()
+    await expect(dialog).toContainText('Você está usando a versão mais recente.')
+    await expect.poll(count).toBe(1)
+    await dialog.getByRole('button', { name: 'Fechar configurações' }).click()
+    await expect.poll(count).toBe(1)
+  })
+
   test('permite selecionar idioma e tema e mantém as preferências após reabrir configurações', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await ready(page)

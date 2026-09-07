@@ -1,17 +1,11 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AppUpdater, UpdateInfo } from 'electron-updater'
+import type { AppUpdater, ProgressInfo, UpdateInfo } from 'electron-updater'
 import type { Logger } from '../electron/logging/Logger'
-
-const electron = vi.hoisted(() => ({
-  responses: [] as number[],
-  showMessageBox: vi.fn(async () => ({ response: electron.responses.shift() ?? 1 })),
-}))
 
 vi.mock('electron', () => ({
   app: { isPackaged: true },
   BrowserWindow: class {},
-  dialog: { showMessageBox: electron.showMessageBox },
 }))
 
 vi.mock('electron-updater', () => ({ default: { autoUpdater: null } }))
@@ -27,85 +21,157 @@ class FakeUpdater extends EventEmitter {
   quitAndInstall = vi.fn()
 }
 
-const info = { version: '0.8.0', releaseNotes: '## Estabilidade\n- Corrige **recuperação**.' } as UpdateInfo
+const info = { version: '1.1.0', releaseDate: '2026-09-07T10:00:00.000Z', releaseNotes: '## Estabilidade\n- Corrige **recuperação**.' } as UpdateInfo
 const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger
 const window = {
   isDestroyed: () => false,
   setProgressBar: vi.fn(),
 }
-const messageOptions = () => (
-  electron.showMessageBox.mock.calls as unknown as Array<unknown[]>
-).map((call) => call[call.length - 1] as {
-  detail?: string
-  title?: string
-  buttons?: string[]
-})
+
+function createService(updater = new FakeUpdater()) {
+  const service = startUpdateService(
+    logger,
+    () => window as never,
+    updater as unknown as AppUpdater,
+    { currentVersion: '1.0.0', platform: 'win32', supported: true },
+  )
+  return { service, updater }
+}
 
 describe('serviço de atualização', () => {
   beforeEach(() => {
     vi.useFakeTimers()
-    electron.responses.length = 0
-    electron.showMessageBox.mockClear()
     window.setProgressBar.mockClear()
     vi.clearAllMocks()
   })
   afterEach(() => vi.useRealTimers())
 
-  it('consulta sem sobreposição e remove timers e listeners ao encerrar', async () => {
-    const updater = new FakeUpdater()
+  it('consulta automaticamente sem sobreposição e remove timers e listeners ao encerrar', async () => {
+    const { service, updater } = createService()
     let finishCheck: (() => void) | undefined
     updater.checkForUpdates.mockImplementation(() => new Promise((resolve) => { finishCheck = () => resolve(null) }))
-    const dispose = startUpdateService(logger, () => window as never, updater as unknown as AppUpdater)
+
     await vi.advanceTimersByTimeAsync(15_000)
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(1)
+    expect(service.getCurrentState()).toMatchObject({ status: 'checking', currentVersion: '1.0.0' })
     await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000)
     expect(updater.checkForUpdates).toHaveBeenCalledTimes(1)
-    finishCheck?.(); await Promise.resolve()
+
+    finishCheck?.()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(service.getCurrentState().status).toBe('up-to-date')
     expect(updater.listenerCount('update-available')).toBe(1)
-    dispose()
+    service.dispose()
     expect(updater.listenerCount('update-available')).toBe(0)
+    expect(updater.listenerCount('update-not-available')).toBe(0)
     await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000)
     expect(updater.checkForUpdates).toHaveBeenCalledTimes(1)
   })
 
-  it('pede consentimento uma única vez para baixar e instalar', async () => {
-    const updater = new FakeUpdater()
-    electron.responses.push(0, 0)
-    const dispose = startUpdateService(logger, () => window as never, updater as unknown as AppUpdater)
-    updater.emit('update-available', info)
-    updater.emit('update-available', info)
-    await vi.advanceTimersByTimeAsync(0)
-    expect(electron.showMessageBox).toHaveBeenCalledTimes(1)
-    expect(messageOptions()[0]).toMatchObject({
-      detail: expect.stringContaining('Notas da versão:'),
-    })
-    expect(updater.downloadUpdate).toHaveBeenCalledTimes(1)
-    updater.emit('download-progress', { percent: 37 })
-    expect(window.setProgressBar).toHaveBeenCalledWith(0.37)
-    updater.emit('update-downloaded', info)
-    updater.emit('update-downloaded', info)
-    await vi.advanceTimersByTimeAsync(0)
-    expect(electron.showMessageBox).toHaveBeenCalledTimes(2)
-    expect(updater.quitAndInstall).toHaveBeenCalledTimes(1)
-    expect(window.setProgressBar).toHaveBeenCalledWith(-1)
-    dispose()
+  it('publica update disponível sem abrir diálogo nativo', async () => {
+    const { service, updater } = createService()
+    const states: string[] = []
+    const unsubscribe = service.subscribe((state) => states.push(state.status))
+
+    updater.checkForUpdates.mockResolvedValue({ isUpdateAvailable: true, updateInfo: info, versionInfo: info } as never)
+    await service.checkForUpdates('automatic')
+
+    expect(service.getCurrentState()).toMatchObject({ status: 'available', version: '1.1.0', discoveredBy: 'automatic', releaseNotes: 'Estabilidade - Corrige recuperação.' })
+    expect(states).toEqual(['checking', 'available'])
+    expect(logger.info).toHaveBeenCalledWith('update', 'Atualização disponível.', { version: '1.1.0', discoveredBy: 'automatic' })
+    unsubscribe()
+    service.dispose()
   })
 
-  it('respeita a recusa e permite retomar após perda de conexão', async () => {
-    const updater = new FakeUpdater()
-    electron.responses.push(1, 0, 0)
-    const dispose = startUpdateService(logger, () => window as never, updater as unknown as AppUpdater)
+  it('expõe feedback de up-to-date para check manual', async () => {
+    const { service, updater } = createService()
+    await service.checkForUpdates('manual')
+
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(1)
+    expect(service.getCurrentState()).toMatchObject({ status: 'up-to-date', currentVersion: '1.0.0' })
+    service.dispose()
+  })
+
+  it('mantém download, progresso, ready e install como estados explícitos', async () => {
+    const { service, updater } = createService()
     updater.emit('update-available', info)
-    await vi.advanceTimersByTimeAsync(0)
-    expect(updater.downloadUpdate).not.toHaveBeenCalled()
-    updater.downloadUpdate.mockRejectedValueOnce(new Error('rede indisponível'))
+    expect(service.getCurrentState()).toMatchObject({ status: 'available', version: '1.1.0' })
+
+    const download = service.downloadUpdate()
+    expect(service.getCurrentState()).toMatchObject({ status: 'downloading', version: '1.1.0', percent: 0 })
+    updater.emit('download-progress', { percent: 37, transferred: 370, total: 1_000, bytesPerSecond: 100 } as ProgressInfo)
+    expect(service.getCurrentState()).toMatchObject({ status: 'downloading', percent: 37, transferred: 370, total: 1_000 })
+    expect(window.setProgressBar).toHaveBeenCalledWith(0.37)
+
+    updater.emit('update-downloaded', info)
+    await download
+    expect(service.getCurrentState()).toMatchObject({ status: 'ready', version: '1.1.0' })
+    expect(window.setProgressBar).toHaveBeenCalledWith(-1)
+
+    await service.installUpdate()
+    await service.installUpdate()
+    expect(updater.quitAndInstall).toHaveBeenCalledTimes(1)
+    service.dispose()
+  })
+
+  it('permite retry depois de uma falha de download sem abrir modal', async () => {
+    const { service, updater } = createService()
     updater.emit('update-available', info)
-    await vi.advanceTimersByTimeAsync(0)
-    expect(logger.warn).toHaveBeenCalled()
+    updater.downloadUpdate
+      .mockRejectedValueOnce(new Error('rede indisponível'))
+      .mockImplementationOnce(async () => {
+        updater.emit('update-downloaded', info)
+        return []
+      })
+
+    await service.downloadUpdate()
+    expect(service.getCurrentState()).toMatchObject({ status: 'error', stage: 'download', recoverable: true })
+    await service.retryDownload()
+    expect(service.getCurrentState()).toMatchObject({ status: 'ready', version: '1.1.0' })
     expect(updater.downloadUpdate).toHaveBeenCalledTimes(2)
-    expect(messageOptions()[2]).toMatchObject({
-      title: 'Download interrompido',
-      buttons: ['Retomar download', 'Mais tarde'],
-    })
-    dispose()
+    service.dispose()
+  })
+
+  it('deduplica checks e downloads e rejeita operações em estados inválidos', async () => {
+    const { service, updater } = createService()
+    let finishCheck: (() => void) | undefined
+    updater.checkForUpdates.mockImplementation(() => new Promise((resolve) => { finishCheck = () => resolve(null) }))
+    const firstCheck = service.checkForUpdates('manual')
+    const secondCheck = service.checkForUpdates('manual')
+    expect(firstCheck).toBe(secondCheck)
+    await Promise.resolve()
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(1)
+    finishCheck?.()
+    await firstCheck
+
+    expect(() => service.installUpdate()).toThrow('ainda não está pronta')
+    updater.emit('update-available', info)
+    let finishDownload: (() => void) | undefined
+    updater.downloadUpdate.mockImplementation(() => new Promise((resolve) => { finishDownload = () => resolve([]) }))
+    const firstDownload = service.downloadUpdate()
+    const secondDownload = service.downloadUpdate()
+    expect(firstDownload).toBe(secondDownload)
+    await Promise.resolve()
+    expect(updater.downloadUpdate).toHaveBeenCalledTimes(1)
+    expect(() => service.installUpdate()).toThrow('ainda não está pronta')
+    finishDownload?.()
+    await firstDownload
+    service.dispose()
+  })
+
+  it('representa alvos sem auto-update como unsupported', async () => {
+    const { service, updater } = createService()
+    service.dispose()
+    const unsupported = startUpdateService(
+      logger,
+      () => window as never,
+      updater as unknown as AppUpdater,
+      { currentVersion: '1.0.0', platform: 'linux', packaged: true, supported: false },
+    )
+
+    expect(unsupported.getCurrentState()).toMatchObject({ status: 'unsupported', platform: 'linux' })
+    await unsupported.checkForUpdates('manual')
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(0)
+    unsupported.dispose()
   })
 })

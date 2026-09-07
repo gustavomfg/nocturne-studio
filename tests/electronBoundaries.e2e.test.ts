@@ -12,6 +12,8 @@ import type {
   ProviderConfigurationSummary,
 } from '../shared/ai/providerConfiguration'
 import type { ModelDescriptor } from '../shared/ai/model'
+import type { UpdateState } from '../shared/updates'
+import type { UpdateService } from '../electron/updates/UpdateService'
 import { canonicalTestPath, expectUserOnlyMode, removeTestDirectory } from './helpers/platform'
 
 type IpcHandler = (event: unknown, ...args: unknown[]) => unknown
@@ -33,10 +35,11 @@ const electron = vi.hoisted(() => {
     return ''
   })
   const mainFrame = { routingId: 1, url: 'file:///nocturne/index.html' }
-  const mainWebContents: { send(channel: string, payload: unknown): void; mainFrame: typeof mainFrame; getURL(): string } = {
+  const mainWebContents: { send(channel: string, payload: unknown): void; mainFrame: typeof mainFrame; getURL(): string; isDestroyed(): boolean } = {
     send: (channel, payload) => rendererListeners.get(channel)?.forEach((listener) => listener({}, payload)),
     mainFrame,
     getURL: () => mainFrame.url,
+    isDestroyed: () => false,
   }
   return {
     handlers,
@@ -178,6 +181,18 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
   let root: string
   let flushLogger: (() => Promise<void>) | null = null
   const electronMock = electron
+  let updateState: UpdateState = { status: 'up-to-date', currentVersion: '1.0.0', platform: 'linux', lastCheckedAt: '2026-09-07T10:00:00.000Z' }
+  const updateListeners = new Set<(state: UpdateState) => void>()
+  const updateService: UpdateService = {
+    start: () => undefined,
+    getCurrentState: () => updateState,
+    checkForUpdates: async () => updateState,
+    downloadUpdate: async () => updateState,
+    retryDownload: async () => updateState,
+    installUpdate: async () => updateState,
+    subscribe: (listener) => { updateListeners.add(listener); return () => updateListeners.delete(listener) },
+    dispose: () => undefined,
+  }
 
   async function createDatabase(userDataPath: string) {
     const { LocalDatabase } = await import('../electron/database/Database')
@@ -202,7 +217,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     testModelRegistry.register(simulatedModel)
     const testProviderRegistry = new ProviderRegistry()
 
-    const mockBrowserWindow = { webContents: electronMock.mainWebContents }
+    const mockBrowserWindow = { isDestroyed: () => false, webContents: electronMock.mainWebContents }
     reinstallIpc = () => registerIpc(
       mockBrowserWindow as never,
       database!,
@@ -211,6 +226,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
       simulatedModelCatalog as never,
       testModelRegistry,
       testProviderRegistry,
+      updateService,
     )
     disposeIpc = reinstallIpc()
     await import('../electron/preload')
@@ -253,9 +269,16 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
   }
 
   it('expõe somente a API nomeada e cruza preload, IPC e SQLite', async () => {
-    expect(Object.keys(api).sort()).toEqual(['ai', 'artifacts', 'brain', 'changeControl', 'clipboard', 'codex', 'conversations', 'data', 'diagnostics', 'documents', 'files', 'git', 'memory', 'models', 'projectIndex', 'providers', 'settings', 'suggestions', 'validation', 'workspace'])
+    expect(Object.keys(api).sort()).toEqual(['ai', 'artifacts', 'brain', 'changeControl', 'clipboard', 'codex', 'conversations', 'data', 'diagnostics', 'documents', 'files', 'git', 'memory', 'models', 'projectIndex', 'providers', 'settings', 'suggestions', 'updates', 'validation', 'workspace'])
     await api.clipboard.writeText('commit sugerido')
     await expect(api.clipboard.readText()).resolves.toBe('commit sugerido')
+    await expect(api.updates.getState()).resolves.toMatchObject({ status: 'up-to-date', currentVersion: '1.0.0' })
+    const changed = new Promise<UpdateState>((resolve) => {
+      const off = api.updates.onStateChanged((next) => { off(); resolve(next) })
+    })
+    updateState = { status: 'ready', currentVersion: '1.0.0', platform: 'linux', version: '1.1.0', releaseNotes: '', releaseDate: null }
+    updateListeners.forEach((listener) => listener(updateState))
+    await expect(changed).resolves.toMatchObject({ status: 'ready', version: '1.1.0' })
     electron.dialogs.open.push({ canceled: false, filePaths: [workspace] })
     await expect(api.workspace.select()).resolves.toBe(workspace)
     expect(fs.existsSync(path.join(workspace, '.nocturne', 'project.json'))).toBe(true)
