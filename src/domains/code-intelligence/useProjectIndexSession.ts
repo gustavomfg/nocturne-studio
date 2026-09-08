@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DetectedStack, ProjectIndexStatus, ProjectIndexSummary, ProjectSymbol, StackEvidence, ValidationKind, ValidationRun } from '../../../shared/codeIntelligence'
+import type { SemanticIndexStatus, SemanticIndexSummary, SemanticSearchResult } from '../../../shared/semanticIndex'
 import { errorMessage } from '../../shared/format'
 
 interface ProjectIndexSessionOptions {
@@ -17,21 +18,30 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
   const [loading, setLoading] = useState(false)
   const [validationRuns, setValidationRuns] = useState<ValidationRun[]>([])
   const [validationLoading, setValidationLoading] = useState(false)
+  const [semanticStatus, setSemanticStatus] = useState<SemanticIndexStatus | null>(null)
+  const [semanticSummary, setSemanticSummary] = useState<SemanticIndexSummary | null>(null)
+  const [semanticResults, setSemanticResults] = useState<SemanticSearchResult[]>([])
+  const [semanticQuery, setSemanticQuery] = useState('')
+  const [semanticLoading, setSemanticLoading] = useState(false)
   const callbacksRef = useRef({ onError })
   callbacksRef.current = { onError }
 
   const refresh = useCallback(async () => {
     if (!workspace || !authorized) return
-    const [nextStatus, nextSummary, nextStack, nextValidation] = await Promise.all([
+    const [nextStatus, nextSummary, nextStack, nextValidation, nextSemanticStatus, nextSemanticSummary] = await Promise.all([
       window.nocturne.projectIndex.status(workspace),
       window.nocturne.projectIndex.summary(workspace),
       window.nocturne.projectIndex.stack(workspace),
       window.nocturne.validation.list(workspace, 20),
+      window.nocturne.semanticIndex.status(workspace),
+      window.nocturne.semanticIndex.summary(workspace),
     ])
     setStatus(nextStatus)
     setSummary(nextSummary)
     setStack(nextStack)
     setValidationRuns(nextValidation)
+    setSemanticStatus(nextSemanticStatus)
+    setSemanticSummary(nextSemanticSummary)
   }, [authorized, workspace])
 
   useEffect(() => {
@@ -42,6 +52,11 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
     setSymbols([])
     setValidationRuns([])
     setValidationLoading(false)
+    setSemanticStatus(null)
+    setSemanticSummary(null)
+    setSemanticResults([])
+    setSemanticQuery('')
+    setSemanticLoading(false)
     if (!workspace || !authorized) return () => { mounted = false }
     const offStatus = window.nocturne.projectIndex.onStatus((nextStatus) => {
       if (!mounted || nextStatus.workspace !== workspace) return
@@ -53,8 +68,13 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
       setValidationRuns((current) => [run, ...current.filter((item) => item.id !== run.id)].slice(0, 20))
       if (['passed', 'failed', 'cancelled', 'blocked'].includes(run.status)) setValidationLoading(false)
     })
+    const offSemanticStatus = window.nocturne.semanticIndex.onStatus((nextStatus) => {
+      if (!mounted || nextStatus.workspace !== workspace) return
+      setSemanticStatus(nextStatus)
+      if (['completed', 'cancelled', 'failed'].includes(nextStatus.status)) void refresh().catch((error) => callbacksRef.current.onError(errorMessage(error)))
+    })
     void refresh().catch((error) => { if (mounted) callbacksRef.current.onError(errorMessage(error)) })
-    return () => { mounted = false; offStatus(); offValidation() }
+    return () => { mounted = false; offStatus(); offValidation(); offSemanticStatus() }
   }, [authorized, refresh, workspace])
 
   const searchSymbols = useCallback(async () => {
@@ -101,6 +121,28 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
     try { await window.nocturne.validation.cancel(workspace) } catch (error) { callbacksRef.current.onError(errorMessage(error)) }
   }, [authorized, workspace])
 
+  const searchSemantic = useCallback(async () => {
+    if (!workspace || !authorized || !semanticQuery.trim()) return
+    setSemanticLoading(true)
+    try {
+      setSemanticResults(await window.nocturne.semanticIndex.search({ workspace, query: semanticQuery, limit: 20 }))
+    } catch (error) {
+      callbacksRef.current.onError(errorMessage(error))
+    } finally {
+      setSemanticLoading(false)
+    }
+  }, [authorized, semanticQuery, workspace])
+
+  const startSemantic = useCallback(async () => {
+    if (!workspace || !authorized) return
+    try { await window.nocturne.semanticIndex.start(workspace) } catch (error) { callbacksRef.current.onError(errorMessage(error)) }
+  }, [authorized, workspace])
+
+  const cancelSemantic = useCallback(async () => {
+    if (!workspace || !authorized) return
+    try { await window.nocturne.semanticIndex.cancel(workspace) } catch (error) { callbacksRef.current.onError(errorMessage(error)) }
+  }, [authorized, workspace])
+
   const detectedStack: DetectedStack | null = summary?.stack ?? null
-  return { status, summary, stack, detectedStack, symbols, query, setQuery, loading, refresh, searchSymbols, start, cancel, retry, validationRuns, validationLoading, runValidation, cancelValidation }
+  return { status, summary, stack, detectedStack, symbols, query, setQuery, loading, refresh, searchSymbols, start, cancel, retry, validationRuns, validationLoading, runValidation, cancelValidation, semanticStatus, semanticSummary, semanticResults, semanticQuery, setSemanticQuery, semanticLoading, searchSemantic, startSemantic, cancelSemantic }
 }

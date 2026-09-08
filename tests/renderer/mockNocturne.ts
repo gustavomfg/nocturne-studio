@@ -13,6 +13,7 @@ export async function installNocturneMock(page: Page, options: { empty?: boolean
     const statusListeners: Array<(payload: unknown) => void> = []
     const workspaceChangeListeners: Array<(payload: unknown) => void> = []
     const projectIndexStatusListeners: Array<(payload: unknown) => void> = []
+    const semanticIndexStatusListeners: Array<(payload: unknown) => void> = []
     const validationStatusListeners: Array<(payload: unknown) => void> = []
     const updateStateListeners: Array<(payload: UpdateState) => void> = []
     let authorized = !unauthorized && !moved
@@ -80,6 +81,14 @@ export async function installNocturneMock(page: Page, options: { empty?: boolean
         stack: async () => [],
         exclusions: async () => [],
         onStatus: (listener: (payload: unknown) => void) => { projectIndexStatusListeners.push(listener); return () => { const index = projectIndexStatusListeners.indexOf(listener); if (index >= 0) projectIndexStatusListeners.splice(index, 1) } },
+      },
+      semanticIndex: {
+        status: async () => null,
+        start: noop,
+        cancel: async () => false,
+        summary: async () => ({ workspace: selectedWorkspace, indexVersion: 1, latestRun: null, files: 0, units: 0, indexedUnits: 0, lexicalOnlyUnits: 0, staleUnits: 0, failedUnits: 0, excludedUnits: 0 }),
+        search: async () => [],
+        onStatus: (listener: (payload: unknown) => void) => { semanticIndexStatusListeners.push(listener); return () => { const index = semanticIndexStatusListeners.indexOf(listener); if (index >= 0) semanticIndexStatusListeners.splice(index, 1) } },
       },
       validation: {
         run: async (_workspace: string, kind: ValidationKind) => ({ id: `validation-${kind}`, workspace: selectedWorkspace, kind, command: '', args: [], status: 'blocked' as const, exitCode: null, durationMs: 0, outputSummary: '', artifacts: [], startedAt: now, completedAt: now, error: 'Nenhum comando identificado.' }),
@@ -230,7 +239,7 @@ export async function installNocturneMock(page: Page, options: { empty?: boolean
               source: provider.source,
               protocol: 'OpenAI-compatible',
               version: 'v1',
-              capabilities: { modelDiscovery: true, streaming: true, toolCalling: false, cancellation: true, authentication: provider.requiresAuthentication ? 'required' as const : 'none' as const },
+              capabilities: { modelDiscovery: true, embeddings: false, streaming: true, toolCalling: false, cancellation: true, authentication: provider.requiresAuthentication ? 'required' as const : 'none' as const },
               limitations: { requestTimeoutMs: { minimum: 1_000, maximum: 120_000 }, notes: ['Tool calling ainda não é normalizado por este adapter.'] },
             },
             availability: { status: 'available' as const, checkedAt: now },

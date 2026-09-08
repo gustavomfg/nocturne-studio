@@ -225,6 +225,15 @@ function App() {
     validationLoading: projectIndex.validationLoading,
     onValidation: (kind: Parameters<typeof projectIndex.runValidation>[0]) => void projectIndex.runValidation(kind),
     onValidationCancel: () => void projectIndex.cancelValidation(),
+    semanticStatus: projectIndex.semanticStatus,
+    semanticSummary: projectIndex.semanticSummary,
+    semanticResults: projectIndex.semanticResults,
+    semanticQuery: projectIndex.semanticQuery,
+    semanticLoading: projectIndex.semanticLoading,
+    onSemanticQuery: projectIndex.setSemanticQuery,
+    onSemanticSearch: () => void projectIndex.searchSemantic(),
+    onSemanticStart: () => void projectIndex.startSemantic(),
+    onSemanticCancel: () => void projectIndex.cancelSemantic(),
   }
 
   return <div className="app-shell">

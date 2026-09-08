@@ -248,6 +248,15 @@
   overflow-wrap: anywhere;
 }
 
+.project-index-semantic-metrics {
+  margin-top: var(--spacing-md);
+}
+
+.project-index-semantic-results article span {
+  color: var(--color-accent);
+  font-size: var(--font-caption);
+}
+
 .project-index-validation-actions {
   display: flex;
   flex-wrap: wrap;
