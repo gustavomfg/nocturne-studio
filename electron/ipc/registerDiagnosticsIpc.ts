@@ -13,12 +13,14 @@ import type { ProjectIndexMetricsSnapshot } from '../project-index/ProjectIndexS
 import type { SemanticIndexMetricsSnapshot } from '../semantic-index/SemanticIndexService'
 import type { ValidationMetricsSnapshot } from '../validation/ValidationPipeline'
 import type { ExecutionChangeControlMetrics } from '../change-control/ExecutionChangeControlService'
+import type { EngineeringSignalEngineMetrics } from '../engineering/EngineeringSignalEngine'
 
 export interface CodeIntelligenceMetrics {
   index: ProjectIndexMetricsSnapshot
   semanticIndex: SemanticIndexMetricsSnapshot
   validation: ValidationMetricsSnapshot
   changeControl: ExecutionChangeControlMetrics
+  engineering: EngineeringSignalEngineMetrics | null
 }
 
 export function registerDiagnosticsIpc(win: BrowserWindow, logger: Logger, providerConfigurations: ProviderConfigurationOperations, modelRegistry: ModelRegistry, registrar?: SafeIpcMain, codeIntelligenceMetrics?: () => CodeIntelligenceMetrics) {
