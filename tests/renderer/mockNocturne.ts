@@ -15,6 +15,7 @@ export async function installNocturneMock(page: Page, options: { empty?: boolean
     const projectIndexStatusListeners: Array<(payload: unknown) => void> = []
     const semanticIndexStatusListeners: Array<(payload: unknown) => void> = []
     const validationStatusListeners: Array<(payload: unknown) => void> = []
+    const engineeringStatusListeners: Array<(payload: unknown) => void> = []
     const updateStateListeners: Array<(payload: UpdateState) => void> = []
     let authorized = !unauthorized && !moved
     let unavailable = Boolean(moved)
@@ -89,6 +90,18 @@ export async function installNocturneMock(page: Page, options: { empty?: boolean
         summary: async () => ({ workspace: selectedWorkspace, indexVersion: 1, latestRun: null, files: 0, units: 0, indexedUnits: 0, lexicalOnlyUnits: 0, staleUnits: 0, failedUnits: 0, excludedUnits: 0 }),
         search: async () => [],
         onStatus: (listener: (payload: unknown) => void) => { semanticIndexStatusListeners.push(listener); return () => { const index = semanticIndexStatusListeners.indexOf(listener); if (index >= 0) semanticIndexStatusListeners.splice(index, 1) } },
+      },
+      engineeringIntelligence: {
+        report: async () => ({
+          snapshot: {
+            id: 'engineering-snapshot-1', workspace: selectedWorkspace, policyVersion: 1, evaluatedAt: now, previousSnapshotId: null,
+            sources: { projectIndexRunId: null, semanticIndexRunId: null, validationRunIds: [], executionIds: [], changeSetIds: [] },
+            categories: ['architecture', 'testing', 'security', 'documentation', 'dependencies', 'performance', 'developer-experience', 'release'].map((category) => ({ category, status: 'not-assessed', score: null, coverage: { available: 0, expected: null, percent: null }, signalIds: [], evidence: [], evaluatedAt: now })),
+            signalFingerprints: [], signalStates: [], stateFingerprint: 'a'.repeat(64),
+          },
+          signals: [], insights: [], trends: [],
+        }),
+        onChanged: (listener: (payload: unknown) => void) => { engineeringStatusListeners.push(listener); return () => { const index = engineeringStatusListeners.indexOf(listener); if (index >= 0) engineeringStatusListeners.splice(index, 1) } },
       },
       validation: {
         run: async (_workspace: string, kind: ValidationKind) => ({ id: `validation-${kind}`, workspace: selectedWorkspace, kind, command: '', args: [], status: 'blocked' as const, exitCode: null, durationMs: 0, outputSummary: '', artifacts: [], startedAt: now, completedAt: now, error: 'Nenhum comando identificado.' }),
@@ -276,6 +289,7 @@ export async function installNocturneMock(page: Page, options: { empty?: boolean
       emitWorkspaceChange: (payload: unknown) => workspaceChangeListeners.forEach((listener) => listener(payload)),
       emitProjectIndexStatus: (payload: unknown) => projectIndexStatusListeners.forEach((listener) => listener(payload)),
       emitValidationStatus: (payload: unknown) => validationStatusListeners.forEach((listener) => listener(payload)),
+      emitEngineeringStatus: (payload: unknown) => engineeringStatusListeners.forEach((listener) => listener(payload)),
       emitUpdateState: (payload: UpdateState) => { updateState = structuredClone(payload); updateStateListeners.forEach((listener) => listener(structuredClone(updateState))) },
       updateSubscriptionCount: () => updateStateListeners.length,
       calls: () => ({ selectedExpected, memoryReads }),

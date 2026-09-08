@@ -269,7 +269,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
   }
 
   it('expõe somente a API nomeada e cruza preload, IPC e SQLite', async () => {
-    expect(Object.keys(api).sort()).toEqual(['ai', 'artifacts', 'brain', 'changeControl', 'clipboard', 'codex', 'conversations', 'data', 'diagnostics', 'documents', 'files', 'git', 'memory', 'models', 'projectIndex', 'providers', 'semanticIndex', 'settings', 'suggestions', 'updates', 'validation', 'workspace'])
+    expect(Object.keys(api).sort()).toEqual(['ai', 'artifacts', 'brain', 'changeControl', 'clipboard', 'codex', 'conversations', 'data', 'diagnostics', 'documents', 'engineeringIntelligence', 'files', 'git', 'memory', 'models', 'projectIndex', 'providers', 'semanticIndex', 'settings', 'suggestions', 'updates', 'validation', 'workspace'])
     await api.clipboard.writeText('commit sugerido')
     await expect(api.clipboard.readText()).resolves.toBe('commit sugerido')
     await expect(api.updates.getState()).resolves.toMatchObject({ status: 'up-to-date', currentVersion: '1.0.0' })

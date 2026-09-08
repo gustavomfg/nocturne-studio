@@ -16,6 +16,7 @@ import type { JsonValue } from '../json'
 import type { AgentStatusEvent } from '../agentLifecycle'
 import type { UpdateState } from '../updates'
 import type { SemanticIndexStatus, SemanticIndexSummary, SemanticSearchResult } from '../semanticIndex'
+import type { EngineeringHealthReport } from '../engineeringIntelligence'
 
 export interface ProviderConfigurationIpcError {
   code: ProviderConfigurationErrorCode
@@ -60,6 +61,10 @@ export interface NocturneApi {
     summary(workspace: string): Promise<SemanticIndexSummary>
     search(query: { workspace: string; query: string; limit?: number; filters?: { paths?: string[]; languages?: string[]; kinds?: Array<'symbol' | 'markdown-section' | 'configuration' | 'text'>; symbols?: string[] } }): Promise<SemanticSearchResult[]>
     onStatus(listener: (status: SemanticIndexStatus) => void): () => void
+  }
+  engineeringIntelligence: {
+    report(workspace: string): Promise<EngineeringHealthReport>
+    onChanged(listener: (report: EngineeringHealthReport) => void): () => void
   }
   validation: {
     run(workspace: string, kind: ValidationKind, executionId?: string): Promise<ValidationRun>
