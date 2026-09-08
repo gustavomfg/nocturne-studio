@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DetectedStack, ProjectIndexStatus, ProjectIndexSummary, ProjectSymbol, StackEvidence, ValidationKind, ValidationRun } from '../../../shared/codeIntelligence'
 import type { SemanticIndexStatus, SemanticIndexSummary, SemanticSearchResult } from '../../../shared/semanticIndex'
+import type { EngineeringHealthReport } from '../../../shared/engineeringIntelligence'
 import { errorMessage } from '../../shared/format'
 
 interface ProjectIndexSessionOptions {
@@ -23,18 +24,20 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
   const [semanticResults, setSemanticResults] = useState<SemanticSearchResult[]>([])
   const [semanticQuery, setSemanticQuery] = useState('')
   const [semanticLoading, setSemanticLoading] = useState(false)
+  const [engineeringReport, setEngineeringReport] = useState<EngineeringHealthReport | null>(null)
   const callbacksRef = useRef({ onError })
   callbacksRef.current = { onError }
 
   const refresh = useCallback(async () => {
     if (!workspace || !authorized) return
-    const [nextStatus, nextSummary, nextStack, nextValidation, nextSemanticStatus, nextSemanticSummary] = await Promise.all([
+    const [nextStatus, nextSummary, nextStack, nextValidation, nextSemanticStatus, nextSemanticSummary, nextEngineeringReport] = await Promise.all([
       window.nocturne.projectIndex.status(workspace),
       window.nocturne.projectIndex.summary(workspace),
       window.nocturne.projectIndex.stack(workspace),
       window.nocturne.validation.list(workspace, 20),
       window.nocturne.semanticIndex.status(workspace),
       window.nocturne.semanticIndex.summary(workspace),
+      window.nocturne.engineeringIntelligence.report(workspace),
     ])
     setStatus(nextStatus)
     setSummary(nextSummary)
@@ -42,6 +45,7 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
     setValidationRuns(nextValidation)
     setSemanticStatus(nextSemanticStatus)
     setSemanticSummary(nextSemanticSummary)
+    setEngineeringReport(nextEngineeringReport)
   }, [authorized, workspace])
 
   useEffect(() => {
@@ -57,6 +61,7 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
     setSemanticResults([])
     setSemanticQuery('')
     setSemanticLoading(false)
+    setEngineeringReport(null)
     if (!workspace || !authorized) return () => { mounted = false }
     const offStatus = window.nocturne.projectIndex.onStatus((nextStatus) => {
       if (!mounted || nextStatus.workspace !== workspace) return
@@ -73,8 +78,12 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
       setSemanticStatus(nextStatus)
       if (['completed', 'cancelled', 'failed'].includes(nextStatus.status)) void refresh().catch((error) => callbacksRef.current.onError(errorMessage(error)))
     })
+    const offEngineering = window.nocturne.engineeringIntelligence.onChanged((report) => {
+      if (!mounted || report.snapshot.workspace !== workspace) return
+      setEngineeringReport(report)
+    })
     void refresh().catch((error) => { if (mounted) callbacksRef.current.onError(errorMessage(error)) })
-    return () => { mounted = false; offStatus(); offValidation(); offSemanticStatus() }
+    return () => { mounted = false; offStatus(); offValidation(); offSemanticStatus(); offEngineering() }
   }, [authorized, refresh, workspace])
 
   const searchSymbols = useCallback(async () => {
@@ -144,5 +153,5 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
   }, [authorized, workspace])
 
   const detectedStack: DetectedStack | null = summary?.stack ?? null
-  return { status, summary, stack, detectedStack, symbols, query, setQuery, loading, refresh, searchSymbols, start, cancel, retry, validationRuns, validationLoading, runValidation, cancelValidation, semanticStatus, semanticSummary, semanticResults, semanticQuery, setSemanticQuery, semanticLoading, searchSemantic, startSemantic, cancelSemantic }
+  return { status, summary, stack, detectedStack, symbols, query, setQuery, loading, refresh, searchSymbols, start, cancel, retry, validationRuns, validationLoading, runValidation, cancelValidation, semanticStatus, semanticSummary, semanticResults, semanticQuery, setSemanticQuery, semanticLoading, searchSemantic, startSemantic, cancelSemantic, engineeringReport }
 }
