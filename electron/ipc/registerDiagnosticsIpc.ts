@@ -10,11 +10,13 @@ import { IPC_CHANNELS } from '../../shared/ipc/channels'
 import { writeAtomicFile } from '../persistence/AtomicFile'
 import { safeIpcMain, type SafeIpcMain } from './safeIpc'
 import type { ProjectIndexMetricsSnapshot } from '../project-index/ProjectIndexService'
+import type { SemanticIndexMetricsSnapshot } from '../semantic-index/SemanticIndexService'
 import type { ValidationMetricsSnapshot } from '../validation/ValidationPipeline'
 import type { ExecutionChangeControlMetrics } from '../change-control/ExecutionChangeControlService'
 
 export interface CodeIntelligenceMetrics {
   index: ProjectIndexMetricsSnapshot
+  semanticIndex: SemanticIndexMetricsSnapshot
   validation: ValidationMetricsSnapshot
   changeControl: ExecutionChangeControlMetrics
 }
