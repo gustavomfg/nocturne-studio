@@ -41,6 +41,7 @@ export class LocalDatabase {
   get modelCatalog() { return this.repositories.modelCatalog }
   get workspaceModelBindings() { return this.repositories.workspaceModelBindings }
   get projectIndex() { return this.repositories.projectIndex }
+  get semanticIndex() { return this.repositories.semanticIndex }
   get validation() { return this.repositories.validation }
   get executions() { return this.repositories.executions }
   get checkpoints() { return this.repositories.checkpoints }

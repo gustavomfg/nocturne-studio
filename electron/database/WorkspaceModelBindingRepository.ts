@@ -69,6 +69,10 @@ function cloneBindings(bindings: WorkspaceModelBindings): WorkspaceModelBindings
     defaultBinding: bindings.defaultBinding
       ? { ...bindings.defaultBinding }
       : undefined,
+    embeddingBinding: bindings.embeddingBinding
+      ? { ...bindings.embeddingBinding }
+      : undefined,
+    ...(bindings.remoteEmbeddingAllowed === undefined ? {} : { remoteEmbeddingAllowed: bindings.remoteEmbeddingAllowed }),
   }
 }
 

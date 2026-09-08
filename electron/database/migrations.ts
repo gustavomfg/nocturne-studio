@@ -479,6 +479,87 @@ export const migrations: Migration[] = [
     if (!hasColumn(db, 'validation_runs', 'execution_id')) db.exec('ALTER TABLE validation_runs ADD COLUMN execution_id TEXT REFERENCES executions(id) ON DELETE SET NULL')
     db.exec('CREATE INDEX IF NOT EXISTS idx_validation_runs_execution ON validation_runs(execution_id, started_at DESC)')
   } },
+  { version: 25, up: (db) => db.exec(`
+    CREATE TABLE IF NOT EXISTS semantic_index_runs (
+      id TEXT PRIMARY KEY,
+      workspace TEXT NOT NULL,
+      index_version INTEGER NOT NULL CHECK(index_version >= 1),
+      kind TEXT NOT NULL CHECK(kind IN ('initial','incremental','rebuild','retry')),
+      status TEXT NOT NULL CHECK(status IN ('queued','running','completed','cancelled','failed')),
+      total_files INTEGER NOT NULL DEFAULT 0 CHECK(total_files >= 0),
+      processed_files INTEGER NOT NULL DEFAULT 0 CHECK(processed_files >= 0),
+      indexed_units INTEGER NOT NULL DEFAULT 0 CHECK(indexed_units >= 0),
+      lexical_only_units INTEGER NOT NULL DEFAULT 0 CHECK(lexical_only_units >= 0),
+      failed_files INTEGER NOT NULL DEFAULT 0 CHECK(failed_files >= 0),
+      excluded_files INTEGER NOT NULL DEFAULT 0 CHECK(excluded_files >= 0),
+      started_at TEXT NOT NULL,
+      completed_at TEXT,
+      updated_at TEXT NOT NULL,
+      error TEXT,
+      FOREIGN KEY (workspace) REFERENCES workspaces(path) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_semantic_index_runs_workspace
+      ON semantic_index_runs(workspace, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS semantic_units (
+      id TEXT PRIMARY KEY,
+      workspace TEXT NOT NULL,
+      relative_path TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('symbol','markdown-section','configuration','text')),
+      language TEXT,
+      symbol_id TEXT,
+      symbol_name TEXT,
+      start_line INTEGER NOT NULL CHECK(start_line >= 1),
+      start_column INTEGER NOT NULL CHECK(start_column >= 1),
+      end_line INTEGER NOT NULL CHECK(end_line >= start_line),
+      end_column INTEGER NOT NULL CHECK(end_column >= 1),
+      start_offset INTEGER CHECK(start_offset IS NULL OR start_offset >= 0),
+      end_offset INTEGER CHECK(end_offset IS NULL OR end_offset >= 0),
+      source_hash TEXT NOT NULL CHECK(length(source_hash) = 64),
+      chunk_hash TEXT NOT NULL CHECK(length(chunk_hash) = 64),
+      normalized_text TEXT NOT NULL CHECK(length(normalized_text) BETWEEN 1 AND 100000),
+      chunk_strategy_version TEXT NOT NULL CHECK(length(chunk_strategy_version) BETWEEN 1 AND 100),
+      embedding_provider_id TEXT,
+      embedding_model_id TEXT,
+      embedding_model_version TEXT,
+      embedding_dimensions INTEGER CHECK(embedding_dimensions IS NULL OR embedding_dimensions > 0),
+      embedding BLOB,
+      status TEXT NOT NULL CHECK(status IN ('pending','processing','lexical-only','indexed','stale','failed','incompatible','excluded')),
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      indexed_at TEXT,
+      FOREIGN KEY (workspace, relative_path) REFERENCES project_index_files(workspace, relative_path) ON DELETE CASCADE,
+      CHECK((embedding IS NULL AND embedding_dimensions IS NULL) OR (embedding IS NOT NULL AND embedding_dimensions IS NOT NULL)),
+      CHECK((embedding_provider_id IS NULL AND embedding_model_id IS NULL AND embedding_model_version IS NULL) OR (embedding_provider_id IS NOT NULL AND embedding_model_id IS NOT NULL))
+    );
+    CREATE INDEX IF NOT EXISTS idx_semantic_units_workspace_path
+      ON semantic_units(workspace, relative_path, start_line);
+    CREATE INDEX IF NOT EXISTS idx_semantic_units_workspace_status
+      ON semantic_units(workspace, status, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_semantic_units_workspace_language
+      ON semantic_units(workspace, language, relative_path);
+    CREATE INDEX IF NOT EXISTS idx_semantic_units_chunk
+      ON semantic_units(workspace, source_hash, chunk_hash, chunk_strategy_version);
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS semantic_units_fts USING fts5(
+      normalized_text,
+      content='semantic_units',
+      content_rowid='rowid',
+      tokenize='unicode61 remove_diacritics 2'
+    );
+    CREATE TRIGGER IF NOT EXISTS semantic_units_ai AFTER INSERT ON semantic_units BEGIN
+      INSERT INTO semantic_units_fts(rowid, normalized_text) VALUES (new.rowid, new.normalized_text);
+    END;
+    CREATE TRIGGER IF NOT EXISTS semantic_units_ad AFTER DELETE ON semantic_units BEGIN
+      INSERT INTO semantic_units_fts(semantic_units_fts, rowid, normalized_text) VALUES ('delete', old.rowid, old.normalized_text);
+    END;
+    CREATE TRIGGER IF NOT EXISTS semantic_units_au AFTER UPDATE OF normalized_text ON semantic_units BEGIN
+      INSERT INTO semantic_units_fts(semantic_units_fts, rowid, normalized_text) VALUES ('delete', old.rowid, old.normalized_text);
+      INSERT INTO semantic_units_fts(rowid, normalized_text) VALUES (new.rowid, new.normalized_text);
+    END;
+    INSERT INTO semantic_units_fts(semantic_units_fts) VALUES ('rebuild');
+  `) },
 ]
 
 export function migrateDatabase(db: Database.Database, currentVersion: number, availableMigrations: Migration[] = migrations) {

@@ -13,6 +13,7 @@ import { WorkspaceMemoryRepository } from './WorkspaceMemoryRepository'
 import { WorkspaceModelBindingRepository } from './WorkspaceModelBindingRepository'
 import { WorkspaceRepository } from './WorkspaceRepository'
 import { ProjectIndexRepository } from './ProjectIndexRepository'
+import { SemanticIndexRepository } from './SemanticIndexRepository'
 import { ValidationRepository } from './ValidationRepository'
 import { ExecutionRepository } from './ExecutionRepository'
 import { CheckpointRepository } from './CheckpointRepository'
@@ -34,6 +35,7 @@ export interface DatabaseRepositories {
   modelCatalog: ModelCatalogRepository
   workspaceModelBindings: WorkspaceModelBindingRepository
   projectIndex: ProjectIndexRepository
+  semanticIndex: SemanticIndexRepository
   validation: ValidationRepository
   executions: ExecutionRepository
   checkpoints: CheckpointRepository
@@ -65,6 +67,7 @@ export function createDatabaseRepositories(runtime: DatabaseRuntime): DatabaseRe
     modelCatalog: new ModelCatalogRepository(database, transactions),
     workspaceModelBindings,
     projectIndex: new ProjectIndexRepository(database, transactions),
+    semanticIndex: new SemanticIndexRepository(database, transactions),
     validation: new ValidationRepository(database, transactions),
     executions: new ExecutionRepository(database, transactions),
     checkpoints: new CheckpointRepository(database, transactions),
