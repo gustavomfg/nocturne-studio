@@ -261,6 +261,32 @@ export class ProjectIndexRepository {
     return rows.map((row) => ({ ...row, exported: Boolean(row.exported), location: { startLine: row.startLine, startColumn: row.startColumn, endLine: row.endLine, endColumn: row.endColumn } }))
   }
 
+  listSymbolsForFile(workspace: string, relativePath: string, limit = 2_000): ProjectSymbol[] {
+    const rows = this.database.prepare(`SELECT id,workspace,relative_path relativePath,analyzed_hash analyzedHash,
+      kind,name,qualified_name qualifiedName,scope,signature,start_line startLine,start_column startColumn,
+      end_line endLine,end_column endColumn,exported,parser_id parserId,parser_version parserVersion
+      FROM project_index_symbols WHERE workspace=? AND relative_path=?
+      ORDER BY start_line,start_column,name LIMIT ?`).all(workspace, relativePath, Math.max(1, Math.min(2_000, Math.trunc(limit)))) as Array<{
+        id: string
+        workspace: string
+        relativePath: string
+        analyzedHash: string
+        kind: ProjectSymbol['kind']
+        name: string
+        qualifiedName: string | null
+        scope: string | null
+        signature: string | null
+        startLine: number
+        startColumn: number
+        endLine: number
+        endColumn: number
+        exported: number
+        parserId: string
+        parserVersion: string
+      }>
+    return rows.map((row) => ({ ...row, exported: Boolean(row.exported), location: { startLine: row.startLine, startColumn: row.startColumn, endLine: row.endLine, endColumn: row.endColumn } }))
+  }
+
   listImports(workspace: string, relativePath?: string): ProjectImport[] {
     const rows = this.database.prepare(`SELECT id,workspace,source_path sourcePath,source_hash sourceHash,
       specifier,target_path targetPath,target_hash targetHash,kind,imported_names importedNames,

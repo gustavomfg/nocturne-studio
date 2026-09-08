@@ -41,6 +41,14 @@ export interface ProjectIndexMetric {
   parserDurationsMs: Record<string, number>
 }
 
+export interface ProjectIndexFileEvent {
+  workspace: string
+  relativePath: string
+  state: ProjectIndexFile['state']
+  analyzedHash: string | null
+  runId: string
+}
+
 export interface ProjectIndexMetricsSnapshot {
   runs: number
   incrementalRuns: number
@@ -63,6 +71,7 @@ export interface ProjectIndexServiceOptions {
   maxParseBytes?: number
   onStatus?(status: ProjectIndexStatus): void
   onMetric?(metric: ProjectIndexMetric): void
+  onFileProcessed?(event: ProjectIndexFileEvent): void
   isChangeControlPending?(workspace: string): boolean
 }
 
@@ -106,11 +115,13 @@ export class ProjectIndexService {
     this.maxParseBytes = options.maxParseBytes ?? CODE_INTELLIGENCE_LIMITS.maxParseBytes
     this.onStatus = options.onStatus
     this.onMetric = options.onMetric
+    this.onFileProcessed = options.onFileProcessed
     this.isChangeControlPending = options.isChangeControlPending
   }
 
   private readonly onStatus: ((status: ProjectIndexStatus) => void) | undefined
   private readonly onMetric: ((metric: ProjectIndexMetric) => void) | undefined
+  private readonly onFileProcessed: ((event: ProjectIndexFileEvent) => void) | undefined
   private readonly isChangeControlPending: ((workspace: string) => boolean) | undefined
 
   ensureIndexed(workspace: string) {
@@ -163,6 +174,14 @@ export class ProjectIndexService {
 
   listSymbols(workspace: string, query?: string, limit?: number) {
     return this.repository.listSymbols(path.resolve(workspace), query, limit)
+  }
+
+  listSymbolsForFile(workspace: string, relativePath: string, limit?: number) {
+    return this.repository.listSymbolsForFile(path.resolve(workspace), relativePath, limit)
+  }
+
+  getFile(workspace: string, relativePath: string) {
+    return this.repository.getFile(path.resolve(workspace), relativePath)
   }
 
   listImports(workspace: string, relativePath?: string) {
@@ -341,7 +360,7 @@ export class ProjectIndexService {
         this.assertNotCancelled(controller.signal)
         this.currentPaths.set(workspace, file.relativePath)
         run.phase = 'hashing'
-        const result = await this.processFile(workspace, file, known, controller.signal, parserDurationsMs, kind === 'incremental')
+        const result = await this.processFile(workspace, file, known, controller.signal, parserDurationsMs, kind === 'incremental', runId)
         run.processedFiles += 1
         run.pendingFiles = Math.max(0, run.totalFiles - run.processedFiles)
         if (result === 'failed') {
@@ -416,7 +435,7 @@ export class ProjectIndexService {
     return this.discover(workspace, [...new Set([...indexedPaths, ...requestedPaths])], signal)
   }
 
-  private async processFile(workspace: string, discovered: DiscoveredFile, known: Map<string, ProjectIndexFile>, signal: AbortSignal, parserDurationsMs: Record<string, number>, forceProcess = false): Promise<FileProcessingResult> {
+  private async processFile(workspace: string, discovered: DiscoveredFile, known: Map<string, ProjectIndexFile>, signal: AbortSignal, parserDurationsMs: Record<string, number>, forceProcess = false, runId = ''): Promise<FileProcessingResult> {
     const previous = known.get(discovered.relativePath)
     const unchanged = !forceProcess && previous && previous.size === discovered.size && previous.mtimeMs === discovered.mtimeMs && previous.mode === discovered.mode
       && previous.analyzedHash && ['indexed', 'unsupported'].includes(previous.state)
@@ -437,6 +456,7 @@ export class ProjectIndexService {
       const failed = fileState(discovered, workspace, previous, null, languageForPath(discovered.relativePath), 'failed', errorText(error))
       this.repository.markFileState(failed)
       known.set(discovered.relativePath, failed)
+      this.onFileProcessed?.({ workspace, relativePath: discovered.relativePath, state: failed.state, analyzedHash: failed.analyzedHash, runId })
       return 'failed'
     }
     this.assertNotCancelled(signal)
@@ -446,6 +466,7 @@ export class ProjectIndexService {
       const refreshed = fileState(discovered, workspace, previous, observedHash, previous.language, 'indexed', null, previous.parserId, previous.parserVersion, previous.analyzedAt)
       this.repository.markFileState(refreshed)
       known.set(discovered.relativePath, refreshed)
+      this.onFileProcessed?.({ workspace, relativePath: discovered.relativePath, state: refreshed.state, analyzedHash: refreshed.analyzedHash, runId })
       return 'skipped'
     }
 
@@ -455,12 +476,14 @@ export class ProjectIndexService {
       const unsupported = fileState(discovered, workspace, previous, observedHash, language, 'unsupported', null, null, null, new Date().toISOString())
       this.repository.saveFileAnalysis({ file: unsupported, symbols: [], imports: [], exports: [] })
       known.set(discovered.relativePath, unsupported)
+      this.onFileProcessed?.({ workspace, relativePath: discovered.relativePath, state: unsupported.state, analyzedHash: unsupported.analyzedHash, runId })
       return 'unsupported'
     }
     if (content.length > this.maxParseBytes) {
       const failed = fileState(discovered, workspace, previous, observedHash, language, 'failed', 'O arquivo excede o limite de parsing permitido.')
       this.repository.markFileState(failed)
       known.set(discovered.relativePath, failed)
+      this.onFileProcessed?.({ workspace, relativePath: discovered.relativePath, state: failed.state, analyzedHash: failed.analyzedHash, runId })
       return 'failed'
     }
 
@@ -474,6 +497,7 @@ export class ProjectIndexService {
       const failed = fileState(discovered, workspace, previous, observedHash, language, 'failed', errorText(error), adapter.id, adapter.version)
       this.repository.markFileState(failed)
       known.set(discovered.relativePath, failed)
+      this.onFileProcessed?.({ workspace, relativePath: discovered.relativePath, state: failed.state, analyzedHash: failed.analyzedHash, runId })
       return 'failed'
     }
 
@@ -499,11 +523,13 @@ export class ProjectIndexService {
       const analysis: PersistedFileAnalysis = { file: indexed, symbols, imports: relations.imports, exports: relations.exports }
       this.repository.saveFileAnalysis(analysis)
       known.set(discovered.relativePath, indexed)
+      this.onFileProcessed?.({ workspace, relativePath: discovered.relativePath, state: indexed.state, analyzedHash: indexed.analyzedHash, runId })
       return 'indexed'
     } catch (error) {
       const failed = fileState(discovered, workspace, previous, observedHash, language, 'failed', errorText(error), adapter.id, adapter.version)
       this.repository.markFileState(failed)
       known.set(discovered.relativePath, failed)
+      this.onFileProcessed?.({ workspace, relativePath: discovered.relativePath, state: failed.state, analyzedHash: failed.analyzedHash, runId })
       return 'failed'
     }
   }
