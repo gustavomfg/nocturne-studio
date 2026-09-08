@@ -560,6 +560,75 @@ export const migrations: Migration[] = [
     END;
     INSERT INTO semantic_units_fts(semantic_units_fts) VALUES ('rebuild');
   `) },
+  { version: 26, up: (db) => db.exec(`
+    CREATE TABLE IF NOT EXISTS engineering_signals (
+      id TEXT PRIMARY KEY,
+      workspace TEXT NOT NULL,
+      fingerprint TEXT NOT NULL CHECK(length(fingerprint) = 64),
+      category TEXT NOT NULL CHECK(category IN ('architecture','testing','security','documentation','dependencies','performance','developer-experience','release')),
+      kind TEXT NOT NULL CHECK(length(kind) BETWEEN 1 AND 200),
+      title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 200),
+      description TEXT NOT NULL CHECK(length(description) BETWEEN 1 AND 4000),
+      severity TEXT NOT NULL CHECK(severity IN ('info','low','medium','high','critical')),
+      confidence INTEGER NOT NULL CHECK(confidence BETWEEN 0 AND 100),
+      evidence_json TEXT NOT NULL CHECK(length(evidence_json) BETWEEN 2 AND 500000),
+      metric_json TEXT,
+      source TEXT NOT NULL CHECK(source IN ('deterministic','correlation')),
+      policy_version INTEGER NOT NULL CHECK(policy_version >= 1),
+      detected_at TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('active','resolved')),
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      resolved_at TEXT,
+      UNIQUE(workspace, fingerprint),
+      FOREIGN KEY (workspace) REFERENCES workspaces(path) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_engineering_signals_workspace_status
+      ON engineering_signals(workspace, status, last_seen_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_engineering_signals_workspace_category
+      ON engineering_signals(workspace, category, status, last_seen_at DESC);
+
+    CREATE TABLE IF NOT EXISTS engineering_health_snapshots (
+      id TEXT PRIMARY KEY,
+      workspace TEXT NOT NULL,
+      policy_version INTEGER NOT NULL CHECK(policy_version >= 1),
+      evaluated_at TEXT NOT NULL,
+      previous_snapshot_id TEXT,
+      sources_json TEXT NOT NULL CHECK(length(sources_json) BETWEEN 2 AND 100000),
+      categories_json TEXT NOT NULL CHECK(length(categories_json) BETWEEN 2 AND 1000000),
+      signal_fingerprints_json TEXT NOT NULL CHECK(length(signal_fingerprints_json) BETWEEN 2 AND 100000),
+      state_fingerprint TEXT NOT NULL CHECK(length(state_fingerprint) = 64),
+      UNIQUE(workspace, state_fingerprint),
+      FOREIGN KEY (workspace) REFERENCES workspaces(path) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_engineering_health_snapshots_workspace
+      ON engineering_health_snapshots(workspace, evaluated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS engineering_insights (
+      id TEXT PRIMARY KEY,
+      workspace TEXT NOT NULL,
+      fingerprint TEXT NOT NULL CHECK(length(fingerprint) = 64),
+      title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 200),
+      explanation TEXT NOT NULL CHECK(length(explanation) BETWEEN 1 AND 4000),
+      related_signal_ids_json TEXT NOT NULL CHECK(length(related_signal_ids_json) BETWEEN 2 AND 100000),
+      evidence_json TEXT NOT NULL CHECK(length(evidence_json) BETWEEN 2 AND 500000),
+      suggested_action TEXT,
+      confidence INTEGER NOT NULL CHECK(confidence BETWEEN 0 AND 100),
+      status TEXT NOT NULL CHECK(status IN ('active','resolved')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      UNIQUE(workspace, fingerprint),
+      FOREIGN KEY (workspace) REFERENCES workspaces(path) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_engineering_insights_workspace_status
+      ON engineering_insights(workspace, status, updated_at DESC);
+  `) },
+  { version: 27, up: (db) => {
+    if (!hasColumn(db, 'engineering_health_snapshots', 'signal_states_json')) {
+      db.exec("ALTER TABLE engineering_health_snapshots ADD COLUMN signal_states_json TEXT NOT NULL DEFAULT '[]' CHECK(length(signal_states_json) BETWEEN 2 AND 100000)")
+    }
+  } },
 ]
 
 export function migrateDatabase(db: Database.Database, currentVersion: number, availableMigrations: Migration[] = migrations) {
