@@ -1,4 +1,4 @@
-export const DATABASE_SCHEMA_VERSION = 25
+export const DATABASE_SCHEMA_VERSION = 27
 
 export const RENDERER_LIMITS = {
   activities: 300,
@@ -37,6 +37,16 @@ export const CODE_INTELLIGENCE_LIMITS = Object.freeze({
   maxOutputCharacters: 20_000,
   maxErrorCharacters: 2_000,
   maxQueryResults: 100,
+})
+
+export const ENGINEERING_INTELLIGENCE_LIMITS = Object.freeze({
+  maxSignals: 500,
+  maxEvidencePerSignal: 20,
+  maxSnapshots: 100,
+  maxInsights: 200,
+  maxTitleCharacters: 200,
+  maxDescriptionCharacters: 4_000,
+  maxEvidenceDetailCharacters: 4_000,
 })
 
 export const UI_TIMING = {
