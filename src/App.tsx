@@ -7,7 +7,7 @@ import { Sidebar } from './domains/workspaces/Sidebar'
 import { WorkspaceTopbar } from './domains/workspaces/WorkspaceTopbar'
 import { Composer } from './domains/chat/Composer'
 import { ChatViewport } from './domains/chat/ChatViewport'
-import { isBusy } from './shared/format'
+import { errorMessage, isBusy } from './shared/format'
 import { useAgentRunController } from './domains/agent/useAgentRunController'
 import { useConfirmDialog } from './shared/ConfirmDialog'
 import { useResponsivePanels } from './shared/useResponsivePanels'
@@ -39,6 +39,7 @@ import './domains/agent/agent.css'
 import './domains/memory/memory.css'
 import './styles/product-constraints.css'
 import './domains/code-intelligence/project-index.css'
+import type { EngineeringInsight } from '../shared/engineeringIntelligence'
 
 const AgentPanel = lazy(() => import('./domains/agent/AgentPanel').then((module) => ({ default: module.AgentPanel })))
 const BrainMemoryDialog = lazy(() => import('./domains/memory/BrainMemoryDialog').then((module) => ({ default: module.BrainMemoryDialog })))
@@ -118,6 +119,38 @@ function App() {
     onNotify: notify,
   })
   const projectIndex = useProjectIndexSession({ workspace, authorized: workspaceAuthorized, onError: store.setError })
+  const engineeringConversationId = store.activeId
+  const refreshSuggestions = collections.refreshSuggestions
+  const setAppError = store.setError
+  const createEngineeringSuggestion = useCallback(async (insight: EngineeringInsight) => {
+    if (!engineeringConversationId) return
+    const category = ({ architecture: 'architecture', testing: 'testing', security: 'security', documentation: 'documentation', dependencies: 'dependency', performance: 'performance', 'developer-experience': 'cleanup', release: 'cleanup' } as const)[insight.relatedSignalIds.length ? (projectIndex.engineeringReport?.snapshot.categories.find((item) => item.signalIds.some((id) => insight.relatedSignalIds.includes(id)))?.category ?? 'architecture') : 'architecture']
+    const evidence = insight.evidence.map((item) => ({ source: item.source, detail: item.detail, ...(item.relativePath ? { location: item.relativePath } : {}) }))
+    const suggestionValue = {
+      title: insight.title,
+      description: insight.explanation,
+      reasoning: 'Insight produzido por correlação determinística de sinais persistidos; a relação não prova causalidade.',
+      evidence,
+      confidence: insight.confidence,
+      source: 'Engineering Intelligence',
+      responsible: 'Usuário no Review Mode',
+      category,
+      severity: 'info',
+      affectedFiles: [...new Set(insight.evidence.flatMap((item) => item.relativePath ? [item.relativePath] : []))],
+      proposedChanges: insight.suggestedAction ?? '',
+      expectedBenefits: [],
+      complexity: 'medium',
+      risk: 'low',
+    }
+    const content = ['Revisão determinística do Engineering Intelligence.', '', '```nocturne-suggestions', JSON.stringify([suggestionValue]), '```'].join('\n')
+    try {
+      await window.nocturne.suggestions.create(engineeringConversationId, content)
+      await refreshSuggestions(engineeringConversationId)
+      notify(t('engineeringHealth.suggestionCreated'))
+    } catch (error) {
+      setAppError(errorMessage(error))
+    }
+  }, [engineeringConversationId, notify, projectIndex.engineeringReport, refreshSuggestions, setAppError, t])
   const filtered = store.conversations.filter((item) => item.title.toLowerCase().includes(search.toLowerCase()) && (!workspace || item.workspace === workspace))
   const conversationSession = useConversationSession({
     conversations: store.conversations,
@@ -234,6 +267,9 @@ function App() {
     onSemanticSearch: () => void projectIndex.searchSemantic(),
     onSemanticStart: () => void projectIndex.startSemantic(),
     onSemanticCancel: () => void projectIndex.cancelSemantic(),
+    engineeringReport: projectIndex.engineeringReport,
+    activeConversationId: store.activeId,
+    onCreateSuggestion: (insight: EngineeringInsight) => void createEngineeringSuggestion(insight),
   }
 
   return <div className="app-shell">

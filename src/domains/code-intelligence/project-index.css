@@ -56,6 +56,74 @@
   background: var(--color-surface);
 }
 
+.engineering-health-heading {
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  display: flex;
+}
+
+.engineering-health-heading small, .engineering-health-category small, .engineering-health-findings small {
+  color: var(--color-text-muted);
+  font-size: var(--font-caption);
+}
+
+.engineering-health-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--spacing-sm);
+  display: grid;
+}
+
+.engineering-health-category {
+  min-width: 0;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: var(--spacing-2xs);
+}
+
+.engineering-health-category strong, .engineering-health-category span, .engineering-health-category b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.engineering-health-category span { color: var(--color-text-secondary); font-size: var(--font-caption); }
+.engineering-health-category.assessed { border-color: var(--color-success); }
+.engineering-health-category.partial { border-color: var(--color-warning); }
+
+.engineering-health-findings {
+  margin-top: var(--spacing-md);
+  display: grid;
+  gap: var(--spacing-xs);
+}
+
+.engineering-health-findings > div {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-left: 2px solid var(--color-border-strong);
+  display: grid;
+  gap: var(--spacing-2xs);
+}
+
+.engineering-health-action {
+  justify-self: start;
+  min-height: var(--control-sm);
+  padding: 0 var(--spacing-sm);
+  color: var(--color-accent);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  cursor: pointer;
+  font-size: var(--font-caption);
+}
+
+.engineering-health-action:disabled { cursor: not-allowed; opacity: .55; }
+
+@media (max-width: 720px) {
+  .engineering-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 .project-index-status header, .project-index-section h3, .project-index-symbols article header {
   align-items: center;
   display: flex;
