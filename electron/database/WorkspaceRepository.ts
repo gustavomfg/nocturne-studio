@@ -96,6 +96,9 @@ export class WorkspaceRepository {
       this.database.prepare('UPDATE semantic_units SET workspace=? WHERE workspace=?').run(destination, source)
       this.database.prepare('UPDATE validation_runs SET workspace=? WHERE workspace=?').run(destination, source)
       this.database.prepare('UPDATE executions SET workspace=? WHERE workspace=?').run(destination, source)
+      this.database.prepare('UPDATE engineering_signals SET workspace=? WHERE workspace=?').run(destination, source)
+      this.database.prepare('UPDATE engineering_health_snapshots SET workspace=? WHERE workspace=?').run(destination, source)
+      this.database.prepare('UPDATE engineering_insights SET workspace=? WHERE workspace=?').run(destination, source)
       this.database.prepare('UPDATE checkpoints SET workspace=? WHERE workspace=?').run(destination, source)
       this.database.prepare('DELETE FROM project_index_files WHERE workspace=?').run(source)
       if (modelBindings) {
