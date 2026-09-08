@@ -50,6 +50,9 @@ import { WorkspaceChangeGate } from '../change-control/WorkspaceChangeGate'
 import { SnapshotRollbackService } from '../change-control/SnapshotRollbackService'
 import { registerUpdateIpc } from './registerUpdateIpc'
 import type { UpdateService } from '../updates/UpdateService'
+import { EngineeringSignalEngine } from '../engineering/EngineeringSignalEngine'
+import { EngineeringInsightService } from '../engineering/EngineeringInsightService'
+import { registerEngineeringIntelligenceIpc } from './registerEngineeringIntelligenceIpc'
 
 export function registerIpc(
   win: BrowserWindow,
@@ -70,12 +73,14 @@ export function registerIpc(
   })
   let changeGate: WorkspaceChangeGate | undefined
   let semanticIndex: SemanticIndexService | undefined
+  let engineeringSignals: EngineeringSignalEngine | undefined
   const projectIndex = new ProjectIndexService(database.projectIndex, {
     isChangeControlPending: (workspace) => changeGate?.isHeld(workspace) ?? false,
     onStatus: (status) => {
       win.webContents.send(IPC_CHANNELS.projectIndex.changed, status)
       if (['completed', 'failed', 'cancelled'].includes(status.status)) {
         void semanticIndex?.ensureIndexed(status.workspace).catch((error) => logger.warn('semantic-index', 'A atualização semântica não pôde acompanhar o índice estrutural.', { reason: error instanceof Error ? error.message : String(error) }))
+        void engineeringSignals?.evaluate(status.workspace).catch((error) => logger.warn('engineering-intelligence', 'A análise de sinais não pôde acompanhar o Project Index.', { reason: error instanceof Error ? error.message : String(error) }))
       }
     },
     onMetric: (metric) => logger.info('index', 'Métrica de indexação concluída.', {
@@ -102,7 +107,12 @@ export function registerIpc(
   semanticIndex = new SemanticIndexService(database.semanticIndex, {
     projectIndex,
     embeddings: semanticEmbeddings,
-    onStatus: (status) => win.webContents.send(IPC_CHANNELS.semanticIndex.changed, status),
+    onStatus: (status) => {
+      win.webContents.send(IPC_CHANNELS.semanticIndex.changed, status)
+      if (['completed', 'failed', 'cancelled'].includes(status.status)) {
+        void engineeringSignals?.evaluate(status.workspace).catch((error) => logger.warn('engineering-intelligence', 'A análise de sinais não pôde acompanhar o índice semântico.', { reason: error instanceof Error ? error.message : String(error) }))
+      }
+    },
     onMetric: (metric) => logger.info('semantic-index', 'Métrica de indexação semântica concluída.', {
       runId: metric.runId,
       durationMs: metric.durationMs,
@@ -141,6 +151,7 @@ export function registerIpc(
             logger.warn('validation', 'O resultado foi preservado, mas não pôde ser associado à execução.', { executionId: run.executionId, validationId: run.id, reason: error instanceof Error ? error.message : String(error) })
           }
         }
+        if (run.completedAt) void engineeringSignals?.evaluate(run.workspace).catch((error) => logger.warn('engineering-intelligence', 'A análise de sinais não pôde acompanhar a validação.', { reason: error instanceof Error ? error.message : String(error) }))
       },
       onMetric: (metric) => logger.info('validation', 'Métrica de validação concluída.', {
         validationKind: metric.validationKind,
@@ -148,6 +159,32 @@ export function registerIpc(
         status: metric.status,
       }),
     },
+  )
+  engineeringSignals = new EngineeringSignalEngine(database.engineeringIntelligence, projectIndex, validation, {
+    insightService: new EngineeringInsightService(database.engineeringIntelligence),
+    semanticIndex,
+    executionIds: (workspace) => database.listExecutions(workspace).map((execution) => execution.id),
+    changeSetIds: (workspace) => database.listExecutions(workspace).flatMap((execution) => database.changeSets.list(execution.id).map((changeSet) => changeSet.id)),
+    onEvaluation: (evaluation) => win.webContents.send(IPC_CHANNELS.engineeringIntelligence.changed, {
+      snapshot: evaluation.snapshot,
+      signals: database.engineeringIntelligence.listSignals(evaluation.snapshot.workspace, 'active'),
+      insights: database.engineeringIntelligence.listInsights(evaluation.snapshot.workspace, 'active'),
+      trends: evaluation.trends,
+    }),
+    onMetric: (metric) => logger.info('engineering-intelligence', 'Métrica da análise de sinais concluída.', {
+      durationMs: metric.durationMs,
+      signals: metric.signals,
+      assessedCategories: metric.assessedCategories,
+      partialCategories: metric.partialCategories,
+      notAssessedCategories: metric.notAssessedCategories,
+    }),
+  })
+  const disposeEngineering = registerEngineeringIntelligenceIpc(
+    win,
+    database,
+    engineeringSignals,
+    { assertAuthorized: (value) => getAuthorizedWorkspace(database, value) },
+    ipcMain,
   )
   const disposeValidation = registerValidationIpc(
     win,
@@ -267,7 +304,7 @@ export function registerIpc(
 
   const disposeCodex = registerCodexIpc(win, codexAccount, aiExecutions, ipcMain)
   const disposeFiles = registerFilesIpc(win, database, ipcMain)
-  const disposeDiagnostics = registerDiagnosticsIpc(win, logger, providerConfigurations, modelRegistry, ipcMain, () => ({ index: projectIndex.getMetrics(), semanticIndex: semanticIndex.getMetrics(), validation: validation.getMetrics(), changeControl: changeControl.getMetrics() }))
+  const disposeDiagnostics = registerDiagnosticsIpc(win, logger, providerConfigurations, modelRegistry, ipcMain, () => ({ index: projectIndex.getMetrics(), semanticIndex: semanticIndex.getMetrics(), validation: validation.getMetrics(), changeControl: changeControl.getMetrics(), engineering: engineeringSignals?.getMetrics() ?? null }))
   const disposeAi = registerAiIpc(
     win,
     {
@@ -294,11 +331,13 @@ export function registerIpc(
     ipcMain.dispose()
     return Promise.all([
       validation.dispose(),
+      engineeringSignals?.dispose(),
       semanticIndex.dispose(),
       projectIndex.dispose(),
       disposeProjectIndex(),
       disposeSemanticIndex(),
       disposeValidation(),
+      disposeEngineering(),
       disposeWorkspace(),
       disposeConversation(),
       disposeMemory(),
