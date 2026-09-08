@@ -30,9 +30,12 @@ import { isTerminalAgentState, type AgentRunState } from '../../shared/agentLife
 import { registerSettingsIpc } from './registerSettingsIpc'
 import { registerDocumentsIpc } from './registerDocumentsIpc'
 import { registerProjectIndexIpc } from './registerProjectIndexIpc'
+import { registerSemanticIndexIpc } from './registerSemanticIndexIpc'
 import { registerValidationIpc } from './registerValidationIpc'
 import { ensureNocturneWorkspace, readWorkspaceContext, recordSuggestionDecision, runWorkspaceCommand, writeWorkspaceContext } from '../workspaces/WorkspaceContextService'
 import { ProjectIndexService } from '../project-index/ProjectIndexService'
+import { SemanticIndexService, type SemanticEmbeddingOperations } from '../semantic-index/SemanticIndexService'
+import { SemanticRetrievalService } from '../semantic-index/SemanticRetrievalService'
 import { IPC_CHANNELS } from '../../shared/ipc/channels'
 import { ValidationPipeline } from '../validation/ValidationPipeline'
 import { CheckpointService } from '../change-control/CheckpointService'
@@ -66,9 +69,15 @@ export function registerIpc(
     },
   })
   let changeGate: WorkspaceChangeGate | undefined
+  let semanticIndex: SemanticIndexService | undefined
   const projectIndex = new ProjectIndexService(database.projectIndex, {
     isChangeControlPending: (workspace) => changeGate?.isHeld(workspace) ?? false,
-    onStatus: (status) => win.webContents.send(IPC_CHANNELS.projectIndex.changed, status),
+    onStatus: (status) => {
+      win.webContents.send(IPC_CHANNELS.projectIndex.changed, status)
+      if (['completed', 'failed', 'cancelled'].includes(status.status)) {
+        void semanticIndex?.ensureIndexed(status.workspace).catch((error) => logger.warn('semantic-index', 'A atualização semântica não pôde acompanhar o índice estrutural.', { reason: error instanceof Error ? error.message : String(error) }))
+      }
+    },
     onMetric: (metric) => logger.info('index', 'Métrica de indexação concluída.', {
       runId: metric.runId,
       runKind: metric.runKind,
@@ -86,6 +95,30 @@ export function registerIpc(
   const disposeProjectIndex = registerProjectIndexIpc(
     win,
     projectIndex,
+    { assertAuthorized: (value) => getAuthorizedWorkspace(database, value) },
+    ipcMain,
+  )
+  const semanticEmbeddings = createSemanticEmbeddingOperations(database, modelRegistry, providerRegistry)
+  semanticIndex = new SemanticIndexService(database.semanticIndex, {
+    projectIndex,
+    embeddings: semanticEmbeddings,
+    onStatus: (status) => win.webContents.send(IPC_CHANNELS.semanticIndex.changed, status),
+    onMetric: (metric) => logger.info('semantic-index', 'Métrica de indexação semântica concluída.', {
+      runId: metric.runId,
+      durationMs: metric.durationMs,
+      processedFiles: metric.processedFiles,
+      indexedUnits: metric.indexedUnits,
+      lexicalOnlyUnits: metric.lexicalOnlyUnits,
+      failedFiles: metric.failedFiles,
+      excludedFiles: metric.excludedFiles,
+      cancelled: metric.cancelled,
+    }),
+  })
+  const semanticRetrieval = new SemanticRetrievalService(database.semanticIndex, projectIndex, semanticEmbeddings)
+  const disposeSemanticIndex = registerSemanticIndexIpc(
+    win,
+    semanticIndex,
+    semanticRetrieval,
     { assertAuthorized: (value) => getAuthorizedWorkspace(database, value) },
     ipcMain,
   )
@@ -136,9 +169,14 @@ export function registerIpc(
       ensureWorkspace: ensureNocturneWorkspace,
       assertKnownWorkspace: (value) => getAuthorizedWorkspace(database, value),
       run: runWorkspaceCommand,
-      onWorkspaceChanged: (event) => changeGate?.enqueue(event),
+      onWorkspaceChanged: (event) => {
+        changeGate?.enqueue(event)
+        semanticIndex?.enqueuePaths(event.workspace, event.paths)
+      },
       onWorkspaceWatch: (workspace) => {
-        void projectIndex.ensureIndexed(workspace).catch((error) => logger.warn('index', 'A indexação não pôde ser iniciada.', { reason: error instanceof Error ? error.message : String(error) }))
+        void projectIndex.ensureIndexed(workspace)
+          .then(() => semanticIndex?.ensureIndexed(workspace))
+          .catch((error) => logger.warn('index', 'A indexação não pôde ser iniciada.', { reason: error instanceof Error ? error.message : String(error) }))
       },
     },
     ipcMain,
@@ -229,7 +267,7 @@ export function registerIpc(
 
   const disposeCodex = registerCodexIpc(win, codexAccount, aiExecutions, ipcMain)
   const disposeFiles = registerFilesIpc(win, database, ipcMain)
-  const disposeDiagnostics = registerDiagnosticsIpc(win, logger, providerConfigurations, modelRegistry, ipcMain, () => ({ index: projectIndex.getMetrics(), validation: validation.getMetrics(), changeControl: changeControl.getMetrics() }))
+  const disposeDiagnostics = registerDiagnosticsIpc(win, logger, providerConfigurations, modelRegistry, ipcMain, () => ({ index: projectIndex.getMetrics(), semanticIndex: semanticIndex.getMetrics(), validation: validation.getMetrics(), changeControl: changeControl.getMetrics() }))
   const disposeAi = registerAiIpc(
     win,
     {
@@ -242,6 +280,7 @@ export function registerIpc(
       approvalDetails,
       readWorkspaceContext,
       projectIndex,
+      semanticRetrieval,
     },
     ipcMain,
   )
@@ -255,8 +294,10 @@ export function registerIpc(
     ipcMain.dispose()
     return Promise.all([
       validation.dispose(),
+      semanticIndex.dispose(),
       projectIndex.dispose(),
       disposeProjectIndex(),
+      disposeSemanticIndex(),
       disposeValidation(),
       disposeWorkspace(),
       disposeConversation(),
@@ -296,4 +337,50 @@ function persistExecutionDecision(database: LocalDatabase, executionId: string, 
   const current = database.getExecution(executionId)
   if (!current) return
   database.saveExecution({ ...current, decision: status === 'partially-accepted' ? 'partially-accepted' : status })
+}
+
+function createSemanticEmbeddingOperations(
+  database: LocalDatabase,
+  models: ModelRegistry,
+  providers: ProviderRegistry,
+): SemanticEmbeddingOperations {
+  return {
+    async resolve(workspace) {
+      const bindings = database.workspaceModelBindings.get(workspace)
+      const reference = bindings?.embeddingBinding
+      if (!reference) return null
+      try {
+        const model = models.resolve(reference)
+        const provider = providers.resolve(model.providerId)
+        if (!model.capabilities.includes('embeddings') || !provider.definition.capabilities.embeddings || !provider.embed) return null
+        const remote = model.source === 'remote' || provider.definition.source === 'remote'
+        return {
+          space: {
+            providerId: model.providerId,
+            modelId: model.modelId,
+            modelVersion: model.version ?? null,
+            // Some OpenAI-compatible endpoints do not advertise dimensions.
+            // The first valid response establishes the dimension for the local index.
+            dimensions: 0,
+          },
+          remote,
+          remoteAllowed: !remote || bindings.remoteEmbeddingAllowed === true,
+        }
+      } catch {
+        return null
+      }
+    },
+    async embed(workspace, space, inputs, signal) {
+      const bindings = database.workspaceModelBindings.get(workspace)
+      const reference = bindings?.embeddingBinding
+      if (!reference || reference.providerId !== space.providerId || reference.modelId !== space.modelId) throw new Error('O binding de embedding mudou durante o processamento.')
+      const model = models.resolve(reference)
+      const provider = providers.resolve(model.providerId)
+      if (!provider.embed || !provider.definition.capabilities.embeddings || !model.capabilities.includes('embeddings')) throw new Error('O Provider ou modelo de embeddings não está disponível.')
+      const remote = model.source === 'remote' || provider.definition.source === 'remote'
+      if (remote && bindings.remoteEmbeddingAllowed !== true) throw new Error('Embeddings remotos não foram autorizados para este workspace.')
+      const result = await provider.embed({ requestId: randomUUID(), model, inputs, ...(space.dimensions > 0 ? { dimensions: space.dimensions } : {}) }, { signal })
+      return result.embeddings
+    },
+  }
 }

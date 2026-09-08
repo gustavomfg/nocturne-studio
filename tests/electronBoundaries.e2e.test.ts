@@ -145,7 +145,7 @@ class SimulatedProviderConfigurations {
         source: provider.source,
         protocol: 'OpenAI-compatible',
         version: 'v1',
-        capabilities: { modelDiscovery: true, streaming: true, toolCalling: false, cancellation: true, authentication: 'required' as const },
+        capabilities: { modelDiscovery: true, embeddings: false, streaming: true, toolCalling: false, cancellation: true, authentication: 'required' as const },
         limitations: { requestTimeoutMs: { minimum: 1_000, maximum: 120_000 }, notes: [] },
       },
       availability: { status: 'available' as const, checkedAt },
@@ -269,7 +269,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
   }
 
   it('expõe somente a API nomeada e cruza preload, IPC e SQLite', async () => {
-    expect(Object.keys(api).sort()).toEqual(['ai', 'artifacts', 'brain', 'changeControl', 'clipboard', 'codex', 'conversations', 'data', 'diagnostics', 'documents', 'files', 'git', 'memory', 'models', 'projectIndex', 'providers', 'settings', 'suggestions', 'updates', 'validation', 'workspace'])
+    expect(Object.keys(api).sort()).toEqual(['ai', 'artifacts', 'brain', 'changeControl', 'clipboard', 'codex', 'conversations', 'data', 'diagnostics', 'documents', 'files', 'git', 'memory', 'models', 'projectIndex', 'providers', 'semanticIndex', 'settings', 'suggestions', 'updates', 'validation', 'workspace'])
     await api.clipboard.writeText('commit sugerido')
     await expect(api.clipboard.readText()).resolves.toBe('commit sugerido')
     await expect(api.updates.getState()).resolves.toMatchObject({ status: 'up-to-date', currentVersion: '1.0.0' })

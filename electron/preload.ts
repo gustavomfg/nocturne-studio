@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS as channels } from '../shared/ipc/channels'
 import type { AgentEvent, WorkspaceChangeEvent } from '../shared/types'
 import type { ProjectIndexStatus, ValidationKind, ValidationRun } from '../shared/codeIntelligence'
+import type { SemanticIndexStatus } from '../shared/semanticIndex'
 import type { ChangeHunkRecord, ChangeRecord, ChangeSetRecord, FileDiff } from '../shared/changeControl'
 import type { AgentStatusEvent } from '../shared/agentLifecycle'
 import type {
@@ -75,6 +76,14 @@ export const nocturneApi: NocturneApi = {
     stack: (workspace: string) => ipcRenderer.invoke(channels.projectIndex.stack, { workspace }),
     exclusions: (workspace: string) => ipcRenderer.invoke(channels.projectIndex.exclusions, { workspace }),
     onStatus: (listener: (status: ProjectIndexStatus) => void) => on(channels.projectIndex.changed, listener),
+  },
+  semanticIndex: {
+    status: (workspace: string) => ipcRenderer.invoke(channels.semanticIndex.status, { workspace }),
+    start: (workspace: string) => ipcRenderer.invoke(channels.semanticIndex.start, { workspace }),
+    cancel: (workspace: string) => ipcRenderer.invoke(channels.semanticIndex.cancel, { workspace }),
+    summary: (workspace: string) => ipcRenderer.invoke(channels.semanticIndex.summary, { workspace }),
+    search: (query) => ipcRenderer.invoke(channels.semanticIndex.search, query),
+    onStatus: (listener: (status: SemanticIndexStatus) => void) => on(channels.semanticIndex.changed, listener),
   },
   validation: {
     run: (workspace: string, kind: ValidationKind, executionId?: string) => ipcRenderer.invoke(channels.validation.run, { workspace, kind, ...(executionId ? { executionId } : {}) }),

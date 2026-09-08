@@ -7,6 +7,7 @@ import { providerConfigurationInputSchema } from '../ai/providerConfigurationSch
 import { MODEL_LIMITS } from '../ai/model'
 import { isJsonValueWithinLimit, type JsonValue } from '../json'
 import { validationKinds } from '../codeIntelligence'
+import { semanticSearchQuerySchema } from '../semanticIndexSchemas'
 
 export const idSchema = z.string().uuid()
 export const updateCommandArgsSchema = z.tuple([])
@@ -20,6 +21,7 @@ export const workspaceToolSchema = z.object({ workspace: z.string().min(1), tool
 export const projectIndexWorkspaceSchema = z.object({ workspace: z.string().trim().min(1).max(4_000) }).strict()
 export const projectIndexQuerySchema = projectIndexWorkspaceSchema.extend({ query: z.string().trim().max(500).default(''), limit: z.number().int().min(1).max(100).default(100) }).strict()
 export const projectIndexFileQuerySchema = projectIndexWorkspaceSchema.extend({ relativePath: z.string().trim().min(1).max(4_000).optional() }).strict()
+export const semanticIndexSearchSchema = semanticSearchQuerySchema
 export const validationRunSchema = projectIndexWorkspaceSchema.extend({ kind: z.enum(validationKinds), executionId: idSchema.optional() }).strict()
 export const validationListSchema = projectIndexWorkspaceSchema.extend({ limit: z.number().int().min(1).max(100).default(20) }).strict()
 export const changeControlExecutionSchema = z.object({ conversationId: idSchema, executionId: idSchema }).strict()

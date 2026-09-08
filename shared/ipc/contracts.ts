@@ -15,6 +15,7 @@ import type { CodexModel } from '../codexModels'
 import type { JsonValue } from '../json'
 import type { AgentStatusEvent } from '../agentLifecycle'
 import type { UpdateState } from '../updates'
+import type { SemanticIndexStatus, SemanticIndexSummary, SemanticSearchResult } from '../semanticIndex'
 
 export interface ProviderConfigurationIpcError {
   code: ProviderConfigurationErrorCode
@@ -51,6 +52,14 @@ export interface NocturneApi {
     stack(workspace: string): Promise<StackEvidence[]>
     exclusions(workspace: string): Promise<DiscoveryExclusion[]>
     onStatus(listener: (status: ProjectIndexStatus) => void): () => void
+  }
+  semanticIndex: {
+    status(workspace: string): Promise<SemanticIndexStatus | null>
+    start(workspace: string): Promise<void>
+    cancel(workspace: string): Promise<boolean>
+    summary(workspace: string): Promise<SemanticIndexSummary>
+    search(query: { workspace: string; query: string; limit?: number; filters?: { paths?: string[]; languages?: string[]; kinds?: Array<'symbol' | 'markdown-section' | 'configuration' | 'text'>; symbols?: string[] } }): Promise<SemanticSearchResult[]>
+    onStatus(listener: (status: SemanticIndexStatus) => void): () => void
   }
   validation: {
     run(workspace: string, kind: ValidationKind, executionId?: string): Promise<ValidationRun>
