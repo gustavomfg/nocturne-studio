@@ -19,6 +19,7 @@ export interface ProviderDefinition {
   version?: string
   capabilities: {
     modelDiscovery: boolean
+    embeddings: boolean
     streaming: boolean
     toolCalling: boolean
     cancellation: boolean

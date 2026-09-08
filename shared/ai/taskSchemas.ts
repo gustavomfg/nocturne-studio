@@ -22,6 +22,17 @@ const contextSourceSchema = z.object({
   relevance: z.number().min(0).max(1).optional(),
   updatedAt: z.string().datetime({ offset: true }).optional(),
   potentiallyOutdated: z.boolean(),
+  stale: z.boolean().optional(),
+  provenance: z.object({
+    sourcePath: z.string().max(4_000).optional(),
+    sourceHash: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+    chunkHash: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+    indexVersion: z.number().int().positive().optional(),
+    chunkStrategyVersion: z.string().max(100).optional(),
+    embeddingProviderId: z.string().max(512).optional(),
+    embeddingModelId: z.string().max(512).optional(),
+    retrievalReason: z.string().max(2_000).optional(),
+  }).strict().optional(),
 }).strict()
 
 const modelSelectionSchema = z.discriminatedUnion('type', [

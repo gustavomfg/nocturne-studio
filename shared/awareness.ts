@@ -4,8 +4,8 @@ import type { BrainMemoryKind, BrainMemoryScope, BrainMemorySource } from './bra
 export interface AwarenessContextSelection {
   id: string
   title: string
-  source: 'workspace-memory' | 'brain-memory' | 'project-index'
-  sourceType: BrainMemorySource | 'workspace' | 'project-index'
+  source: 'workspace-memory' | 'brain-memory' | 'project-index' | 'semantic-index'
+  sourceType: BrainMemorySource | 'workspace' | 'project-index' | 'semantic-index'
   sourceId: string | null
   kind: BrainMemoryKind | 'workspace-context' | 'project-file' | 'project-symbol' | 'project-relation'
   scope: BrainMemoryScope | 'workspace'
@@ -41,8 +41,8 @@ export function parseAwarenessSnapshot(metadata: string | null): AwarenessSnapsh
 function isContextSelection(item: AwarenessContextSelection) {
   return item && typeof item.id === 'string' && item.id.length <= 512
     && typeof item.title === 'string' && item.title.length <= 500
-    && ['workspace-memory', 'brain-memory', 'project-index'].includes(item.source)
-    && ['workspace', 'manual', 'message', 'agent', 'project-index'].includes(item.sourceType)
+    && ['workspace-memory', 'brain-memory', 'project-index', 'semantic-index'].includes(item.source)
+    && ['workspace', 'manual', 'message', 'agent', 'project-index', 'semantic-index'].includes(item.sourceType)
     && (item.sourceId === null || typeof item.sourceId === 'string')
     && ['workspace-context', 'fact', 'decision', 'preference', 'constraint', 'learning', 'project-file', 'project-symbol', 'project-relation'].includes(item.kind)
     && ['workspace', 'conversation'].includes(item.scope)

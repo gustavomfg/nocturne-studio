@@ -1,7 +1,16 @@
 import type { ModelCapability, ModelReference } from './model'
 
 export const executionModes = ['build', 'review'] as const
-export const contextSourceTypes = ['memory', 'project-index'] as const
+export const contextSourceTypes = [
+  'memory',
+  'project-index',
+  'semantic-index',
+  'workspace-context',
+  'explicit-user',
+  'documentation',
+  'lexical-retrieval',
+  'session',
+] as const
 export const modelRoles = ['default'] as const
 export const taskOutputFormats = ['markdown'] as const
 
@@ -12,6 +21,7 @@ export const AI_TASK_LIMITS = {
   contextSources: 100,
   contextSourceCharacters: 100_000,
   totalContextCharacters: 500_000,
+  contextTokens: 100_000,
   constraints: 100,
   constraintCharacters: 4_000,
 } as const
@@ -35,6 +45,19 @@ export interface ContextSource {
   relevance?: number
   updatedAt?: string
   potentiallyOutdated: boolean
+  stale?: boolean
+  provenance?: ContextProvenance
+}
+
+export interface ContextProvenance {
+  sourcePath?: string
+  sourceHash?: string
+  chunkHash?: string
+  indexVersion?: number
+  chunkStrategyVersion?: string
+  embeddingProviderId?: string
+  embeddingModelId?: string
+  retrievalReason?: string
 }
 
 export type TaskModelSelection =
