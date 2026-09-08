@@ -7,6 +7,7 @@ import { IPC_CHANNELS } from '../../shared/ipc/channels'
 import { aiCancelSchema, aiSendSchema, approvalSchema, idSchema, saveAssistantSchema } from '../../shared/ipc/schemas'
 import { WORKSPACE_READ_LIMITS } from '../../shared/constants'
 import { buildBrainMemoryContext } from '../memory/BrainMemoryContext'
+import { ContextAssemblyService, serializeContextSources } from '../ai/ContextAssemblyService'
 import { isWorkspaceFileTooLarge, readWorkspaceFile } from '../security/ExecutionPolicy'
 import type { LocalDatabase } from '../database/Database'
 import type { Logger } from '../logging/Logger'
@@ -18,6 +19,7 @@ import { artifactType, assertInsideWorkspace } from './fileAccess'
 import { safeIpcMain, type SafeIpcMain } from './safeIpc'
 import type { ProviderConfigurationOperations } from './registerProviderIpc'
 import type { ProjectIndexService } from '../project-index/ProjectIndexService'
+import type { SemanticRetrievalService } from '../semantic-index/SemanticRetrievalService'
 import type { ExecutionRecord } from '../../shared/changeControl'
 import type { ExecutionChangeControlService } from '../change-control/ExecutionChangeControlService'
 
@@ -37,12 +39,14 @@ interface AiIpcDependencies {
   approvalDetails: Map<string, { command?: string; risk?: string }>
   readWorkspaceContext(workspace: string): Promise<WorkspaceContext>
   projectIndex: ProjectIndexService
+  semanticRetrieval: SemanticRetrievalService
 }
 
 export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencies, registrar?: SafeIpcMain) {
   const ipcMain = registrar ?? safeIpcMain(win)
   const ownsRegistrar = !registrar
-  const { database, logger, providerConfigurations, aiExecutions, buildRollback, changeControl, approvalDetails, readWorkspaceContext, projectIndex } = dependencies
+  const { database, logger, providerConfigurations, aiExecutions, buildRollback, changeControl, approvalDetails, readWorkspaceContext, projectIndex, semanticRetrieval } = dependencies
+  const contextAssembly = new ContextAssemblyService()
 
   ipcMain.handle(IPC_CHANNELS.ai.send, async (_event, value: unknown) => {
     const { conversationId, prompt, attachments, mode } = aiSendSchema.parse(value)
@@ -60,6 +64,10 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
     const workspaceMemory = await loadWorkspaceMemoryForAi(database, conversation.workspace, readWorkspaceContext)
     const brainMemory = buildBrainMemoryContext(database, conversation.workspace, conversationId, prompt)
     const projectContext = projectIndex.buildAiContext(conversation.workspace, prompt)
+    const semanticResults = await semanticRetrieval.search({ workspace: conversation.workspace, query: prompt, limit: 12 }).catch((error) => {
+      logger.warn('semantic-index', 'A busca semântica falhou; o contexto estrutural continuará disponível.', { reason: error instanceof Error ? error.message : String(error) })
+      return []
+    })
     const projectPath = path.join(conversation.workspace, '.nocturne', 'project.json')
     let projectName = path.basename(conversation.workspace)
     try {
@@ -80,6 +88,27 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
     if (projectContext?.text) {
       contextSources.push({ id: `project-index:${projectContext.runId}`, type: 'project-index', title: 'Índice estrutural do projeto', content: projectContext.text, scope: 'workspace', updatedAt: projectContext.updatedAt, potentiallyOutdated: projectContext.potentiallyOutdated })
     }
+    contextSources.push(...semanticResults.map((result) => ({
+      id: `semantic-index:${result.unit.id}`,
+      type: 'semantic-index' as const,
+      title: `${result.unit.symbolName ?? result.unit.relativePath} · ${result.unit.kind}`,
+      content: result.excerpt,
+      scope: 'workspace',
+      relevance: result.scores.final,
+      potentiallyOutdated: result.provenance.potentiallyOutdated,
+      stale: result.provenance.potentiallyOutdated,
+      provenance: {
+        sourcePath: result.unit.relativePath,
+        sourceHash: result.unit.sourceHash,
+        chunkHash: result.unit.chunkHash,
+        indexVersion: result.provenance.indexVersion,
+        chunkStrategyVersion: result.provenance.chunkStrategyVersion,
+        embeddingProviderId: result.provenance.embeddingSpace?.providerId,
+        embeddingModelId: result.provenance.embeddingSpace?.modelId,
+        retrievalReason: result.provenance.reason,
+      },
+    })))
+    const assembledContext = contextAssembly.assemble({ sources: contextSources })
     const awareness: AwarenessSnapshot = {
       mode,
       createdAt: new Date().toISOString(),
@@ -99,6 +128,22 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
         }] : []),
         ...brainMemory.selections,
         ...(projectContext?.selections ?? []),
+        ...semanticResults.map((result) => ({
+          id: `semantic-index:${result.unit.id}`,
+          title: `${result.unit.symbolName ?? result.unit.relativePath} · ${result.unit.kind}`,
+          source: 'semantic-index' as const,
+          sourceType: 'semantic-index' as const,
+          sourceId: result.unit.id,
+          kind: result.unit.symbolId ? 'project-symbol' as const : 'project-file' as const,
+          scope: 'workspace' as const,
+          relevance: Math.round(result.scores.final * 100),
+          reason: result.provenance.reason,
+          updatedAt: null,
+          contentPreview: result.excerpt.slice(0, 500),
+          analyzedHash: result.unit.sourceHash,
+          indexVersion: result.provenance.indexVersion,
+          potentiallyOutdated: result.provenance.potentiallyOutdated,
+        })),
       ],
     }
     const executionId = randomUUID()
@@ -126,7 +171,7 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
       intent: prompt,
       mode: mode === 'review' ? 'review' : 'build',
       messages,
-      context: contextSources,
+      context: assembledContext.sources,
       constraints: [],
       requirements: ['chat', 'streaming'],
       selection: { type: 'workspace-default' },
@@ -149,7 +194,7 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
           prompt,
           initialPrompt: buildCodexPrompt(history, prompt),
           attachments,
-          memory: joinMemoryContext(workspaceMemory.content, brainMemory.text),
+          memory: serializeContextSources(assembledContext.sources),
           mode,
           threadId: conversation.codexThreadId,
           settings: {
@@ -237,10 +282,6 @@ async function loadWorkspaceMemoryForAi(database: LocalDatabase, workspace: stri
   const [files, persisted] = await Promise.all([readWorkspaceContext(workspace), Promise.resolve(database.getWorkspaceMemory(workspace))])
   if (persisted.content && Date.parse(persisted.updatedAt) > Date.parse(files.updatedAt)) return persisted
   return { content: `${files.content}\n\n# Regras do projeto\n${files.rules}`.trim(), updatedAt: files.updatedAt }
-}
-
-function joinMemoryContext(workspaceMemory: string, brainMemory: string) {
-  return [workspaceMemory, brainMemory].filter(Boolean).join('\n\n')
 }
 
 function buildCodexPrompt(history: ReturnType<LocalDatabase['listMessages']>, prompt: string) {
