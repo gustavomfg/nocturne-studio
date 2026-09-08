@@ -50,6 +50,15 @@ parser e o `ValidationPipeline` executa checks escolhidos pelas evidências do
 stack. O índice é persistido localmente com hashes por arquivo, relações
 estruturais e falhas parciais; ele não depende do provedor de IA.
 
+A extensão semântica da Fase 4 consome o Project Index sem criar outro watcher
+ou scanner. O `SemanticIndexService` divide arquivos aprovados em unidades,
+persiste dados reconstruíveis e embeddings Float32 opcionais no SQLite, e
+mantém fallback lexical quando não há binding de embeddings compatível.
+`SemanticRetrievalService` combina sinais normalizados explicitamente, enquanto
+o `ContextAssemblyService` aplica prioridade, limites de contexto e proveniência
+antes da requisição à IA. Embeddings remotos exigem binding separado e
+consentimento explícito; caminhos sensíveis são filtrados antes do adapter.
+
 No Build, `ExecutionChangeControlService` associa a intenção a checkpoints
 BEFORE/AFTER privados, `ChangeCaptureService` registra mudanças por arquivo e
 `WorkspaceChangeGate` segura eventos do watcher enquanto há decisão pendente.

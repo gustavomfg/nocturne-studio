@@ -14,6 +14,12 @@ localmente. Atualize o catálogo de modelos do Provider e associe um modelo
 disponível ao workspace. Remover um Provider também remove sua referência de
 credencial, mas não remove conversas ou histórico de workspace não relacionados.
 
+O índice semântico possui um binding opcional e separado para o modelo de
+embeddings. Escolha nas configurações do índice um modelo disponível com a
+capacidade `embeddings`. Modelos remotos exigem um consentimento explícito;
+manter o binding desativado ou o consentimento desligado mantém a indexação
+local e lexical/estrutural.
+
 ## Confiança do workspace
 
 Selecionar uma pasta é uma decisão de autorização, não apenas um registro de

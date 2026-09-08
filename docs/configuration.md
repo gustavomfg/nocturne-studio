@@ -13,6 +13,11 @@ Refresh a provider's model catalog, then bind an available model to a workspace.
 Removing a provider also removes its stored credential reference; it does not
 remove unrelated conversations or workspace history.
 
+The semantic index has an optional, separate embedding model binding. Choose an
+available model with the `embeddings` capability under the semantic index
+settings. Remote models require an explicit consent toggle; leaving the
+binding disabled or the consent off keeps indexing local and lexical/structural.
+
 ## Workspace trust
 
 Selecting a folder is an authorization decision, not just a recent-path entry.

@@ -49,6 +49,16 @@ and `ValidationPipeline` runs checks selected from stack evidence. The index
 is stored locally with per-file hashes, structural relations and partial
 failures; it does not depend on the AI provider.
 
+The Phase 4 semantic extension consumes the Project Index rather than creating
+another watcher or scanner. `SemanticIndexService` chunks approved files,
+persists rebuildable units and optional Float32 embeddings in SQLite, and keeps
+lexical-only fallback when no compatible embedding binding is available.
+`SemanticRetrievalService` combines explicitly normalized signals, while
+`ContextAssemblyService` applies source priority, bounded context and
+provenance before an AI request. Remote embedding use requires a separate
+workspace binding and explicit consent; sensitive paths are filtered before
+content reaches an adapter.
+
 Build Mode uses `ExecutionChangeControlService` to associate an intention with
 private BEFORE/AFTER checkpoints. `ChangeCaptureService` records file-level
 changes and `WorkspaceChangeGate` holds watcher events while a decision is

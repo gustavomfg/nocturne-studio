@@ -19,9 +19,15 @@ LM Studio and custom endpoints that implement the compatible models and chat
 completion resources. Remote endpoints require HTTPS. Plain HTTP is accepted
 only for local loopback providers.
 
-The adapter supports model discovery, streaming and cancellation. Tool calling
-is not normalized by this adapter and is reported as a limitation. Refresh the
-catalog before binding a model to a workspace.
+The adapter supports model discovery, streaming, cancellation and the
+OpenAI-compatible `/embeddings` resource when the selected model advertises the
+`embeddings` capability. Tool calling is not normalized by this adapter and is
+reported as a limitation. Refresh the catalog before binding a model to a
+workspace. Embedding models are bound separately from the chat model.
+
+Remote embedding use requires explicit workspace consent. If no embedding model
+is bound, consent is absent, or the adapter fails, the semantic index remains
+available through local lexical and structural retrieval.
 
 ## Credentials and diagnostics
 

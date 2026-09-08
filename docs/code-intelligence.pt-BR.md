@@ -1,9 +1,11 @@
-# Code Intelligence — Fase 2
+# Code Intelligence — Fases 2 e 4
 
 [English](code-intelligence.md)
 
-O Code Intelligence mantém uma visão estrutural local do workspace. Ele não é
-um IDE, não executa busca semântica e não cria grafo visual nesta fase.
+O Code Intelligence mantém uma visão estrutural e semântica local do
+workspace. Ele não é um IDE e não cria grafo visual de dependências. Embeddings
+são opcionais e servem para recuperação de contexto, não para recomendações
+arquiteturais automáticas.
 
 ## Pipelines
 
@@ -62,6 +64,34 @@ saída é limitada, sanitizada e artefatos só são persistidos quando apontam p
 arquivos existentes dentro do workspace. Comando ausente ou risco destrutivo
 produz estado `blocked`, não uma execução implícita.
 
+## Índice semântico — Fase 4
+
+O `SemanticChunker` deriva unidades estáveis dos símbolos do Project Index,
+seções Markdown, arquivos de configuração e texto limitado. O
+`SemanticIndexService` consome essas unidades sem introduzir outro watcher ou
+uma nova descoberta. Cada unidade mantém hash do arquivo, hash do chunk, versão
+da estratégia, localização e estado.
+
+Os vetores são armazenados localmente como BLOBs Float32 no SQLite. O espaço de
+embeddings é identificado por provider, modelo, versão do modelo e dimensões;
+espaços diferentes nunca são comparados. O workspace precisa de um
+`embeddingBinding` explícito, separado do `defaultBinding` de conversa. Sem um
+binding válido, ou quando o Provider falha, o índice continua utilizável por
+recuperação lexical e estrutural.
+
+A privacidade é avaliada antes de enviar conteúdo ao adapter de embeddings.
+Arquivos excluídos, potencialmente secretos, assets e tipos não suportados não
+são lidos pelo pipeline semântico. Embeddings remotos exigem consentimento
+explícito do workspace e, sem esse consentimento, nenhum conteúdo é enviado.
+Hashes são verificados antes e depois da chamada assíncrona; trabalho obsoleto é
+descartado e colocado novamente na fila.
+
+A recuperação normaliza sinais lexicais, vetoriais, estruturais e de dependência
+superficial antes de combiná-los. O `ContextAssemblyService` aplica prioridade
+de fontes, deduplicação, limites de tokens e proveniência. Resultados enviados
+à IA incluem caminho, hash analisado, hash do chunk, versão do índice e motivo
+da recuperação.
+
 ## IA e observabilidade
 
 O contexto estrutural enviado à IA contém a execução do índice, versão, resumo,
@@ -70,6 +100,7 @@ desatualização. A seleção persistida em Awareness aponta para a execução e
 o arquivo/símbolo usados.
 
 O relatório sanitizado de Diagnóstico expõe contagens e tempos agregados de
-indexação, atualizações incrementais, parsers, cancelamentos, falhas parciais e
-validações. Nenhum embedding, sincronização externa ou histórico avançado de
-execução faz parte desta fase.
+indexação estrutural, indexação semântica, atualizações incrementais, parsers,
+cancelamentos, falhas parciais e validações. Sincronização externa, grafo visual
+de dependências, sugestões arquiteturais, multi-agent, aprovação de diffs,
+checkpoints e histórico avançado de execução continuam fora destas fases.

@@ -1,10 +1,11 @@
-# Code Intelligence — Phase 2
+# Code Intelligence — Phases 2 and 4
 
 [Português do Brasil](code-intelligence.pt-BR.md)
 
-Code Intelligence keeps a local structural view of the workspace. It is not an
-IDE, does not perform semantic embedding search, and does not create a visual
-dependency graph in this phase.
+Code Intelligence keeps a local structural and semantic view of the workspace.
+It is not an IDE and does not create a visual dependency graph. Semantic
+embeddings are optional and remain a retrieval aid, not an architectural
+recommendation system.
 
 ## Pipelines
 
@@ -61,6 +62,31 @@ sanitized, and artifacts are persisted only when they resolve to existing files
 inside the workspace. Missing commands or destructive risk produce `blocked`
 status instead of an implicit execution.
 
+## Semantic Index — Phase 4
+
+`SemanticChunker` derives stable units from Project Index symbols, Markdown
+sections, configuration files and bounded text. `SemanticIndexService` consumes
+those units without introducing another watcher or discovery pass. Each unit
+keeps its file hash, chunk hash, chunk strategy version, location and status.
+
+Vectors are stored as local Float32 BLOBs in SQLite. The embedding space is
+identified by provider, model, model version and dimensions; vectors from
+different spaces are never compared. A workspace must bind an explicit
+`embeddingBinding`, separate from its chat `defaultBinding`. Without a valid
+embedding binding, or when a Provider fails, the index remains usable through
+lexical and structural retrieval.
+
+Privacy is evaluated before content is sent to an embedding adapter. Excluded,
+secret-like, asset and unsupported files are not read into the semantic
+pipeline. Remote embeddings require explicit workspace consent and receive no
+content when that consent is absent. Hashes are rechecked before and after an
+asynchronous embedding request; stale work is discarded and queued again.
+
+Retrieval normalizes lexical, vector, structural and shallow dependency signals
+before combining them. `ContextAssemblyService` applies source priority,
+deduplication, token limits and provenance. Results exposed to the AI include
+the source path, analyzed hash, chunk hash, index version and retrieval reason.
+
 ## AI and observability
 
 Structural context sent to the AI contains the index run, version, summary,
@@ -68,6 +94,8 @@ selected files/symbols, relations, evidence, hashes and an outdated marker.
 Persisted Awareness selections point to the run and the file/symbol used.
 
 The sanitized Diagnostics report exposes aggregate counts and timings for
-indexing, incremental updates, parsers, cancellations, partial failures and
-validation. Embeddings, external synchronization and advanced execution
-history are outside this phase.
+structural indexing, semantic indexing, incremental updates, parsers,
+cancellations, partial failures and validation. External synchronization,
+visual dependency graphs, architectural suggestions, multi-agent execution,
+diff approval, checkpoints and advanced execution history remain outside these
+phases.

@@ -11,6 +11,15 @@ or with the authenticated Codex CLI. The request can include the prompt,
 selected conversation/context and explicitly attached files. Local providers
 receive requests at the configured loopback endpoint.
 
+Semantic indexing follows the same local-first boundary. The workspace model
+binding for embeddings is separate from the chat model binding. Lexical and
+structural indexing work without a Provider. Remote embeddings are disabled
+unless the workspace explicitly authorizes them; excluded, secret-like and
+unsupported files are filtered before they are read by the semantic pipeline.
+When remote embeddings are authorized, only approved non-sensitive chunks are
+sent, and the resulting vectors remain local in SQLite. Provider failures fall
+back to local lexical/structural retrieval.
+
 Provider credentials:
 
 - are kept in the Electron main process;

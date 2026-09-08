@@ -10,6 +10,15 @@ Provider remoto ou com o Codex CLI autenticado. A requisição pode incluir
 prompt, conversa/contexto selecionado e arquivos anexados explicitamente.
 Providers locais recebem requisições no endpoint de loopback configurado.
 
+A indexação semântica segue a mesma fronteira local-first. O binding do modelo
+de embeddings é separado do binding do modelo de conversa. A indexação lexical
+e estrutural funciona sem Provider. Embeddings remotos ficam desativados até que
+o workspace autorize explicitamente; arquivos excluídos, potencialmente
+secretos e não suportados são filtrados antes da leitura pelo pipeline
+semântico. Com autorização remota, somente chunks aprovados e não sensíveis são
+enviados; os vetores resultantes permanecem no SQLite local. Falhas do Provider
+usam fallback lexical/estrutural local.
+
 Credenciais de Providers:
 
 - ficam no processo principal do Electron;

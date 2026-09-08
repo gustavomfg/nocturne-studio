@@ -15,7 +15,8 @@ Em **Configurações > Diagnóstico**, é possível copiar ou exportar um relat�
 sanitizado com versões do aplicativo/runtimes, plataforma, arquitetura,
 identificador de sessão, contagens de eventos, contagens de Providers/modelos e
 tempos. Quando disponível, inclui somente agregados do Code Intelligence:
-indexações, atualizações incrementais, parsers, cancelamentos, falhas parciais
-e validações. Ele não contém credenciais, prompts, conteúdo de arquivos, diffs
-ou histórico de conversas. Revise qualquer log local antes de enviá-lo para
-fora do dispositivo.
+indexações estruturais e semânticas, atualizações incrementais, parsers,
+cancelamentos, falhas parciais e validações. Ele não contém credenciais,
+prompts, conteúdo de arquivos, unidades/vetores semânticos, diffs ou histórico
+de conversas. Revise qualquer log local antes de enviá-lo para fora do
+dispositivo.

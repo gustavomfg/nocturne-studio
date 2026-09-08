@@ -19,9 +19,16 @@ endpoints customizados que implementem os recursos compatíveis de modelos e
 chat completions. Endpoints remotos exigem HTTPS. HTTP simples é aceito apenas
 para Providers locais em loopback.
 
-O adapter oferece descoberta de modelos, streaming e cancelamento. Tool calling
-não é normalizado por esse adapter e aparece como limitação. Atualize o catálogo
-antes de associar um modelo ao workspace.
+O adapter oferece descoberta de modelos, streaming, cancelamento e o recurso
+OpenAI-compatible `/embeddings` quando o modelo selecionado declara a
+capacidade `embeddings`. Tool calling não é normalizado por esse adapter e
+aparece como limitação. Atualize o catálogo antes de associar um modelo ao
+workspace. Modelos de embeddings são associados separadamente do modelo de
+conversa.
+
+Embeddings remotos exigem consentimento explícito do workspace. Sem modelo de
+embeddings, sem consentimento ou diante de falha do adapter, o índice semântico
+continua disponível por recuperação lexical e estrutural local.
 
 ## Credenciais e diagnóstico
 
