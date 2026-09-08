@@ -20,6 +20,7 @@ import type {
   ProviderConfigurationSummary,
 } from '../../../shared/ai/providerConfiguration'
 import type { ModelDescriptor, ModelReference } from '../../../shared/ai/model'
+import type { WorkspaceModelBindings } from '../../../shared/ai/bindings'
 import type { CodexAccountStatus } from '../../../shared/types'
 import type { CodexModel } from '../../../shared/codexModels'
 import { errorMessage } from '../../shared/format'
@@ -73,6 +74,11 @@ export function AIConnectionPage({
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
   const [diagnosingId, setDiagnosingId] = useState<string | null>(null)
   const [providerDiagnostics, setProviderDiagnostics] = useState<Record<string, ProviderDiagnostic>>({})
+  const [workspaceBindings, setWorkspaceBindings] = useState<WorkspaceModelBindings | null>(null)
+  const [embeddingModels, setEmbeddingModels] = useState<ModelDescriptor[]>([])
+  const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState<ModelReference | null>(null)
+  const [remoteEmbeddingAllowed, setRemoteEmbeddingAllowed] = useState(false)
+  const [embeddingSaving, setEmbeddingSaving] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -92,6 +98,28 @@ export function AIConnectionPage({
       .catch((failure) => { if (active) setError(errorMessage(failure)) })
     return () => { active = false }
   }, [])
+
+  useEffect(() => {
+    let active = true
+    if (!workspaceId) {
+      setWorkspaceBindings(null)
+      setEmbeddingModels([])
+      setSelectedEmbeddingModel(null)
+      setRemoteEmbeddingAllowed(false)
+      return () => { active = false }
+    }
+    void Promise.all([window.nocturne.models.list(), window.nocturne.models.bindings(workspaceId)])
+      .then(([catalog, bindings]) => {
+        if (!active) return
+        const available = catalog.filter((model) => model.capabilities.includes('embeddings') && model.availability === 'available')
+        setEmbeddingModels(available)
+        setWorkspaceBindings(bindings)
+        setSelectedEmbeddingModel(bindings?.embeddingBinding ?? null)
+        setRemoteEmbeddingAllowed(bindings?.remoteEmbeddingAllowed === true)
+      })
+      .catch((failure) => { if (active) setError(errorMessage(failure)) })
+    return () => { active = false }
+  }, [workspaceId])
 
   const resetWizard = () => {
     setStep('list')
@@ -211,16 +239,46 @@ export function AIConnectionPage({
     setSaving(true)
     setError(null)
     try {
-      await window.nocturne.models.setBindings({
+      const nextBindings: WorkspaceModelBindings = {
+        ...(workspaceBindings ?? { workspaceId }),
         workspaceId,
         defaultBinding: selectedModel,
-      })
+      }
+      const saved = await window.nocturne.models.setBindings(nextBindings)
+      setWorkspaceBindings(saved)
       onNotify(t('ai.usingModel', { model: selectedModel.modelId }))
       resetWizard()
     } catch (failure) {
       setError(errorMessage(failure))
     } finally {
       setSaving(false)
+    }
+  }
+
+  const saveEmbeddingBinding = async () => {
+    if (!workspaceId || embeddingSaving) return
+    setEmbeddingSaving(true)
+    setError(null)
+    try {
+      const selectedEmbeddingDescriptor = selectedEmbeddingModel
+        ? embeddingModels.find((model) => model.providerId === selectedEmbeddingModel.providerId && model.modelId === selectedEmbeddingModel.modelId)
+        : undefined
+      const nextBindings: WorkspaceModelBindings = {
+        workspaceId,
+        ...(workspaceBindings?.defaultBinding ? { defaultBinding: workspaceBindings.defaultBinding } : {}),
+        ...(selectedEmbeddingModel && selectedEmbeddingDescriptor ? {
+          embeddingBinding: selectedEmbeddingModel,
+          remoteEmbeddingAllowed: remoteEmbeddingAllowed && selectedEmbeddingDescriptor.source === 'remote',
+        } : { remoteEmbeddingAllowed: false }),
+      }
+      const saved = await window.nocturne.models.setBindings(nextBindings)
+      setWorkspaceBindings(saved)
+      setRemoteEmbeddingAllowed(saved.remoteEmbeddingAllowed === true)
+      onNotify(t('ai.embeddingSaved'))
+    } catch (failure) {
+      setError(errorMessage(failure))
+    } finally {
+      setEmbeddingSaving(false)
     }
   }
 
@@ -333,6 +391,13 @@ export function AIConnectionPage({
       <button className="ai-add-btn" onClick={() => setStep('service')}>
         <Plus size={16}/> {t('ai.addConnection')}
       </button>
+
+      {workspaceId && embeddingModels.length > 0 && <section className="ai-embedding-binding">
+        <div className="ai-list-header"><h4 className="ai-list-heading">{t('ai.embeddingTitle')}</h4><p className="ai-list-sub">{t('ai.embeddingHint')}</p></div>
+        <label className="ai-field-label" htmlFor="ai-embedding-model"><span>{t('ai.embeddingModel')}</span><select id="ai-embedding-model" className="ai-input" value={selectedEmbeddingModel ? `${selectedEmbeddingModel.providerId}/${selectedEmbeddingModel.modelId}` : ''} onChange={(event) => { const [providerId, ...modelParts] = event.target.value.split('/'); const modelId = modelParts.join('/'); setSelectedEmbeddingModel(providerId && modelId ? { providerId, modelId } : null) }}><option value="">{t('ai.embeddingDisabled')}</option>{embeddingModels.map((model) => <option key={`${model.providerId}/${model.modelId}`} value={`${model.providerId}/${model.modelId}`}>{model.displayName}</option>)}</select></label>
+        {selectedEmbeddingModel && embeddingModels.some((model) => model.providerId === selectedEmbeddingModel.providerId && model.modelId === selectedEmbeddingModel.modelId && model.source === 'remote') && <label className="ai-embedding-consent"><input type="checkbox" checked={remoteEmbeddingAllowed} onChange={(event) => setRemoteEmbeddingAllowed(event.target.checked)}/><span>{t('ai.embeddingRemoteConsent')}</span></label>}
+        <button className="ai-use-btn" disabled={embeddingSaving} onClick={() => void saveEmbeddingBinding()}>{embeddingSaving ? t('settings.saving') : t('ai.saveEmbedding')}</button>
+      </section>}
     </>}
 
     {step === 'service' && <div className="ai-step-box">
