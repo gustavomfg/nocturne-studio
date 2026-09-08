@@ -3,6 +3,7 @@ import { request as httpsRequest } from 'node:https'
 import type { LookupFunction } from 'node:net'
 import { Readable } from 'node:stream'
 import type { NormalizedErrorCode } from '../../../../shared/ai/execution'
+import { EMBEDDING_LIMITS, type EmbeddingExecutionControl, type EmbeddingRequest, type EmbeddingResult } from '../../../../shared/ai/embedding'
 import type { ModelDescriptor } from '../../../../shared/ai/model'
 import type { ProviderAvailability, ProviderDefinition } from '../../../../shared/ai/provider'
 import type {
@@ -65,6 +66,7 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
       version: 'v1',
       capabilities: {
         modelDiscovery: true,
+        embeddings: true,
         streaming: true,
         toolCalling: false,
         cancellation: true,
@@ -182,6 +184,52 @@ export class OpenAICompatibleProviderAdapter implements ProviderAdapter {
         'Não foi possível concluir a chamada ao Provider.',
         true,
       )
+    } finally {
+      request.dispose()
+    }
+  }
+
+  async embed(
+    embedding: EmbeddingRequest,
+    control: EmbeddingExecutionControl,
+  ): Promise<EmbeddingResult> {
+    if (!this.config.enabled) throw providerError('provider-unavailable', 'O Provider está desabilitado.', false)
+    if (embedding.model.providerId !== this.config.id) throw providerError('model-unavailable', 'O modelo selecionado não pertence a este Provider.', false)
+    if (!embedding.model.capabilities.includes('embeddings')) throw providerError('model-unavailable', 'O modelo selecionado não oferece embeddings.', false)
+    validateEmbeddingInputs(embedding)
+
+    let credential: string | undefined
+    try {
+      credential = await this.resolveCredential()
+    } catch {
+      throw providerError('authentication-failed', 'A credencial do Provider não está disponível.', false)
+    }
+    if (control.signal.aborted) throw cancelledError()
+
+    const request = createRequestControl(control.signal, this.config.timeoutMs)
+    try {
+      const response = await this.request(
+        providerEndpoint(this.config, 'embeddings'),
+        {
+          method: 'POST',
+          headers: requestHeaders(credential),
+          body: JSON.stringify({
+            model: embedding.model.modelId,
+            input: embedding.inputs,
+            ...(embedding.dimensions ? { dimensions: embedding.dimensions } : {}),
+          }),
+          redirect: 'error',
+          signal: request.signal,
+        },
+      )
+      if (!response.ok) throw await errorFromResponse(response)
+      return normalizeEmbeddingResponse(await readBoundedJson(response, OPENAI_COMPATIBLE_LIMITS.embeddingsResponseBytes), embedding)
+    } catch (error) {
+      if (error instanceof ProviderExecutionError) throw error
+      if (control.signal.aborted) throw cancelledError()
+      if (request.didTimeout()) throw providerError('timeout', 'O Provider excedeu o tempo permitido.', true)
+      if (error instanceof OpenAICompatibleProtocolError) throw providerError('invalid-response', 'O Provider retornou embeddings inválidos.', false)
+      throw providerError('provider-unavailable', 'Não foi possível concluir a chamada de embeddings ao Provider.', true)
     } finally {
       request.dispose()
     }
@@ -491,6 +539,47 @@ function cloneModel(model: ModelDescriptor): ModelDescriptor {
     ...model,
     capabilities: [...model.capabilities],
     pricing: model.pricing ? { ...model.pricing } : undefined,
+  }
+}
+
+function validateEmbeddingInputs(request: EmbeddingRequest) {
+  if (request.inputs.length === 0 || request.inputs.length > EMBEDDING_LIMITS.maxInputsPerRequest) throw providerError('invalid-response', 'A solicitação de embeddings excede o número permitido de entradas.', false)
+  const totalCharacters = request.inputs.reduce((total, input) => total + input.length, 0)
+  if (request.inputs.some((input) => input.length === 0 || input.length > EMBEDDING_LIMITS.maxInputCharacters) || totalCharacters > EMBEDDING_LIMITS.maxTotalCharacters) {
+    throw providerError('invalid-response', 'A solicitação de embeddings excede o limite de conteúdo permitido.', false)
+  }
+  if (request.dimensions !== undefined && (!Number.isInteger(request.dimensions) || request.dimensions < 1 || request.dimensions > EMBEDDING_LIMITS.maxDimensions)) {
+    throw providerError('invalid-response', 'As dimensões solicitadas para embeddings são inválidas.', false)
+  }
+}
+
+function normalizeEmbeddingResponse(value: unknown, request: EmbeddingRequest): EmbeddingResult {
+  const body = asRecord(value)
+  if (!body || !Array.isArray(body.data) || body.data.length !== request.inputs.length) throw new OpenAICompatibleProtocolError()
+  const vectors = new Array<readonly number[]>(request.inputs.length)
+  for (const item of body.data) {
+    const record = asRecord(item)
+    const index = record?.index
+    const embedding = record?.embedding
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= vectors.length || vectors[index] || !Array.isArray(embedding) || embedding.length === 0 || embedding.some((value) => typeof value !== 'number' || !Number.isFinite(value))) throw new OpenAICompatibleProtocolError()
+    vectors[index] = embedding
+  }
+  if (vectors.some((vector) => !vector)) throw new OpenAICompatibleProtocolError()
+  const dimensions = vectors[0]?.length ?? 0
+  if (dimensions < 1 || dimensions > EMBEDDING_LIMITS.maxDimensions || vectors.some((vector) => vector.length !== dimensions)) throw new OpenAICompatibleProtocolError()
+  if (request.dimensions !== undefined && request.dimensions !== dimensions) throw new OpenAICompatibleProtocolError()
+  const usage = asRecord(body.usage)
+  return {
+    requestId: request.requestId,
+    model: request.model,
+    embeddings: vectors,
+    dimensions,
+    usage: usage && typeof usage.prompt_tokens === 'number'
+      ? {
+        inputTokens: Number.isInteger(usage.prompt_tokens) && usage.prompt_tokens >= 0 ? usage.prompt_tokens : undefined,
+        totalTokens: typeof usage.total_tokens === 'number' && Number.isInteger(usage.total_tokens) && usage.total_tokens >= 0 ? usage.total_tokens : undefined,
+      }
+      : undefined,
   }
 }
 

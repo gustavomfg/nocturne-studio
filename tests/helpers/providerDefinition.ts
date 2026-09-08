@@ -9,6 +9,7 @@ export function providerDefinition(id: string, source: ProviderSource = 'remote'
     version: '1',
     capabilities: {
       modelDiscovery: true,
+      embeddings: false,
       streaming: true,
       toolCalling: false,
       cancellation: true,

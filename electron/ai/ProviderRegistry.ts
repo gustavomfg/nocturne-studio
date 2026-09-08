@@ -1,5 +1,10 @@
 import type { ProviderAvailability, ProviderDefinition } from '../../shared/ai/provider'
 import type {
+  EmbeddingExecutionControl,
+  EmbeddingRequest,
+  EmbeddingResult,
+} from '../../shared/ai/embedding'
+import type {
   ProviderExecutionControl,
   ProviderExecutionRequest,
   ProviderExecutionResult,
@@ -13,6 +18,10 @@ export interface ProviderAdapter {
     request: ProviderExecutionRequest,
     control: ProviderExecutionControl,
   ): ProviderExecutionResult | Promise<ProviderExecutionResult>
+  embed?(
+    request: EmbeddingRequest,
+    control: EmbeddingExecutionControl,
+  ): EmbeddingResult | Promise<EmbeddingResult>
   dispose?(): void | Promise<void>
 }
 

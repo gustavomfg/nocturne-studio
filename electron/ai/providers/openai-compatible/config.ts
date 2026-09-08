@@ -8,6 +8,7 @@ export const OPENAI_COMPATIBLE_LIMITS = {
   modelsResponseBytes: 2 * 1024 * 1024,
   streamResponseBytes: 10 * 1024 * 1024,
   streamEventBytes: 1024 * 1024,
+  embeddingsResponseBytes: 16 * 1024 * 1024,
 } as const
 
 const configSchema = z.object({
@@ -38,7 +39,7 @@ export function parseOpenAICompatibleConfig(input: unknown): OpenAICompatibleCon
   return { ...config, baseUrl: baseUrl.href.replace(/\/$/, '') }
 }
 
-export function providerEndpoint(config: OpenAICompatibleConfig, resource: 'models' | 'chat/completions') {
+export function providerEndpoint(config: OpenAICompatibleConfig, resource: 'models' | 'chat/completions' | 'embeddings') {
   const base = new URL(`${config.baseUrl}/`)
   const path = `${base.pathname.replace(/\/$/, '')}/${resource}`.replace(/\/{2,}/g, '/')
   base.pathname = path

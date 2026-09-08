@@ -358,7 +358,7 @@ describe('ProviderConfigurationService', () => {
       providerId: created.id,
       definition: {
         protocol: 'test',
-        capabilities: { modelDiscovery: true, streaming: true, cancellation: true, authentication: 'required' },
+        capabilities: { modelDiscovery: true, embeddings: false, streaming: true, cancellation: true, authentication: 'required' },
       },
       availability: { status: 'degraded', message: 'Catálogo parcialmente indisponível.' },
       connectivity: 'connected',

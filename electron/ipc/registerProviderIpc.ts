@@ -57,6 +57,7 @@ const providerDefinitionSchema = z.object({
   version: z.string().max(200).optional(),
   capabilities: z.object({
     modelDiscovery: z.boolean(),
+    embeddings: z.boolean(),
     streaming: z.boolean(),
     toolCalling: z.boolean(),
     cancellation: z.boolean(),

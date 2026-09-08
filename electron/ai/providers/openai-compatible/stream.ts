@@ -117,7 +117,7 @@ export async function consumeOpenAICompatibleStream(
   return { finishReason: finishReason ?? 'unknown' }
 }
 
-export async function readBoundedJson(response: Response): Promise<unknown> {
+export async function readBoundedJson(response: Response, maxBytes = OPENAI_COMPATIBLE_LIMITS.modelsResponseBytes): Promise<unknown> {
   if (!response.body) throw new OpenAICompatibleProtocolError()
   const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
   if (!contentType.includes('json') && !contentType.includes('text/plain')) {
@@ -132,7 +132,7 @@ export async function readBoundedJson(response: Response): Promise<unknown> {
       const { done, value } = await reader.read()
       if (done) break
       bytes += value.byteLength
-      if (bytes > OPENAI_COMPATIBLE_LIMITS.modelsResponseBytes) {
+      if (bytes > maxBytes) {
         throw new OpenAICompatibleProtocolError()
       }
       content += decoder.decode(value, { stream: true })

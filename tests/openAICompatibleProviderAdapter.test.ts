@@ -15,6 +15,7 @@ import {
 import type { ModelDescriptor } from '../shared/ai/model'
 import type { ProviderExecutionRequest } from '../shared/ai/providerExecution'
 import type { NormalizedTask } from '../shared/ai/task'
+import type { EmbeddingRequest } from '../shared/ai/embedding'
 
 const model: ModelDescriptor = {
   providerId: 'custom-openai',
@@ -23,6 +24,13 @@ const model: ModelDescriptor = {
   source: 'remote',
   capabilities: ['chat', 'streaming'],
   availability: 'available',
+}
+
+const embeddingModel: ModelDescriptor = {
+  ...model,
+  modelId: 'embedding-1',
+  displayName: 'Embedding 1',
+  capabilities: ['embeddings'],
 }
 
 const config = {
@@ -109,6 +117,9 @@ describe('OpenAI-compatible configuration', () => {
     expect(providerEndpoint(parsed, 'chat/completions').href).toBe(
       'https://provider.example/v1/chat/completions',
     )
+    expect(providerEndpoint(parsed, 'embeddings').href).toBe(
+      'https://provider.example/v1/embeddings',
+    )
   })
 
   it('permite HTTP somente para Provider local em loopback', () => {
@@ -189,6 +200,7 @@ describe('OpenAICompatibleAdapterFactory', () => {
       version: 'v1',
       capabilities: {
         modelDiscovery: true,
+        embeddings: true,
         streaming: true,
         toolCalling: false,
         cancellation: true,
@@ -252,6 +264,55 @@ describe('OpenAI-compatible remote transport', () => {
     resolver('provider.example', { all: true }, callback)
 
     expect(callback).toHaveBeenCalledWith(null, [pinned])
+  })
+})
+
+describe('OpenAI-compatible embeddings', () => {
+  it('envia somente entradas normalizadas e ordena vetores pelo índice', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(Response.json({
+      data: [
+        { index: 1, embedding: [0, 1] },
+        { index: 0, embedding: [1, 0] },
+      ],
+      usage: { prompt_tokens: 7, total_tokens: 7 },
+    }))
+    const embedding: EmbeddingRequest = {
+      requestId: 'embedding-request-1',
+      model: embeddingModel,
+      inputs: ['primeiro chunk', 'segundo chunk'],
+      dimensions: 2,
+    }
+
+    await expect(adapter(request, { models: [embeddingModel] }).embed(embedding, {
+      signal: new AbortController().signal,
+    })).resolves.toMatchObject({
+      requestId: 'embedding-request-1',
+      dimensions: 2,
+      embeddings: [[1, 0], [0, 1]],
+      usage: { inputTokens: 7, totalTokens: 7 },
+    })
+    expect(request).toHaveBeenCalledWith(
+      new URL('https://provider.example/v1/embeddings'),
+      expect.objectContaining({ method: 'POST', redirect: 'error' }),
+    )
+    const body = JSON.parse(String(request.mock.calls[0][1]?.body)) as { model: string; input: string[]; dimensions: number }
+    expect(body).toEqual({ model: 'embedding-1', input: ['primeiro chunk', 'segundo chunk'], dimensions: 2 })
+  })
+
+  it('rejeita resposta com dimensões inconsistentes sem expor o conteúdo', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(Response.json({
+      data: [{ index: 0, embedding: [1, 0] }, { index: 1, embedding: [1] }],
+    }))
+    const result = adapter(request, { models: [embeddingModel] }).embed({
+      requestId: 'embedding-request-2',
+      model: embeddingModel,
+      inputs: ['secret-like content', 'other content'],
+    }, { signal: new AbortController().signal })
+    const error = await result.catch((value: unknown) => value)
+    expect(error).toMatchObject({
+      normalized: { code: 'invalid-response' },
+    })
+    expect(error).not.toMatchObject({ message: expect.stringContaining('secret-like content') })
   })
 })
 
