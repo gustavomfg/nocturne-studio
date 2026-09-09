@@ -1,7 +1,7 @@
 {
   "name": "nocturne-studio",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Local-first desktop engineering workspace for projects, AI providers and Codex-assisted workflows.",
   "desktopName": "Nocturne Studio",
   "license": "MIT",

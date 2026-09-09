@@ -33,9 +33,9 @@ persistência e recuperação, integrações de Providers, armazenamento de
 credenciais e atualizações empacotadas. Providers externos e o Codex CLI têm
 suas próprias políticas.
 
-O repositório está preparado como candidato `1.0.0`. O suporte estável dessa
-versão começa somente depois da tag `v1.0.0` e da publicação protegida; o
-candidato ainda não foi publicado. Notas históricas de betas não prometem
+O repositório está preparado como candidato `1.0.1`. O suporte estável dessa
+versão começa somente depois da tag `v1.0.1` e da publicação protegida; o
+candidato ainda não foi publicado. Notas históricas de releases não prometem
 suporte a versões antigas.
 
 ## Projeto de segurança

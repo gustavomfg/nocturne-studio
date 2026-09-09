@@ -100,7 +100,7 @@ The full command list is in [development](docs/development.md).
 
 ## Current status
 
-The repository is prepared as the `v1.0.0` release candidate. It has not been
+The repository is prepared as the `v1.0.1` release candidate. It has not been
 tagged or published; signed artifacts, the final SHA checks and protected stable
 release approval are still required.
 The Codex App Server contract is experimental; the minimum supported CLI is
@@ -131,7 +131,7 @@ contract.
 - [Troubleshooting](docs/troubleshooting.md) · [Português](docs/troubleshooting.pt-BR.md)
 - [Development](docs/development.md) · [Português](docs/development.pt-BR.md)
 - [Architecture](docs/architecture.md) · [Português](docs/architecture.pt-BR.md)
-- [1.0.0 release notes](docs/releases/v1.0.0.md) · [Português](docs/releases/v1.0.0.pt-BR.md)
+- [1.0.1 release notes](docs/releases/v1.0.1.md) · [Português](docs/releases/v1.0.1.pt-BR.md)
 - [Release-candidate checklist](docs/release-rc-checklist.md) · [Português](docs/release-rc-checklist.pt-BR.md)
 - [Release readiness (maintainer document)](docs/release-readiness-1.0.md)
 

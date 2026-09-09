@@ -16,8 +16,8 @@ signed; macOS also requires notarization. Linux checksum manifests are signed
 with GPG in the protected release workflow. A package-validation build is not a
 stable release and may be unsigned.
 
-The repository is prepared as the `1.0.0` release candidate. This preparation
-does not create the `v1.0.0` tag or publish an artifact; use only assets from the
+The repository is prepared as the `1.0.1` release candidate. This preparation
+does not create the `v1.0.1` tag or publish an artifact; use only assets from the
 protected stable release when installing the official version.
 
 ## AI requirements

@@ -23,7 +23,7 @@ implicit step when the existing product flow keeps them separate.
 
 ## Current release line
 
-Current release candidate: `1.0.0` (not tagged or published yet).
+Current release candidate: `1.0.1` (not tagged or published yet).
 
 Current priorities:
 

@@ -38,7 +38,13 @@ recovering user data during the next startup.
 
 Stable releases use the stable `release` metadata policy. Prerelease settings
 are not a promise that every beta will receive every stable build; the
-`0.9.5-beta` to `1.0.0` path is rehearsed with real updater metadata before the
+`1.0.0` to `1.0.1` path is rehearsed with real updater metadata before the
 stable release. The current stable workflow publishes Linux only. Expanding
 stable publication to signed Windows and macOS artifacts is a separate release
 pipeline follow-up. See the maintainer [release workflow](github-actions.md).
+
+The published `v1.0.0` client embeds the historical `gustavomfg/Nocturne-Codex`
+slug. GitHub redirects that slug's API and asset URLs to
+`gustavomfg/nocturne-studio`, so it remains a compatibility bridge without
+duplicating release metadata or assets. New `v1.0.1` packages embed the canonical
+repository directly and no longer depend on the legacy slug.

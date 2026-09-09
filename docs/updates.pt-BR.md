@@ -38,7 +38,13 @@ próximo startup.
 
 Releases estáveis usam a política de metadados estável `release`. A configuração
 de prerelease não promete que toda beta receberá toda build estável; o caminho
-`0.9.5-beta` para `1.0.0` é ensaiado com metadados reais antes da release
+`1.0.0` para `1.0.1` é ensaiado com metadados reais antes da release
 estável. O workflow estável atual publica somente Linux. A expansão para
 artefatos assinados de Windows e macOS é um follow-up separado do pipeline de
 release. Veja o [workflow de release](github-actions.md).
+
+O cliente `v1.0.0` publicado embute o slug histórico
+`gustavomfg/Nocturne-Codex`. O GitHub redireciona a API e as URLs de assets desse
+slug para `gustavomfg/nocturne-studio`, mantendo uma ponte de compatibilidade
+sem duplicar metadados ou assets de release. Os novos pacotes `v1.0.1` embutem
+diretamente o repositório canônico e não dependem mais do slug legado.

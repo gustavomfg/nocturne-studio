@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Stable tag selected in "Use workflow from" (for example v1.0.0)
+        description: Stable tag selected in "Use workflow from" (for example v1.0.1)
         required: true
         type: string
       codex_smoke_run_id:

@@ -1,23 +1,23 @@
-# 1.0.0 release readiness
+# 1.0 release readiness
 
-This is an internal maintainer checklist for the `1.0.0` release candidate. It
-records evidence and open release gates; it does not create the `v1.0.0` tag or
+This is an internal maintainer checklist for the `1.0.1` release candidate. It
+records evidence and open release gates; it does not create the `v1.0.1` tag or
 claim that a stable release has been published.
 
 ## Candidate identity
 
-- Prepared version: `1.0.0` (no prerelease suffix).
+- Prepared version: `1.0.1` (no prerelease suffix).
 - Candidate SHA: must be recorded by the final candidate commit and every
   release workflow; a local build from another SHA is not release evidence.
-- Expected stable tag: `v1.0.0`.
+- Expected stable tag: `v1.0.1`.
 - Stable workflow inputs: `release_tag`, the lowercase full `candidate_sha`, and the
   successful `codex_smoke_run_id` for that exact SHA.
-- Product identity remains `com.nocturne.codex` / `Nocturne Studio` so existing
-  user-data and update paths remain compatible.
+- Product identity remains `com.nocturne.codex` / `Nocturne Studio`; the
+  canonical publication and updater repository is `gustavomfg/nocturne-studio`.
 
 ## Automated coverage
 
-The current Vitest suite contains **442 tests** across 79 files. The relevant
+The current Vitest suite contains **445 tests** across 80 files. The relevant
 journeys are covered by:
 
 | Area | Evidence in the repository |
@@ -45,7 +45,7 @@ authoritative cross-platform result.
 - bounded workspace reads, attachment containment and symlink protections;
 - fatal main-process shutdown policy;
 - cross-platform WorkspaceChangeWatcher behavior;
-- real updater rehearsal from `0.9.5-beta` metadata to stable `1.0.0` metadata;
+- real updater rehearsal from published `1.0.0` metadata to stable `1.0.1` metadata;
 - authenticated Codex CLI/App Server contract smoke on the candidate workflow;
 - packaged recovery rehearsal on Linux, Windows and macOS in the latest
   GitHub Actions matrix evidence supplied for the candidate;
@@ -74,13 +74,13 @@ smoke jobs.
 
 ## Open gates before publication
 
-1. Create the final candidate commit and record its exact SHA.
+1. Create the final `1.0.1` candidate commit and record its exact SHA.
 2. Run the source, renderer, ABI, reliability and unsigned package gates for
    that SHA; the tag must also pass the package-version check.
-3. Create tag `v1.0.0` only after those gates pass.
+3. Create tag `v1.0.1` only after those gates pass.
 4. Run the authenticated Codex smoke from the exact candidate SHA and pass its
    run ID and SHA to `stable-release.yml`; the report must match the tag SHA and
-   `1.0.0`.
+   `1.0.1`.
 5. Complete the protected Linux signed-package job with GPG checksum signing.
    Windows signing and macOS signing/notarization remain deferred until trusted
    platform certificates are available; they are not part of the current stable
@@ -90,7 +90,7 @@ smoke jobs.
 7. Verify checksums, release-asset inventory and the protected stable approval
    before publishing.
 
-The updater rehearsal proves the beta-to-stable metadata path; it does not
+The updater rehearsal proves the published-stable-to-patch metadata path; it does not
 publish an update or replace the installer/signing checks. The packaged recovery
 rehearsal proves the recovery engine through the real unpacked application; the
 native consent click remains manual by design. Signing, notarization, the final

@@ -1,4 +1,4 @@
-# 1.0.0 release-candidate checklist
+# 1.0.1 release-candidate checklist
 
 This is a short manual checklist for the final candidate. Record the exact
 commit SHA, artifact name, platform and date for every run. It does not publish
@@ -6,8 +6,8 @@ the release or replace the protected stable-release workflow.
 
 ## Candidate identity
 
-- [ ] Confirm `package.json` is `1.0.0`, the candidate SHA is known, and the
-      intended tag is `v1.0.0`.
+- [ ] Confirm `package.json` is `1.0.1`, the candidate SHA is known, and the
+      intended tag is `v1.0.1`.
 - [ ] Confirm the artifact architecture and compare its checksum with the
       release manifest.
 
@@ -48,7 +48,7 @@ the release or replace the protected stable-release workflow.
 - [ ] Record Windows and macOS as unsigned package-validation results; signed
       distribution for those platforms remains deferred until trusted
       certificates are available.
-- [ ] Verify the exact `v1.0.0` tag points to the tested SHA and that the stable
+- [ ] Verify the exact `v1.0.1` tag points to the tested SHA and that the stable
       workflow has passed before publication.
 
 Native recovery consent and signing/notarization are release gates, not bypasses

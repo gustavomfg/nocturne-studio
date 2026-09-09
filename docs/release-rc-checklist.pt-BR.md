@@ -1,4 +1,4 @@
-# Checklist do candidato de release 1.0.0
+# Checklist do candidato de release 1.0.1
 
 [English](release-rc-checklist.md)
 
@@ -8,8 +8,8 @@ nem substitui o workflow protegido de release estável.
 
 ## Identidade do candidato
 
-- [ ] Confirme `package.json` como `1.0.0`, registre o SHA candidato e confirme
-      que a tag pretendida é `v1.0.0`.
+- [ ] Confirme `package.json` como `1.0.1`, registre o SHA candidato e confirme
+      que a tag pretendida é `v1.0.1`.
 - [ ] Confirme a arquitetura do artefato e compare o checksum com o manifesto da
       release.
 
@@ -53,7 +53,7 @@ nem substitui o workflow protegido de release estável.
 - [ ] Registre Windows e macOS como resultados de validação de pacotes sem
       assinatura; a distribuição assinada dessas plataformas continua adiada
       até que certificados confiáveis estejam disponíveis.
-- [ ] Verifique que a tag exata `v1.0.0` aponta para o SHA testado e que o
+- [ ] Verifique que a tag exata `v1.0.1` aponta para o SHA testado e que o
       workflow estável passou antes da publicação.
 
 Consentimento nativo de recovery e assinatura/notarização são gates de release;

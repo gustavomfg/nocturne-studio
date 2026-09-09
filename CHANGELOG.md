@@ -1,3 +1,14 @@
+## 1.0.1 — Release candidate (unreleased)
+
+### Changed
+
+- Consolidates the final release-candidate line without introducing a new
+  feature phase.
+- Hardens release and updater verification around the published `1.0.0` to
+  `1.0.1` migration path.
+- Establishes `gustavomfg/nocturne-studio` as the canonical distribution and
+  updater identity while preserving the GitHub rename bridge for `v1.0.0`.
+
 ## 1.0.0 — Release candidate (unreleased)
 
 ### Added
