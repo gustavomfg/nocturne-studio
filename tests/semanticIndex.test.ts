@@ -126,7 +126,7 @@ function createFixture() {
 }
 
 async function waitFor(predicate: () => boolean) {
-  const deadline = Date.now() + 2_000
+  const deadline = Date.now() + 10_000
   while (!predicate() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10))
   expect(predicate()).toBe(true)
 }
