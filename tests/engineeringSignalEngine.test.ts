@@ -10,7 +10,7 @@ import { removeTestDirectory } from './helpers/platform'
 
 const directories: string[] = []
 const sourceHash = 'a'.repeat(64)
-const workspace = '/tmp/signal-engine-workspace'
+const workspace = path.resolve(os.tmpdir(), 'signal-engine-workspace')
 const projectRun: ProjectIndexRun = {
   id: 'project-run-1', workspace, indexVersion: 1, kind: 'initial', status: 'completed', phase: 'completed',
   totalFiles: 2, processedFiles: 1, failedFiles: 1, unsupportedFiles: 0, pendingFiles: 0,
