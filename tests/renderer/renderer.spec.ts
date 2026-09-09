@@ -36,7 +36,7 @@ test.describe('renderer do produto', () => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await ready(page)
     await page.evaluate(() => (window as unknown as { __nocturneTest: { emitUpdateState(payload: unknown): void } }).__nocturneTest.emitUpdateState({
-      status: 'available', currentVersion: '1.0.0', platform: 'linux', version: '1.1.0', releaseNotes: 'Melhorias de estabilidade.', releaseDate: null, discoveredBy: 'automatic',
+      status: 'available', currentVersion: '1.0.1', platform: 'linux', version: '1.1.0', releaseNotes: 'Melhorias de estabilidade.', releaseDate: null, discoveredBy: 'automatic',
     }))
     const toast = page.locator('.update-toast')
     await expect(toast).toContainText('Nocturne Studio 1.1.0 está disponível')
@@ -47,7 +47,7 @@ test.describe('renderer do produto', () => {
     await expect(page.locator('.update-toast')).toContainText('Baixando Nocturne Studio 1.1.0')
 
     await page.evaluate(() => (window as unknown as { __nocturneTest: { emitUpdateState(payload: unknown): void } }).__nocturneTest.emitUpdateState({
-      status: 'downloading', currentVersion: '1.0.0', platform: 'linux', version: '1.1.0', percent: 68, transferred: 680, total: 1_000, bytesPerSecond: 100,
+      status: 'downloading', currentVersion: '1.0.1', platform: 'linux', version: '1.1.0', percent: 68, transferred: 680, total: 1_000, bytesPerSecond: 100,
     }))
     await expect(page.locator('.update-toast')).toContainText('68%')
   })
@@ -56,7 +56,7 @@ test.describe('renderer do produto', () => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await ready(page)
     await page.evaluate(() => (window as unknown as { __nocturneTest: { emitUpdateState(payload: unknown): void } }).__nocturneTest.emitUpdateState({
-      status: 'ready', currentVersion: '1.0.0', platform: 'linux', version: '1.1.0', releaseNotes: '', releaseDate: null,
+      status: 'ready', currentVersion: '1.0.1', platform: 'linux', version: '1.1.0', releaseNotes: '', releaseDate: null,
     }))
     const toast = page.locator('.update-toast')
     await expect(toast).toContainText('Atualização pronta')
@@ -68,7 +68,7 @@ test.describe('renderer do produto', () => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await ready(page)
     await page.evaluate(() => (window as unknown as { __nocturneTest: { emitUpdateState(payload: unknown): void } }).__nocturneTest.emitUpdateState({
-      status: 'error', currentVersion: '1.0.0', platform: 'linux', stage: 'download', message: 'erro', recoverable: true, version: '1.1.0',
+      status: 'error', currentVersion: '1.0.1', platform: 'linux', stage: 'download', message: 'erro', recoverable: true, version: '1.1.0',
     }))
     const toast = page.locator('.update-toast-error')
     await expect(toast).toContainText('Download interrompido')

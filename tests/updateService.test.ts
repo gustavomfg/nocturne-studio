@@ -28,12 +28,12 @@ const window = {
   setProgressBar: vi.fn(),
 }
 
-function createService(updater = new FakeUpdater()) {
+function createService(updater = new FakeUpdater(), currentVersion = '1.0.1') {
   const service = startUpdateService(
     logger,
     () => window as never,
     updater as unknown as AppUpdater,
-    { currentVersion: '1.0.0', platform: 'win32', supported: true },
+    { currentVersion, platform: 'win32', supported: true },
   )
   return { service, updater }
 }
@@ -53,7 +53,7 @@ describe('serviço de atualização', () => {
 
     await vi.advanceTimersByTimeAsync(15_000)
     expect(updater.checkForUpdates).toHaveBeenCalledTimes(1)
-    expect(service.getCurrentState()).toMatchObject({ status: 'checking', currentVersion: '1.0.0' })
+    expect(service.getCurrentState()).toMatchObject({ status: 'checking', currentVersion: '1.0.1' })
     await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000)
     expect(updater.checkForUpdates).toHaveBeenCalledTimes(1)
 
@@ -83,12 +83,23 @@ describe('serviço de atualização', () => {
     service.dispose()
   })
 
+  it('trata 1.0.1 como atualização do cliente 1.0.0', async () => {
+    const { service, updater } = createService(new FakeUpdater(), '1.0.0')
+    const migrationInfo = { ...info, version: '1.0.1' } as UpdateInfo
+
+    updater.checkForUpdates.mockResolvedValue({ isUpdateAvailable: true, updateInfo: migrationInfo, versionInfo: migrationInfo } as never)
+    await service.checkForUpdates('manual')
+
+    expect(service.getCurrentState()).toMatchObject({ status: 'available', currentVersion: '1.0.0', version: '1.0.1', discoveredBy: 'manual' })
+    service.dispose()
+  })
+
   it('expõe feedback de up-to-date para check manual', async () => {
     const { service, updater } = createService()
     await service.checkForUpdates('manual')
 
     expect(updater.checkForUpdates).toHaveBeenCalledTimes(1)
-    expect(service.getCurrentState()).toMatchObject({ status: 'up-to-date', currentVersion: '1.0.0' })
+    expect(service.getCurrentState()).toMatchObject({ status: 'up-to-date', currentVersion: '1.0.1' })
     service.dispose()
   })
 
@@ -166,7 +177,7 @@ describe('serviço de atualização', () => {
       logger,
       () => window as never,
       updater as unknown as AppUpdater,
-      { currentVersion: '1.0.0', platform: 'linux', packaged: true, supported: false },
+      { currentVersion: '1.0.1', platform: 'linux', packaged: true, supported: false },
     )
 
     expect(unsupported.getCurrentState()).toMatchObject({ status: 'unsupported', platform: 'linux' })

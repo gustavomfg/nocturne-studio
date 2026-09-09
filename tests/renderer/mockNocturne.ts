@@ -22,7 +22,7 @@ export async function installNocturneMock(page: Page, options: { empty?: boolean
     let selectedWorkspace = workspace
     let selectedExpected: string | undefined
     let memoryReads = 0
-    let updateState: UpdateState = { status: 'up-to-date', currentVersion: '1.0.0', platform: 'linux', lastCheckedAt: now }
+    let updateState: UpdateState = { status: 'up-to-date', currentVersion: '1.0.1', platform: 'linux', lastCheckedAt: now }
     const rendererPerformanceReports: unknown[] = []
     type MockBrainMemory = { id: string; workspaceId: string; conversationId: string | null; kind: 'fact' | 'decision' | 'preference' | 'constraint' | 'learning'; scope: 'workspace' | 'conversation'; status: 'candidate' | 'active' | 'outdated' | 'archived'; content: string; confidence: number; sourceType: 'manual' | 'agent'; sourceId: string | null; createdAt: string; updatedAt: string; lastConfirmedAt: string | null; lastUsedAt: string | null; useCount: number }
     type MockProviderConfiguration = { id: string; providerType: 'openai-compatible'; displayName: string; source: 'local' | 'remote'; baseUrl: string; enabled: boolean; requiresAuthentication: boolean; credentialConfigured: boolean; timeoutMs: number; createdAt: string; updatedAt: string }

@@ -181,7 +181,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
   let root: string
   let flushLogger: (() => Promise<void>) | null = null
   const electronMock = electron
-  let updateState: UpdateState = { status: 'up-to-date', currentVersion: '1.0.0', platform: 'linux', lastCheckedAt: '2026-09-07T10:00:00.000Z' }
+  let updateState: UpdateState = { status: 'up-to-date', currentVersion: '1.0.1', platform: 'linux', lastCheckedAt: '2026-09-07T10:00:00.000Z' }
   const updateListeners = new Set<(state: UpdateState) => void>()
   const updateService: UpdateService = {
     start: () => undefined,
@@ -272,11 +272,11 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     expect(Object.keys(api).sort()).toEqual(['ai', 'artifacts', 'brain', 'changeControl', 'clipboard', 'codex', 'conversations', 'data', 'diagnostics', 'documents', 'engineeringIntelligence', 'files', 'git', 'memory', 'models', 'projectIndex', 'providers', 'semanticIndex', 'settings', 'suggestions', 'updates', 'validation', 'workspace'])
     await api.clipboard.writeText('commit sugerido')
     await expect(api.clipboard.readText()).resolves.toBe('commit sugerido')
-    await expect(api.updates.getState()).resolves.toMatchObject({ status: 'up-to-date', currentVersion: '1.0.0' })
+    await expect(api.updates.getState()).resolves.toMatchObject({ status: 'up-to-date', currentVersion: '1.0.1' })
     const changed = new Promise<UpdateState>((resolve) => {
       const off = api.updates.onStateChanged((next) => { off(); resolve(next) })
     })
-    updateState = { status: 'ready', currentVersion: '1.0.0', platform: 'linux', version: '1.1.0', releaseNotes: '', releaseDate: null }
+    updateState = { status: 'ready', currentVersion: '1.0.1', platform: 'linux', version: '1.1.0', releaseNotes: '', releaseDate: null }
     updateListeners.forEach((listener) => listener(updateState))
     await expect(changed).resolves.toMatchObject({ status: 'ready', version: '1.1.0' })
     electron.dialogs.open.push({ canceled: false, filePaths: [workspace] })

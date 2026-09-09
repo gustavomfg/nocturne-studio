@@ -5,7 +5,7 @@ import { registerUpdateIpc } from '../electron/ipc/registerUpdateIpc'
 import type { UpdateService } from '../electron/updates/UpdateService'
 import type { SafeIpcMain } from '../electron/ipc/safeIpc'
 
-const state: UpdateState = { status: 'up-to-date', currentVersion: '1.0.0', platform: 'linux', lastCheckedAt: '2026-09-07T10:00:00.000Z' }
+const state: UpdateState = { status: 'up-to-date', currentVersion: '1.0.1', platform: 'linux', lastCheckedAt: '2026-09-07T10:00:00.000Z' }
 
 describe('IPC de atualização', () => {
   it('expõe comandos nomeados, valida ausência de payload e remove a subscription', async () => {

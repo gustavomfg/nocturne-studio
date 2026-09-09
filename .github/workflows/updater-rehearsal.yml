@@ -6,7 +6,7 @@ on:
       candidate_version:
         description: Stable candidate version to rehearse
         required: true
-        default: 1.0.0
+        default: 1.0.1
         type: string
 
 permissions:
@@ -28,7 +28,7 @@ jobs:
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       UPDATER_REHEARSAL_VERSION: ${{ inputs.candidate_version }}
-      UPDATER_REHEARSAL_BASE_COMMIT: f793b9cd2e3dd03d1df7ba79da56007400a60e8f
+      UPDATER_REHEARSAL_BASE_COMMIT: 310f86a1a71814f8cc05ef3275ce27e1babbb15d
     steps:
       - uses: actions/checkout@v6
         with:
@@ -39,17 +39,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Build the historical 0.9.5-beta fixture package
+      - name: Build the published 1.0.0 fixture package
         shell: bash
         run: |
-          base_dir="$RUNNER_TEMP/nocturne-studio-0.9.5-beta"
+          base_dir="$RUNNER_TEMP/nocturne-studio-1.0.0"
           git worktree add --detach "$base_dir" "$UPDATER_REHEARSAL_BASE_COMMIT"
           npm ci --prefix "$base_dir"
           npm run package --prefix "$base_dir" -- --publish never
           base_package="$base_dir/package.json"
           base_version="$(BASE_PACKAGE="$base_package" node -e "const fs=require('node:fs'); const path=require('node:path'); process.stdout.write(JSON.parse(fs.readFileSync(path.resolve(process.env.BASE_PACKAGE), 'utf8')).version)")"
           {
-            echo "UPDATER_REHEARSAL_BASE_RELEASE=$base_dir/release/0.9.5-beta"
+            echo "UPDATER_REHEARSAL_BASE_RELEASE=$base_dir/release/1.0.0"
             echo "UPDATER_REHEARSAL_BASE_PACKAGE=$base_package"
             echo "UPDATER_REHEARSAL_BASE_VERSION=$base_version"
           } >> "$GITHUB_ENV"
