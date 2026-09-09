@@ -48,8 +48,11 @@ nem substitui o workflow protegido de release estável.
       fixture.
 - [ ] Confirme que logs e diagnósticos não contêm credenciais, tokens, prompts
       ou conteúdo privado do workspace.
-- [ ] Verifique assinatura do Windows, assinatura/notarização do macOS e
-      assinatura dos checksums Linux no ambiente protegido de release.
+- [ ] Verifique a assinatura dos checksums Linux no ambiente protegido de
+      release.
+- [ ] Registre Windows e macOS como resultados de validação de pacotes sem
+      assinatura; a distribuição assinada dessas plataformas continua adiada
+      até que certificados confiáveis estejam disponíveis.
 - [ ] Verifique que a tag exata `v1.0.0` aponta para o SHA testado e que o
       workflow estável passou antes da publicação.
 

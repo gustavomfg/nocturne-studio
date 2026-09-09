@@ -44,8 +44,10 @@ the release or replace the protected stable-release workflow.
       each packaged platform without using real user data in the test fixture.
 - [ ] Confirm logs and diagnostics contain no credentials, tokens, prompts or
       private workspace contents.
-- [ ] Verify Windows signing, macOS signing/notarization and Linux checksum
-      signing in the protected release environment.
+- [ ] Verify Linux checksum signing in the protected release environment.
+- [ ] Record Windows and macOS as unsigned package-validation results; signed
+      distribution for those platforms remains deferred until trusted
+      certificates are available.
 - [ ] Verify the exact `v1.0.0` tag points to the tested SHA and that the stable
       workflow has passed before publication.
 
