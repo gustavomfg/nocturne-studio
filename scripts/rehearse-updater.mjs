@@ -144,8 +144,9 @@ async function main() {
   if (!report.updateDetected) {
     throw new Error(`O updater não detectou a release stable ${stableVersion}: ${JSON.stringify(check?.updateInfo ?? null)}`)
   }
-  if (!report.allowPrerelease) {
-    throw new Error('A instalação beta não ativou allowPrerelease conforme o contrato do electron-updater.')
+  const expectedAllowPrerelease = report.baseVersion.includes('-')
+  if (report.allowPrerelease !== expectedAllowPrerelease) {
+    throw new Error(`A política de prerelease não corresponde à versão base ${report.baseVersion}.`)
   }
   const stableProbe = createUpdater(configPath, server.baseUrl, stableVersion)
   try {
