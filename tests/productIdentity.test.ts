@@ -22,6 +22,8 @@ describe('stable product identity', () => {
     expect(builder).toContain(`"appId": "${productIdentity.applicationId}"`)
     expect(builder).toContain(`"productName": "${productIdentity.displayName}"`)
     expect(builder).toContain(`"repo": "${productIdentity.repository}"`)
+    expect(productIdentity.repository).toBe('nocturne-studio')
+    expect(builder).not.toContain('"repo": "Nocturne-Codex"')
   })
 
   it('keeps the authenticated runner label synchronized', () => {

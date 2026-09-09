@@ -16,7 +16,7 @@
   "publish": [{
     "provider": "github",
     "owner": "gustavomfg",
-    "repo": "Nocturne-Codex",
+    "repo": "nocturne-studio",
     "releaseType": "release"
   }],
   "asarUnpack": [
