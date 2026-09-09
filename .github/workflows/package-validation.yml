@@ -126,7 +126,15 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - name: Install Playwright Chromium without stale third-party apt indexes
+        shell: bash
+        run: |
+          for source in /etc/apt/sources.list.d/*; do
+            if [ -f "$source" ] && grep -qi 'dl.google.com/linux/chrome' "$source"; then
+              sudo rm -f "$source"
+            fi
+          done
+          npx playwright install --with-deps chromium
       - run: npm run test:renderer
       - uses: actions/upload-artifact@v7
         if: failure()
