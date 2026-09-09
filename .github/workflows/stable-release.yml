@@ -105,7 +105,15 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run verify:release-metadata
-      - run: npx playwright install --with-deps chromium
+      - name: Install Playwright Chromium without stale third-party apt indexes
+        shell: bash
+        run: |
+          for source in /etc/apt/sources.list.d/*; do
+            if [ -f "$source" ] && grep -qi 'dl.google.com/linux/chrome' "$source"; then
+              sudo rm -f "$source"
+            fi
+          done
+          npx playwright install --with-deps chromium
       - run: npm run test:renderer
 
   signed-package:
