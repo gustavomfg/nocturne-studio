@@ -47,6 +47,7 @@ describe('políticas de execução', () => {
     expect(packageSmoke).toContain('nodeIntegrationDisabled')
     expect(packageSmoke).toContain('sandboxEnabled')
     expect(smokeRunner).toContain("'changeControl'")
+    expect(smokeRunner).toContain("'engineeringIntelligence'")
     expect(smokeRunner).toContain('nodeIntegrationDisabled === true')
     expect(packageSmoke).not.toContain('const navigation = { externalWindowsDenied: true, unexpectedNavigationBlocked: true }')
   })

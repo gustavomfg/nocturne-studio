@@ -32,7 +32,7 @@ async function smokePackage() {
     if (result.code !== 0) throw new Error(`O aplicativo encerrou com código ${result.code}.\n${result.stderr}`)
     if (!fs.existsSync(resultPath)) throw new Error(`O aplicativo não produziu o resultado do smoke test.\n${result.stderr}`)
     const report = JSON.parse(fs.readFileSync(resultPath, 'utf8'))
-    const expectedChannels = ['ai', 'artifacts', 'brain', 'changeControl', 'clipboard', 'codex', 'conversations', 'data', 'diagnostics', 'documents', 'files', 'git', 'memory', 'models', 'projectIndex', 'providers', 'semanticIndex', 'settings', 'suggestions', 'updates', 'validation', 'workspace']
+    const expectedChannels = ['ai', 'artifacts', 'brain', 'changeControl', 'clipboard', 'codex', 'conversations', 'data', 'diagnostics', 'documents', 'engineeringIntelligence', 'files', 'git', 'memory', 'models', 'projectIndex', 'providers', 'semanticIndex', 'settings', 'suggestions', 'updates', 'validation', 'workspace']
     const securityValid = report.security?.contextIsolationEnabled === true && report.security?.nodeIntegrationDisabled === true && report.security?.sandboxEnabled === true
     const channelsValid = JSON.stringify(report.preload?.channels) === JSON.stringify(expectedChannels)
     if (!report.ok || !report.packaged || !report.sqlite || !report.lifecycle?.closed || !report.lifecycle?.activated || !report.lifecycle?.secondInstanceReused || !report.lifecycle?.api || !report.lifecycle?.settings || !report.lifecycle?.updates || !report.preload?.updates || report.preload?.updateState?.status !== 'unsupported' || report.preload?.geolocation !== 'denied' || !securityValid || !report.navigation?.externalWindowsDenied || !report.navigation?.unexpectedNavigationBlocked || !channelsValid) {
