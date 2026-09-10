@@ -46,9 +46,11 @@ Official release validation currently covers:
 | Linux desktop | AppImage and `tar.gz` (the published build architecture applies) |
 | macOS | DMG and updater ZIP (the published build architecture applies) |
 
-Unsigned package validation runs on Linux, Windows and macOS. A stable release
-must additionally pass the protected signing/notarization and checksum gates;
-see [installation](docs/installation.md) and [compatibility](docs/compatibility.md).
+Unsigned package validation runs on Linux, Windows and macOS. Stable releases
+publish the configured targets for all three platforms: Linux has a protected
+GPG-signed checksum manifest, while Windows and macOS currently publish
+checksums without platform signing/notarization. See
+[installation](docs/installation.md) and [updates](docs/updates.md).
 
 ## AI connections
 
@@ -100,9 +102,10 @@ The full command list is in [development](docs/development.md).
 
 ## Current status
 
-The repository is prepared as the `v1.0.1` release candidate. It has not been
-tagged or published; signed artifacts, the final SHA checks and protected stable
-release approval are still required.
+The `v1.0.1` stable line is pinned to the exact approved tag commit and uses
+`gustavomfg/nocturne-studio` as its canonical publication and updater
+repository. The protected release workflow validates all platform inventories;
+the current Windows/macOS signing policy is explicitly unsigned/not notarized.
 The Codex App Server contract is experimental; the minimum supported CLI is
 `0.145.0` and the recommended version is `0.146.0`. Newer versions must pass
 the runtime compatibility handshake.

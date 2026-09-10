@@ -1,24 +1,21 @@
-# 1.0 release readiness
+# 1.0 release readiness and publication record
 
-This is an internal maintainer checklist for the `1.0.1` release candidate. It
-records evidence and open release gates; it does not create the `v1.0.1` tag or
-claim that a stable release has been published.
+This is an internal maintainer checklist for the `1.0.1` stable line. The
+application tag and version are frozen; release tooling may reconcile
+post-publication assets without rebuilding from `main` or changing the tag.
 
 ## Candidate identity
 
-- Prepared version: `1.0.1` (no prerelease suffix).
-- Candidate SHA: must be recorded by the final candidate commit and every
-  release workflow; a local build from another SHA is not release evidence.
-- Expected stable tag: `v1.0.1`.
-- Stable workflow inputs: `release_tag`, the lowercase full `candidate_sha`, and the
-  successful `codex_smoke_run_id` for that exact SHA.
-- Product identity remains `com.nocturne.codex` / `Nocturne Studio`; the
-  canonical publication and updater repository is `gustavomfg/nocturne-studio`.
+- Published version: `1.0.1` (no prerelease suffix).
+- Approved application SHA: `0f6cd580c447e50e37d48523d5d1667c691f8286`.
+- Stable tag: `v1.0.1`; it must remain exactly on the approved application SHA.
+- Canonical publication and updater repository:
+  `gustavomfg/nocturne-studio`.
+- The historical `v1.0.0` tag and release are immutable reference points.
 
 ## Automated coverage
 
-The current Vitest suite contains **445 tests** across 80 files. The relevant
-journeys are covered by:
+The relevant Vitest suite covers the following release-critical behavior:
 
 | Area | Evidence in the repository |
 | --- | --- |
@@ -32,73 +29,60 @@ journeys are covered by:
 | Electron/package boundaries | `tests/electronBoundaries.e2e.test.ts`, `scripts/smoke-package.mjs` |
 | Codex contract | `scripts/smoke-codex-cli.mjs`, `codex-contract-smoke.yml` |
 | Updater contract | `tests/updateService.test.ts`, `scripts/rehearse-updater.mjs`, `updater-rehearsal.yml` |
+| Release inventory | `tests/releaseAssets.test.ts`, `scripts/verify-release-assets.mjs` |
 
 `package-validation.yml` runs source, renderer, ABI, reliability and package
-smoke jobs on `ubuntu-latest`, `windows-latest` and `macos-latest`. The current
-local Playwright run contains **54 tests**; the candidate workflow remains the
-authoritative cross-platform result.
+smoke jobs on `ubuntu-latest`, `windows-latest` and `macos-latest`. The stable
+workflow repeats package smoke from the exact tag before publication and
+validates all three platform inventories.
 
-## Gates closed by current evidence
+## Platform artifact policy
 
-- Transactional SQLite migrations and the historical `0.9.5-beta` rehearsal;
-- WAL durability, process interruption, backup/restore and atomic file writes;
-- bounded workspace reads, attachment containment and symlink protections;
-- fatal main-process shutdown policy;
-- cross-platform WorkspaceChangeWatcher behavior;
-- real updater rehearsal from published `1.0.0` metadata to stable `1.0.1` metadata;
-- authenticated Codex CLI/App Server contract smoke on the candidate workflow;
-- packaged recovery rehearsal on Linux, Windows and macOS in the latest
-  GitHub Actions matrix evidence supplied for the candidate;
-- ordinary packaged application smoke and ABI validation on all three CI hosts;
-- public English and pt-BR documentation coverage.
-
-The packaged-recovery engine evidence covers isolated user data, normal restart,
-corruption detection, quarantine, valid-candidate restore, invalid-candidate
-rejection, temporary recovery-artifact handling, historical startup, moved
-workspace authorization and post-recovery restart. Native recovery consent is
-deliberately not automated and remains a manual RC check.
-
-## Platform artifacts
-
-The current electron-builder configuration produces:
-
-| Platform | Configured artifact | Architecture claim |
+| Platform | Artifacts | Validation and trust status |
 | --- | --- | --- |
-| Windows 10/11 | NSIS installer (`.exe`) | x64 |
-| Linux desktop | AppImage and `tar.gz` | architecture named by the release artifact |
-| macOS | DMG and updater ZIP | architecture named by the release artifact; no universal claim |
+| Linux | AppImage and `tar.gz` | SHA256 manifest with protected GPG signature; AppImage is the supported auto-update target |
+| Windows x64 | NSIS `.exe` and `.exe.blockmap` | SHA256 manifest; unsigned under the current policy |
+| macOS ARM64 | DMG, updater ZIP and both blockmaps | SHA256 manifest; unsigned and not notarized under the current policy |
 
-Unsigned package validation is distinct from official stable support. Signing
-and notarization are release gates, not evidence supplied by ordinary package
-smoke jobs.
+The configured `electron-builder` targets and `artifactName` values are the
+source of truth. No universal macOS claim is made, and checksums are never
+presented as platform signing.
 
-## Open gates before publication
+## Release gates
 
-1. Create the final `1.0.1` candidate commit and record its exact SHA.
-2. Run the source, renderer, ABI, reliability and unsigned package gates for
-   that SHA; the tag must also pass the package-version check.
-3. Create tag `v1.0.1` only after those gates pass.
-4. Run the authenticated Codex smoke from the exact candidate SHA and pass its
-   run ID and SHA to `stable-release.yml`; the report must match the tag SHA and
-   `1.0.1`.
-5. Complete the protected Linux signed-package job with GPG checksum signing.
-   Windows signing and macOS signing/notarization remain deferred until trusted
-   platform certificates are available; they are not part of the current stable
-   publication pipeline.
-6. Run the short [manual RC checklist](release-rc-checklist.md), including the
-   native recovery-consent dialog, first startup and install/update checks.
-7. Verify checksums, release-asset inventory and the protected stable approval
-   before publishing.
+1. Confirm the tag, package version and candidate SHA agree.
+2. Confirm the authenticated Codex smoke run succeeded for that exact SHA.
+3. Run source, renderer, ABI, persistence and package validation.
+4. Run `Release · stable`: the protected matrix packages Linux, Windows and
+   macOS; only Linux imports GPG credentials and signs its checksum manifest.
+5. Verify `app-update.yml` contains the canonical GitHub owner/repository and
+   release channel on every packaged platform.
+6. Verify the complete release inventory, including blockmaps, updater YAML,
+   per-platform checksums, SHA512 metadata and exact versions.
+7. Use `docs/releases/v1.0.1.md` as the English GitHub release body. Do not
+   replace versioned notes with generated notes.
+8. For an existing incomplete release, use the protected backfill workflow.
+   It builds missing Windows/macOS assets from the tag SHA, refuses to replace
+   existing assets and leaves Linux and `v1.0.0` intact.
+9. Perform external post-publication verification of the tag, 16-asset
+   inventory, checksums, Linux signature, updater metadata, release notes and
+   `v1.0.0` integrity.
 
-The updater rehearsal proves the published-stable-to-patch metadata path; it does not
-publish an update or replace the installer/signing checks. The packaged recovery
-rehearsal proves the recovery engine through the real unpacked application; the
-native consent click remains manual by design. Signing, notarization, the final
-tag and publication are separate gates.
+## Evidence boundaries
+
+Package-validation artifacts are evidence only and are never published
+automatically. A local build or an artifact from another commit is not release
+evidence. The final release gate must prove the exact tag SHA again.
+
+Windows and macOS signing/notarization are intentionally not claimed until
+trusted platform credentials and a dedicated policy decision exist. Do not
+work around that policy by adding fake signatures or weakening the protected
+Linux gate.
 
 ## Out of 1.0 scope
 
 Marketplace, cloud collaboration, multi-agent orchestration, MCP/Skills,
-advanced autonomous Build/Docs features and additional provider-specific
-adapters are outside the current 1.0 contract. Their absence is not a release
-blocker and they must not be presented as implemented.
+advanced autonomous Build/Docs features, external telemetry and additional
+provider-specific adapters are outside the current 1.0 contract. The future
+Nocturne Inspector integration and Nocturne Agent initiative are recorded for
+after the current roadmap and are not part of this release.

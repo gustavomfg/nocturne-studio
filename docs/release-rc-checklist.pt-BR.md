@@ -1,22 +1,22 @@
-# Checklist do candidato de release 1.0.1
+# Checklist da release 1.0.1
 
 [English](release-rc-checklist.md)
 
-Este é um checklist manual curto para o candidato final. Registre o SHA exato,
-nome do artefato, plataforma e data de cada execução. Ele não publica a release
-nem substitui o workflow protegido de release estável.
+Este é um checklist manual curto para a linha estável publicada. Registre o SHA
+exato, nome do artefato, plataforma e data de cada execução. Ele não substitui
+os workflows protegidos de release estável e backfill multiplataforma.
 
 ## Identidade do candidato
 
-- [ ] Confirme `package.json` como `1.0.1`, registre o SHA candidato e confirme
-      que a tag pretendida é `v1.0.1`.
+- [ ] Confirme `package.json` como `1.0.1`, o SHA aprovado
+      `0f6cd580c447e50e37d48523d5d1667c691f8286` e que `v1.0.1` aponta para ele.
 - [ ] Confirme a arquitetura do artefato e compare o checksum com o manifesto da
       release.
 
 ## Instalação e primeiro uso
 
 - [ ] Instale o AppImage ou arquivo Linux, o instalador NSIS x64 do Windows e o
-      DMG do macOS nas plataformas correspondentes.
+      DMG ARM64 do macOS nas plataformas correspondentes.
 - [ ] Faça o primeiro startup com user data vazio e depois crie e reabra um
       workspace.
 - [ ] Abra um workspace existente, mova-o e confirme que o novo local exige
@@ -50,11 +50,13 @@ nem substitui o workflow protegido de release estável.
       ou conteúdo privado do workspace.
 - [ ] Verifique a assinatura dos checksums Linux no ambiente protegido de
       release.
-- [ ] Registre Windows e macOS como resultados de validação de pacotes sem
-      assinatura; a distribuição assinada dessas plataformas continua adiada
-      até que certificados confiáveis estejam disponíveis.
-- [ ] Verifique que a tag exata `v1.0.1` aponta para o SHA testado e que o
-      workflow estável passou antes da publicação.
+- [ ] Registre Windows e macOS como unsigned e não notarizados pela política
+      atual; verifique seus checksums e metadata do atualizador separadamente.
+- [ ] Verifique o inventário completo de 16 assets da `v1.0.1`, incluindo os
+      dois blockmaps do macOS, o blockmap do Windows, as três metadata do
+      atualizador e os três manifestos de checksum.
+- [ ] Verifique que o corpo da release do GitHub corresponde a
+      `docs/releases/v1.0.1.md` e que `v1.0.0` permanece inalterada.
 
 Consentimento nativo de recovery e assinatura/notarização são gates de release;
 eles não devem ser contornados no produto para automatizar testes.

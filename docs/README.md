@@ -44,9 +44,10 @@ describe automatic model routing or a reasoning-effort control available in
 the current release.
 
 The [release-readiness checklist](release-readiness-1.0.md) is the current
-source for open release gates. Do not treat a plan or historical release note as
-evidence that a feature is present in the current build.
+source for release gates and publication evidence. Do not treat a plan or
+historical release note as evidence that a feature is present in the current
+build.
 
 The [1.0.1 release notes](releases/v1.0.1.md) and the
-[release-candidate checklist](release-rc-checklist.md) describe the candidate
-without claiming that the stable tag has been published.
+[release-candidate checklist](release-rc-checklist.md) describe the published
+stable line and its remaining manual checks.

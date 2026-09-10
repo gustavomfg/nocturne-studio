@@ -2,23 +2,35 @@
 
 [Português do Brasil](installation.pt-BR.md)
 
-## Official artifacts
+## Official v1.0.1 artifacts
 
 Install only artifacts published for the intended release:
 
-- Windows 10/11 x64: NSIS installer (`.exe`);
-- Linux desktop: AppImage or `tar.gz`;
-- macOS: DMG; the updater also uses the matching ZIP artifact.
+- Windows 10/11 x64: `Nocturne-Studio-Windows-1.0.1-Setup.exe`;
+- Linux desktop: `Nocturne.Studio-Linux-1.0.1.AppImage` or `tar.gz`;
+- macOS ARM64: `Nocturne-Studio-Mac-1.0.1-Installer.dmg`; the updater uses
+  the matching ZIP artifact.
 
-The published architecture is the one named by the release assets. Compare
-checksums with the release manifest. Stable Windows and macOS artifacts must be
-signed; macOS also requires notarization. Linux checksum manifests are signed
-with GPG in the protected release workflow. A package-validation build is not a
-stable release and may be unsigned.
+The canonical repository and updater source are
+`gustavomfg/nocturne-studio`. The architecture is the one named by the release
+asset; do not install an artifact from a package-validation workflow as if it
+were a stable release.
 
-The repository is prepared as the `1.0.1` release candidate. This preparation
-does not create the `v1.0.1` tag or publish an artifact; use only assets from the
-protected stable release when installing the official version.
+Compare the platform-specific manifest before installing:
+
+- Linux: `SHA256SUMS-Linux` and its detached `SHA256SUMS-Linux.sig` GPG
+  signature;
+- Windows: `SHA256SUMS-Windows`;
+- macOS: `SHA256SUMS-macOS`.
+
+Linux checksums are signed in the protected stable-release environment. Windows
+and macOS packages are currently unsigned and not notarized; the operating
+system may show an additional trust warning. No platform signature is implied
+when only a checksum is present.
+
+The published `v1.0.0` client remains compatible with the historical
+`gustavomfg/Nocturne-Codex` slug through GitHub's rename redirect. New `v1.0.1`
+packages use the canonical repository directly.
 
 ## AI requirements
 

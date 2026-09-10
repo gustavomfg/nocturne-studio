@@ -2,23 +2,35 @@
 
 [English](installation.md)
 
-## Artefatos oficiais
+## Artefatos oficiais da v1.0.1
 
 Instale somente artefatos publicados para a release desejada:
 
-- Windows 10/11 x64: instalador NSIS (`.exe`);
-- Linux desktop: AppImage ou `tar.gz`;
-- macOS: DMG; o atualizador também usa o ZIP correspondente.
+- Windows 10/11 x64: `Nocturne-Studio-Windows-1.0.1-Setup.exe`;
+- Linux desktop: `Nocturne.Studio-Linux-1.0.1.AppImage` ou `tar.gz`;
+- macOS ARM64: `Nocturne-Studio-Mac-1.0.1-Installer.dmg`; o atualizador usa
+  o ZIP correspondente.
 
-A arquitetura publicada é a indicada nos assets da release. Compare checksums
-com o manifesto da mesma release. Artefatos estáveis de Windows e macOS devem
-ser assinados; o macOS também exige notarização. Manifestos Linux são assinados
-com GPG no workflow protegido de release. Um build de validação pode não ter
-assinatura e não é uma release estável.
+O repositório canônico e a fonte do atualizador são
+`gustavomfg/nocturne-studio`. A arquitetura é a indicada pelo asset da
+release; não trate um artefato do workflow de package-validation como release
+estável.
 
-O repositório está preparado como candidato `1.0.1`. Essa preparação não cria a
-tag `v1.0.1` nem publica um artefato; para a versão oficial, use somente assets
-da release estável protegida.
+Compare o manifesto específico da plataforma antes de instalar:
+
+- Linux: `SHA256SUMS-Linux` e sua assinatura GPG destacada
+  `SHA256SUMS-Linux.sig`;
+- Windows: `SHA256SUMS-Windows`;
+- macOS: `SHA256SUMS-macOS`.
+
+Os checksums Linux são assinados no environment protegido de stable-release.
+Os pacotes Windows e macOS atualmente não possuem assinatura nem notarização;
+o sistema operacional pode mostrar um aviso adicional de confiança. A presença
+apenas de checksum não significa que exista assinatura de plataforma.
+
+O cliente publicado `v1.0.0` continua compatível com o slug histórico
+`gustavomfg/Nocturne-Codex` pela redirect de rename do GitHub. Os novos pacotes
+`v1.0.1` usam diretamente o repositório canônico.
 
 ## Requisitos de IA
 

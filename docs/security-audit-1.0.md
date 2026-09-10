@@ -54,8 +54,13 @@ npm run lint
 npm test
 npm run build
 npm run test:renderer
-npm run verify:release-assets -- --linux-only release-assets
+node scripts/verify-release-assets.mjs --platform linux release-assets/linux
+node scripts/verify-release-assets.mjs --platform windows release-assets/windows
+node scripts/verify-release-assets.mjs --platform macos release-assets/macos
+npm run verify:release-assets -- release-assets
 ```
 
-Falha em qualquer barreira de escrita, credencial, migração, atualização ou
-fluxo principal bloqueia a publicação.
+Falha em qualquer barreira de escrita, credencial, migração, atualização,
+inventário de plataforma ou fluxo principal bloqueia a publicação. A
+assinatura GPG Linux é verificada no environment protegido; Windows e macOS
+seguem explicitamente a política atual sem assinatura/notarização.
