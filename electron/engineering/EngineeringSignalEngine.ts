@@ -452,8 +452,10 @@ function validationResolutionFingerprints(
     const current = latestByKey.get(validationComparisonKey(previousRun))
     if (!current || !isConcreteValidation(current.run)) continue
     if (current.run.id === previousRun.id && currentFingerprints.has(signal.fingerprint)) continue
-    // A stale manifest cannot establish that the newer command observed a comparable state.
-    if (current.validity === 'stale') continue
+    // Stale or unknown manifests cannot establish that the newer command
+    // observed a comparable workspace state. A command result alone is not
+    // proof that the historical finding was resolved.
+    if (current.validity === 'stale' || current.validity === 'unknown') continue
     resolved.add(signal.fingerprint)
   }
   return [...resolved]

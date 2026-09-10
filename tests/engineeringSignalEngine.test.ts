@@ -168,6 +168,37 @@ describe('EngineeringSignalEngine', () => {
     db.close()
   })
 
+  it('não resolve uma falha histórica quando a validação comparável permanece unknown', async () => {
+    const db = create()
+    db.createConversation(workspace)
+    let runs: ValidationRun[] = [validationRun]
+    db.workspaceEvidence.record({ workspace, kind: 'validation', sourceId: validationRun.id, startedAt: validationRun.startedAt })
+    const projectIndex: EngineeringProjectIndexSource = { getSummary: () => ({ ...summary, latestRun: null }), listFiles: () => [], listImports: () => [] }
+    const engine = new EngineeringSignalEngine(db.engineeringIntelligence, projectIndex, { list: () => runs }, { workspaceEvidence: db.workspaceEvidence })
+
+    await engine.evaluate(workspace)
+    const passedRun: ValidationRun = {
+      ...validationRun,
+      id: 'validation-unknown-pass',
+      status: 'passed',
+      exitCode: 0,
+      startedAt: '2026-09-08T12:04:00.000Z',
+      completedAt: '2026-09-08T12:04:00.020Z',
+      error: null,
+    }
+    db.workspaceEvidence.record({ workspace, kind: 'validation', sourceId: passedRun.id, startedAt: passedRun.startedAt })
+    runs = [passedRun]
+
+    const current = await engine.evaluate(workspace)
+
+    expect(current.snapshot.categories.find((category) => category.category === 'testing')?.status).toBe('partial')
+    expect(current.signals.filter((signal) => signal.category === 'testing')).toEqual([])
+    expect(db.engineeringIntelligence.listSignals(workspace, 'active').filter((signal) => signal.category === 'testing')).toHaveLength(1)
+    expect(db.engineeringIntelligence.listSignals(workspace, 'resolved').filter((signal) => signal.category === 'testing')).toHaveLength(0)
+    await engine.dispose()
+    db.close()
+  })
+
   it('preserva a identidade de um sinal quando somente sua severidade muda', async () => {
     const db = create()
     db.createConversation(workspace)
