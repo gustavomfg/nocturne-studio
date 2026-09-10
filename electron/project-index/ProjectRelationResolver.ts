@@ -25,7 +25,7 @@ function resolveImport(input: RelationResolutionInput, relation: ParsedImport, i
   const target = resolveLocalTarget(input.sourcePath, relation.specifier, input.files)
   const resolution = target ? 'local' : isRelativeSpecifier(relation.specifier) ? 'unresolved' : 'external'
   return {
-    id: stableRelationId('import', input.sourcePath, input.sourceHash, relation.specifier, relation.location.startLine, index),
+    id: stableRelationId('import', input.workspace, input.sourcePath, input.sourceHash, relation.specifier, relation.location.startLine, index),
     workspace: input.workspace,
     sourcePath: input.sourcePath,
     sourceHash: input.sourceHash,
@@ -42,7 +42,7 @@ function resolveImport(input: RelationResolutionInput, relation: ParsedImport, i
 function resolveExport(input: RelationResolutionInput, relation: ParsedExport, index: number): ProjectExport {
   const target = relation.targetSpecifier ? resolveLocalTarget(input.sourcePath, relation.targetSpecifier, input.files) : null
   return {
-    id: stableRelationId('export', input.sourcePath, input.sourceHash, `${relation.name}:${relation.targetSpecifier ?? ''}`, relation.location.startLine, index),
+    id: stableRelationId('export', input.workspace, input.sourcePath, input.sourceHash, `${relation.name}:${relation.targetSpecifier ?? ''}`, relation.location.startLine, index),
     workspace: input.workspace,
     sourcePath: input.sourcePath,
     sourceHash: input.sourceHash,
@@ -75,6 +75,6 @@ function isRelativeSpecifier(specifier: string) {
   return specifier === '.' || specifier === '..' || specifier.startsWith('./') || specifier.startsWith('../')
 }
 
-function stableRelationId(kind: string, sourcePath: string, sourceHash: string, value: string, line: number, index: number) {
-  return `${kind}-${crypto.createHash('sha256').update(`${sourcePath}\0${sourceHash}\0${value}\0${line}\0${index}`).digest('hex').slice(0, 32)}`
+function stableRelationId(kind: string, workspace: string, sourcePath: string, sourceHash: string, value: string, line: number, index: number) {
+  return `${kind}-${crypto.createHash('sha256').update(`${workspace}\0${sourcePath}\0${sourceHash}\0${value}\0${line}\0${index}`).digest('hex').slice(0, 32)}`
 }

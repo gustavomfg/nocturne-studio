@@ -1,8 +1,10 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import Sqlite from 'better-sqlite3'
 import { afterEach, describe, expect, it } from 'vitest'
 import { LocalDatabase } from '../electron/database/Database'
+import { migrateDatabase, migrations } from '../electron/database/migrations'
 import { WorkspaceDiscoveryService } from '../electron/project-index/WorkspaceDiscoveryService'
 import { ProjectIndexService } from '../electron/project-index/ProjectIndexService'
 import type { ValidationRun } from '../shared/codeIntelligence'
@@ -16,6 +18,101 @@ afterEach(() => {
 })
 
 describe('Project Index', () => {
+  it('isola relações derivadas entre dois workspaces idênticos no mesmo banco', async () => {
+    const fixture = createFixture()
+    const clone = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-index-clone-'))
+    directories.push(clone)
+    for (const workspace of [fixture.workspace, clone]) {
+      fs.mkdirSync(path.join(workspace, 'src'), { recursive: true })
+      fs.writeFileSync(path.join(workspace, 'src', 'util.ts'), 'export const value = 1\n')
+      fs.writeFileSync(path.join(workspace, 'src', 'main.ts'), "import { value } from './util'\nexport const main = value\n")
+      fixture.database.touchWorkspace(workspace)
+    }
+    const service = new ProjectIndexService(fixture.database.projectIndex)
+
+    await service.ensureIndexed(fixture.workspace)
+    await service.ensureIndexed(clone)
+
+    expect(service.getSummary(fixture.workspace)).toMatchObject({ indexedFiles: 2, failedFiles: 0, imports: 1 })
+    expect(service.getSummary(clone)).toMatchObject({ indexedFiles: 2, failedFiles: 0, imports: 1 })
+    const first = service.listImports(fixture.workspace)[0]
+    const second = service.listImports(clone)[0]
+    expect(first).toBeTruthy()
+    expect(second).toBeTruthy()
+    expect(second?.id).not.toBe(first?.id)
+    const cloneRelationId = second?.id
+    fs.writeFileSync(path.join(fixture.workspace, 'src', 'main.ts'), "import { value } from './util'\nexport const main = value + 1\n")
+    await service.startManual(fixture.workspace)
+    expect(service.listImports(clone)[0]?.id).toBe(cloneRelationId)
+    fixture.database.removeWorkspace(fixture.workspace)
+    expect(service.listImports(clone)[0]?.id).toBe(cloneRelationId)
+  })
+
+  it('migra a chave das relações sem perder dados e aceita o mesmo id em workspaces distintos', () => {
+    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-index-migration-'))
+    directories.push(userData)
+    const firstWorkspace = path.join(userData, 'first')
+    const secondWorkspace = path.join(userData, 'second')
+    fs.mkdirSync(firstWorkspace)
+    fs.mkdirSync(secondWorkspace)
+    const databasePath = path.join(userData, 'nocturne.db')
+    const legacy = new Sqlite(databasePath)
+    migrateDatabase(legacy, 0, migrations.filter((migration) => migration.version <= 30))
+    const now = new Date().toISOString()
+    const addWorkspace = (database: Sqlite.Database, workspace: string) => {
+      database.prepare('INSERT INTO workspaces(path,name,authorized,created_at,last_opened_at) VALUES(?,?,1,?,?)').run(workspace, path.basename(workspace), now, now)
+      database.prepare(`INSERT INTO project_index_files(
+        workspace,relative_path,classification,language,extension,size,mtime_ms,ctime_ms,mode,
+        observed_hash,analyzed_hash,state,excluded,exclusion_reason,parser_id,parser_version,error,discovered_at,analyzed_at
+      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+        workspace, 'main.ts', 'source', 'TypeScript', '.ts', 1, 1, 1, 0o644,
+        'a'.repeat(64), 'a'.repeat(64), 'indexed', 0, null, 'typescript', '1', null, now, now,
+      )
+    }
+    addWorkspace(legacy, firstWorkspace)
+    legacy.prepare(`INSERT INTO project_index_imports(
+      id,workspace,source_path,source_hash,specifier,target_path,target_hash,kind,imported_names,
+      start_line,start_column,end_line,end_column,resolution
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      'import-same-id', firstWorkspace, 'main.ts', 'a'.repeat(64), './util', null, null, 'named', '[]', 1, 1, 1, 10, 'unresolved',
+    )
+    legacy.prepare(`INSERT INTO project_index_exports(
+      id,workspace,source_path,source_hash,name,kind,target_path,target_hash,
+      start_line,start_column,end_line,end_column
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      'export-same-id', firstWorkspace, 'main.ts', 'a'.repeat(64), 'value', 'named', null, null, 1, 1, 1, 10,
+    )
+    legacy.pragma('user_version = 30')
+    legacy.close()
+
+    const migrated = new LocalDatabase(userData)
+    databases.push(migrated)
+    expect(migrated.projectIndex.listImports(firstWorkspace)).toHaveLength(1)
+    migrated.close()
+
+    const current = new Sqlite(databasePath)
+    addWorkspace(current, secondWorkspace)
+    current.prepare(`INSERT INTO project_index_imports(
+      id,workspace,source_path,source_hash,specifier,target_path,target_hash,kind,imported_names,
+      start_line,start_column,end_line,end_column,resolution
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      'import-same-id', secondWorkspace, 'main.ts', 'a'.repeat(64), './util', null, null, 'named', '[]', 1, 1, 1, 10, 'unresolved',
+    )
+    current.prepare(`INSERT INTO project_index_exports(
+      id,workspace,source_path,source_hash,name,kind,target_path,target_hash,
+      start_line,start_column,end_line,end_column
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      'export-same-id', secondWorkspace, 'main.ts', 'a'.repeat(64), 'value', 'named', null, null, 1, 1, 1, 10,
+    )
+    current.close()
+    const reopened = new LocalDatabase(userData)
+    databases.push(reopened)
+    expect(reopened.projectIndex.listImports(firstWorkspace)).toHaveLength(1)
+    expect(reopened.projectIndex.listImports(secondWorkspace)).toHaveLength(1)
+    expect(reopened.projectIndex.listExports(firstWorkspace)).toHaveLength(1)
+    expect(reopened.projectIndex.listExports(secondWorkspace)).toHaveLength(1)
+  })
+
   it('indexa arquivos, símbolos, stack e relações com hashes persistidos', async () => {
     const fixture = createFixture()
     fs.mkdirSync(path.join(fixture.workspace, 'src'), { recursive: true })

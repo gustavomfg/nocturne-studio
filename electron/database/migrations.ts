@@ -665,6 +665,65 @@ export const migrations: Migration[] = [
     );
     CREATE INDEX IF NOT EXISTS idx_workspace_evidence_execution ON workspace_evidence(workspace,execution_id);
   `) },
+  { version: 31, up: (db) => db.exec(`
+    -- Relation identity is scoped by workspace. These tables are derived and
+    -- can be rebuilt without rewriting authorial or historical data.
+    CREATE TABLE project_index_imports_workspace_scoped (
+      id TEXT NOT NULL,
+      workspace TEXT NOT NULL,
+      source_path TEXT NOT NULL,
+      source_hash TEXT NOT NULL CHECK(length(source_hash) = 64),
+      specifier TEXT NOT NULL,
+      target_path TEXT,
+      target_hash TEXT CHECK(target_hash IS NULL OR length(target_hash) = 64),
+      kind TEXT NOT NULL,
+      imported_names TEXT NOT NULL,
+      start_line INTEGER NOT NULL CHECK(start_line >= 1),
+      start_column INTEGER NOT NULL CHECK(start_column >= 1),
+      end_line INTEGER NOT NULL CHECK(end_line >= start_line),
+      end_column INTEGER NOT NULL CHECK(end_column >= 1),
+      resolution TEXT NOT NULL CHECK(resolution IN ('local','external','unresolved')),
+      PRIMARY KEY(workspace,id),
+      FOREIGN KEY (workspace, source_path) REFERENCES project_index_files(workspace, relative_path) ON DELETE CASCADE
+    );
+    INSERT INTO project_index_imports_workspace_scoped(
+      id,workspace,source_path,source_hash,specifier,target_path,target_hash,kind,imported_names,
+      start_line,start_column,end_line,end_column,resolution
+    ) SELECT id,workspace,source_path,source_hash,specifier,target_path,target_hash,kind,imported_names,
+      start_line,start_column,end_line,end_column,resolution FROM project_index_imports;
+    DROP INDEX IF EXISTS idx_project_index_imports_source;
+    DROP INDEX IF EXISTS idx_project_index_imports_target;
+    DROP TABLE project_index_imports;
+    ALTER TABLE project_index_imports_workspace_scoped RENAME TO project_index_imports;
+    CREATE INDEX idx_project_index_imports_source ON project_index_imports(workspace, source_path, start_line);
+    CREATE INDEX idx_project_index_imports_target ON project_index_imports(workspace, target_path);
+
+    CREATE TABLE project_index_exports_workspace_scoped (
+      id TEXT NOT NULL,
+      workspace TEXT NOT NULL,
+      source_path TEXT NOT NULL,
+      source_hash TEXT NOT NULL CHECK(length(source_hash) = 64),
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      target_path TEXT,
+      target_hash TEXT CHECK(target_hash IS NULL OR length(target_hash) = 64),
+      start_line INTEGER NOT NULL CHECK(start_line >= 1),
+      start_column INTEGER NOT NULL CHECK(start_column >= 1),
+      end_line INTEGER NOT NULL CHECK(end_line >= start_line),
+      end_column INTEGER NOT NULL CHECK(end_column >= 1),
+      PRIMARY KEY(workspace,id),
+      FOREIGN KEY (workspace, source_path) REFERENCES project_index_files(workspace, relative_path) ON DELETE CASCADE
+    );
+    INSERT INTO project_index_exports_workspace_scoped(
+      id,workspace,source_path,source_hash,name,kind,target_path,target_hash,
+      start_line,start_column,end_line,end_column
+    ) SELECT id,workspace,source_path,source_hash,name,kind,target_path,target_hash,
+      start_line,start_column,end_line,end_column FROM project_index_exports;
+    DROP INDEX IF EXISTS idx_project_index_exports_source;
+    DROP TABLE project_index_exports;
+    ALTER TABLE project_index_exports_workspace_scoped RENAME TO project_index_exports;
+    CREATE INDEX idx_project_index_exports_source ON project_index_exports(workspace, source_path, start_line);
+  `) },
 ]
 
 export function migrateDatabase(db: Database.Database, currentVersion: number, availableMigrations: Migration[] = migrations) {
