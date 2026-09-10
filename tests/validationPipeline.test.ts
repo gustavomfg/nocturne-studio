@@ -16,6 +16,63 @@ afterEach(async () => {
 })
 
 describe('Validation Pipeline', () => {
+  it('não compartilha o resultado de uma validação diferente no mesmo workspace', async () => {
+    const fixture = createFixture()
+    fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [
+      evidence(fixture.workspace, 'script', 'test=vitest'),
+      evidence(fixture.workspace, 'script', 'build=vite build'),
+    ])
+    let release: (() => void) | undefined
+    const runner: ProcessRunner = { run: async () => await new Promise<ProcessRunResult>((resolve) => {
+      release = () => resolve(successfulResult('', ''))
+    }) }
+    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
+
+    const testRun = pipeline.run(fixture.workspace, 'test')
+    const buildRun = pipeline.run(fixture.workspace, 'build')
+    release?.()
+
+    await expect(testRun).resolves.toMatchObject({ kind: 'test', status: 'passed' })
+    await expect(buildRun).rejects.toThrow(/validação.*andamento|conflito/i)
+  })
+
+  it('deduplica somente solicitações semanticamente idênticas', async () => {
+    const fixture = createFixture()
+    fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [evidence(fixture.workspace, 'script', 'test=vitest')])
+    let release: (() => void) | undefined
+    const runner: ProcessRunner = { run: async () => await new Promise<ProcessRunResult>((resolve) => {
+      release = () => resolve(successfulResult('', ''))
+    }) }
+    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
+
+    const first = pipeline.run(fixture.workspace, 'test')
+    const duplicate = pipeline.run(fixture.workspace, 'test')
+    expect(duplicate).toBe(first)
+    release?.()
+    await expect(first).resolves.toMatchObject({ kind: 'test', status: 'passed' })
+  })
+
+  it('não compartilha a mesma validação entre execuções diferentes', async () => {
+    const fixture = createFixture()
+    const conversation = fixture.database.createConversation(fixture.workspace)
+    const now = new Date().toISOString()
+    const executionA = '00000000-0000-4000-8000-000000000101'
+    const executionB = '00000000-0000-4000-8000-000000000102'
+    for (const id of [executionA, executionB]) fixture.database.createExecution({ id, workspace: fixture.workspace, conversationId: conversation.id, prompt: 'validar', mode: 'build', status: 'running', decision: 'pending', retryOf: null, startedAt: now, finishedAt: null, error: null })
+    fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [evidence(fixture.workspace, 'script', 'test=vitest')])
+    let release: (() => void) | undefined
+    const runner: ProcessRunner = { run: async () => await new Promise<ProcessRunResult>((resolve) => {
+      release = () => resolve(successfulResult('', ''))
+    }) }
+    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
+
+    const first = pipeline.run(fixture.workspace, 'test', executionA)
+    const second = pipeline.run(fixture.workspace, 'test', executionB)
+    await expect(second).rejects.toThrow(/validação diferente/i)
+    release?.()
+    await expect(first).resolves.toMatchObject({ executionId: executionA, status: 'passed' })
+  })
+
   it('planeja pelo stack, persiste o resultado e mantém artefatos dentro do workspace', async () => {
     const fixture = createFixture()
     fs.mkdirSync(path.join(fixture.workspace, 'reports'), { recursive: true })

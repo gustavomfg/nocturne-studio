@@ -47,7 +47,7 @@ export class ValidationPipeline {
   private readonly timeoutMs: number
   private readonly onStatus: ((run: ValidationRun) => void) | undefined
   private readonly onMetric: ((metric: ValidationMetric) => void) | undefined
-  private readonly active = new Map<string, { controller: AbortController; promise: Promise<ValidationRun> }>()
+  private readonly active = new Map<string, { identity: string; controller: AbortController; promise: Promise<ValidationRun> }>()
   private readonly metrics: ValidationMetricsSnapshot = {
     runs: 0,
     passed: 0,
@@ -72,14 +72,26 @@ export class ValidationPipeline {
   }
 
   run(workspace: string, kind: ValidationKind, executionId?: string) {
-    const normalizedWorkspace = path.resolve(workspace)
-    const current = this.active.get(normalizedWorkspace)
-    if (current) return current.promise
     if (this.disposed) return Promise.reject(new Error('O pipeline de validação já foi encerrado.'))
+    const normalizedWorkspace = path.resolve(workspace)
+    let plan: ValidationPlan | null
+    try {
+      plan = planValidation(this.stackEvidence(normalizedWorkspace), kind)
+    } catch (error) {
+      return Promise.reject(error)
+    }
+    const identity = validationRequestIdentity(normalizedWorkspace, kind, executionId, plan)
+    const current = this.active.get(normalizedWorkspace)
+    if (current) {
+      if (current.identity === identity) return current.promise
+      return Promise.reject(new Error(`Já existe uma validação diferente em andamento neste workspace (${kind}). Aguarde o resultado atual antes de solicitar outra.`))
+    }
     const controller = new AbortController()
-    const promise = this.execute(normalizedWorkspace, kind, controller.signal, executionId)
-      .finally(() => this.active.delete(normalizedWorkspace))
-    this.active.set(normalizedWorkspace, { controller, promise })
+    const promise = this.execute(normalizedWorkspace, kind, controller.signal, executionId, plan)
+      .finally(() => {
+        if (this.active.get(normalizedWorkspace)?.promise === promise) this.active.delete(normalizedWorkspace)
+      })
+    this.active.set(normalizedWorkspace, { identity, controller, promise })
     return promise
   }
 
@@ -108,9 +120,9 @@ export class ValidationPipeline {
     return Promise.all([...this.active.values()].map(({ promise }) => promise.catch(() => undefined))).then(() => undefined)
   }
 
-  private async execute(workspace: string, kind: ValidationKind, signal: AbortSignal, executionId?: string): Promise<ValidationRun> {
+  private async execute(workspace: string, kind: ValidationKind, signal: AbortSignal, executionId?: string, planned?: ValidationPlan | null): Promise<ValidationRun> {
     const startedAt = new Date().toISOString()
-    const plan = planValidation(this.stackEvidence(workspace), kind)
+    const plan = planned ?? planValidation(this.stackEvidence(workspace), kind)
     const run: ValidationRun = {
       id: crypto.randomUUID(),
       workspace,
@@ -225,6 +237,17 @@ export class ValidationPipeline {
       durationMs,
     })
   }
+}
+
+function validationRequestIdentity(workspace: string, kind: ValidationKind, executionId: string | undefined, plan: ValidationPlan | null) {
+  return JSON.stringify({
+    workspace,
+    kind,
+    executionId: executionId ?? null,
+    command: plan?.command ?? null,
+    args: plan?.args ?? [],
+    scriptCommand: plan?.scriptCommand ?? null,
+  })
 }
 
 export function planValidation(evidence: readonly StackEvidence[], kind: ValidationKind): ValidationPlan | null {
