@@ -29,6 +29,24 @@ test.describe('renderer do produto', () => {
     await expect(page.getByText(/decision \(running\).*interrupted-run/)).toBeVisible()
   })
 
+  test('distingue identidade de evidência desconhecida de evidência stale', async ({ page }) => {
+    await ready(page)
+    await page.evaluate(() => {
+      window.nocturne.evidence.list = async () => [{ id: 'manifest-1', workspace: '/workspace/sample-project', executionId: 'execution-1', kind: 'context', sourceId: 'execution-1', startedAt: '2026-07-13T20:00:00Z', observedAt: '2026-07-13T20:00:01Z', consistency: 'non-atomic', coverage: 'known-paths-only', validity: 'unknown', staleDetectedAt: null, reason: null, truncated: false, paths: [], references: [] }]
+      const bridge = (window as unknown as { __nocturneTest: { emitStatus(value: unknown): void } }).__nocturneTest
+      bridge.emitStatus({ status: 'ready', executionId: 'execution-1' })
+    })
+    await page.getByRole('tab', { name: 'Atividade' }).click()
+    await page.getByText('Estado associado às evidências', { exact: true }).click()
+    await expect(page.getByText('context · Validade global não verificada', { exact: true })).toBeVisible()
+    await page.evaluate(() => {
+      const read = window.nocturne.evidence.list
+      window.nocturne.evidence.list = async (...args) => (await read(...args)).map((record) => ({ ...record, validity: 'stale', staleDetectedAt: '2026-07-13T20:01:00Z', reason: 'Arquivo alterado após a observação.' }))
+    })
+    await page.getByRole('button', { name: 'Atualizar registros' }).click()
+    await expect(page.getByText('context · Desatualizada ou invalidada', { exact: true })).toBeVisible()
+  })
+
   test('oferece ajuda contextual por botão e atalho de teclado', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await ready(page)

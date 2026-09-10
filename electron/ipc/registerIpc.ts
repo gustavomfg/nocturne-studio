@@ -37,6 +37,7 @@ import { ProjectIndexService } from '../project-index/ProjectIndexService'
 import { SemanticIndexService, type SemanticEmbeddingOperations } from '../semantic-index/SemanticIndexService'
 import { SemanticRetrievalService } from '../semantic-index/SemanticRetrievalService'
 import { IPC_CHANNELS } from '../../shared/ipc/channels'
+import { changeControlExecutionSchema } from '../../shared/ipc/schemas'
 import { ValidationPipeline } from '../validation/ValidationPipeline'
 import { CheckpointService } from '../change-control/CheckpointService'
 import { WorkspaceCheckpointStore } from '../change-control/WorkspaceCheckpointStore'
@@ -207,6 +208,7 @@ export function registerIpc(
       assertKnownWorkspace: (value) => getAuthorizedWorkspace(database, value),
       run: runWorkspaceCommand,
       onWorkspaceChanged: (event) => {
+        database.workspaceEvidence.invalidate(event.workspace, event.overflow ? 'Watcher overflow: escopo desconhecido.' : 'Mudança observada pelo watcher; instante real da mutação desconhecido.')
         changeGate?.enqueue(event)
         semanticIndex?.enqueuePaths(event.workspace, event.paths)
       },
@@ -268,6 +270,13 @@ export function registerIpc(
   const changeControl = new ExecutionChangeControlService(checkpoints, new ChangeCaptureService(checkpoints, database.changeSets), changeGate)
   changeControl.restorePending(database.operationRecovery.pendingDecisions())
   ipcMain.handle(IPC_CHANNELS.recovery.list, () => database.operationRecovery.list())
+  ipcMain.handle(IPC_CHANNELS.evidence.list, (_event, value: unknown) => {
+    const input = changeControlExecutionSchema.parse(value)
+    const conversation = getAuthorizedConversation(database, input.conversationId)
+    const execution = database.getExecution(input.executionId, conversation.workspace)
+    if (!execution || execution.conversationId !== conversation.id) throw new Error('A evidência não pertence à conversa autorizada.')
+    return database.workspaceEvidence.list(conversation.workspace, execution.id)
+  })
   const changeDiffs = new ChangeDiffService(checkpoints, database.changeSets)
   const changeDecisions = new ChangeDecisionService(database.changeSets, snapshotRollback)
   const changeHunks = new ChangeHunkService(checkpoints, changeDiffs, database.changeSets)

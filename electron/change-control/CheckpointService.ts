@@ -21,9 +21,8 @@ export class CheckpointService {
       const files = await this.store.capture(workspace, checkpoint.id, requestedPaths)
       checkpoint.status = 'ready'
       checkpoint.rootPath = this.storeRoot(checkpoint.id)
-      this.repository.replaceFiles(checkpoint.id, files)
-      this.repository.update(checkpoint)
-      return { checkpoint, files }
+      const evidence = this.repository.completeCapture(checkpoint, files)
+      return { checkpoint, files, evidence }
     } catch (error) {
       checkpoint.status = 'failed'
       checkpoint.error = error instanceof Error ? error.message : String(error)

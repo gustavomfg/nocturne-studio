@@ -40,6 +40,7 @@ export type ModelIpcResult<T> = IpcResult<T, { code: ModelIpcErrorCode; message:
 
 export interface NocturneApi {
   recovery: { list(): Promise<import('../operationRecovery').InterruptedOperation[]> }
+  evidence: { list(conversationId: string, executionId: string): Promise<import('../workspaceEvidence').WorkspaceStateManifest[]> }
   workspace: { select(expectedWorkspace?: string): Promise<string | null>; validate(value: string): Promise<string | null>; list(): Promise<Workspace[]>; remove(value: string): Promise<void>; favorite(value: string, favorite: boolean): Promise<void>; openTool(value: string, tool: 'editor' | 'terminal'): Promise<void>; watch(value: string | null): Promise<void>; onChanged(listener: (event: WorkspaceChangeEvent) => void): () => void }
   projectIndex: {
     status(workspace: string): Promise<ProjectIndexStatus | null>

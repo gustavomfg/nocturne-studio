@@ -653,6 +653,18 @@ export const migrations: Migration[] = [
     );
     CREATE INDEX IF NOT EXISTS idx_interrupted_operations_workspace ON interrupted_operations(workspace,detected_at);
   `) },
+  { version: 30, up: (db) => db.exec(`
+    CREATE TABLE IF NOT EXISTS workspace_evidence (
+      id TEXT PRIMARY KEY,
+      workspace TEXT NOT NULL REFERENCES workspaces(path) ON DELETE CASCADE,
+      execution_id TEXT REFERENCES executions(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,source_id TEXT NOT NULL,
+      manifest_json TEXT NOT NULL CHECK(length(manifest_json) <= 12000000),
+      stale_detected_at TEXT,stale_reason TEXT,verification_json TEXT,
+      UNIQUE(kind,source_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_workspace_evidence_execution ON workspace_evidence(workspace,execution_id);
+  `) },
 ]
 
 export function migrateDatabase(db: Database.Database, currentVersion: number, availableMigrations: Migration[] = migrations) {

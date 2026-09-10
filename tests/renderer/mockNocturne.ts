@@ -51,6 +51,8 @@ export async function installNocturneMock(page: Page, options: { empty?: boolean
     const noop = async () => undefined
     const api = {
       recovery: { list: async () => [] },
+      evidence: { list: async () => [] },
+      changeControl: { get: async () => null, changes: async () => [], onChanged: () => () => undefined },
       workspace: {
         select: async (expected?: string) => {
           selectedExpected = expected

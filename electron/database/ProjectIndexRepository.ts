@@ -12,6 +12,7 @@ import type {
 } from '../../shared/codeIntelligence'
 import { CODE_INTELLIGENCE_INDEX_VERSION } from '../../shared/codeIntelligence'
 import type { DatabaseTransactionRunner } from './DatabaseTransaction'
+import { WorkspaceEvidenceRepository } from './WorkspaceEvidenceRepository'
 
 type ProjectIndexFileRow = Omit<ProjectIndexFile, 'excluded'> & { excluded: number }
 type ProjectIndexRunRow = ProjectIndexRun
@@ -55,22 +56,25 @@ export class ProjectIndexRepository {
   }
 
   updateRun(run: ProjectIndexRun) {
-    this.database.prepare(`UPDATE project_index_runs SET
-      status=@status,phase=@phase,total_files=@totalFiles,processed_files=@processedFiles,
-      failed_files=@failedFiles,unsupported_files=@unsupportedFiles,pending_files=@pendingFiles,
-      updated_at=@updatedAt,completed_at=@completedAt,error=@error WHERE id=@id AND workspace=@workspace`).run({
-      id: run.id,
-      workspace: run.workspace,
-      status: run.status,
-      phase: run.phase,
-      totalFiles: run.totalFiles,
-      processedFiles: run.processedFiles,
-      failedFiles: run.failedFiles,
-      unsupportedFiles: run.unsupportedFiles,
-      pendingFiles: run.pendingFiles,
-      updatedAt: run.updatedAt,
-      completedAt: run.completedAt,
-      error: run.error,
+    this.transactions.run('projectIndex.updateRun', () => {
+      if (['completed', 'failed', 'cancelled'].includes(run.status)) new WorkspaceEvidenceRepository(this.database).recordIndex('project-index', run.workspace, run.id, run.startedAt)
+      this.database.prepare(`UPDATE project_index_runs SET
+        status=@status,phase=@phase,total_files=@totalFiles,processed_files=@processedFiles,
+        failed_files=@failedFiles,unsupported_files=@unsupportedFiles,pending_files=@pendingFiles,
+        updated_at=@updatedAt,completed_at=@completedAt,error=@error WHERE id=@id AND workspace=@workspace`).run({
+        id: run.id,
+        workspace: run.workspace,
+        status: run.status,
+        phase: run.phase,
+        totalFiles: run.totalFiles,
+        processedFiles: run.processedFiles,
+        failedFiles: run.failedFiles,
+        unsupportedFiles: run.unsupportedFiles,
+        pendingFiles: run.pendingFiles,
+        updatedAt: run.updatedAt,
+        completedAt: run.completedAt,
+        error: run.error,
+      })
     })
   }
 

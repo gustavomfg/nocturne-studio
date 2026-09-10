@@ -1,5 +1,6 @@
 export const IPC_CHANNELS = {
   recovery: { list: 'recovery:list' },
+  evidence: { list: 'evidence:list' },
   workspace: { select: 'workspace:select', validate: 'workspace:validate', list: 'workspaces:list', remove: 'workspaces:remove', favorite: 'workspaces:favorite', openTool: 'workspace:openTool', watch: 'workspace:watch', changed: 'workspace:changed' },
   projectIndex: { status: 'projectIndex:status', start: 'projectIndex:start', cancel: 'projectIndex:cancel', retry: 'projectIndex:retry', summary: 'projectIndex:summary', files: 'projectIndex:files', symbols: 'projectIndex:symbols', imports: 'projectIndex:imports', exports: 'projectIndex:exports', stack: 'projectIndex:stack', exclusions: 'projectIndex:exclusions', changed: 'projectIndex:statusChanged' },
   semanticIndex: { status: 'semanticIndex:status', start: 'semanticIndex:start', cancel: 'semanticIndex:cancel', summary: 'semanticIndex:summary', search: 'semanticIndex:search', changed: 'semanticIndex:statusChanged' },

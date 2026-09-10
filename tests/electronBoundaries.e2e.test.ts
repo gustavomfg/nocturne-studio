@@ -269,7 +269,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
   }
 
   it('expõe somente a API nomeada e cruza preload, IPC e SQLite', async () => {
-    expect(Object.keys(api).sort()).toEqual(['ai', 'artifacts', 'brain', 'changeControl', 'clipboard', 'codex', 'conversations', 'data', 'diagnostics', 'documents', 'engineeringIntelligence', 'files', 'git', 'memory', 'models', 'projectIndex', 'providers', 'recovery', 'semanticIndex', 'settings', 'suggestions', 'updates', 'validation', 'workspace'])
+    expect(Object.keys(api).sort()).toEqual(['ai', 'artifacts', 'brain', 'changeControl', 'clipboard', 'codex', 'conversations', 'data', 'diagnostics', 'documents', 'engineeringIntelligence', 'evidence', 'files', 'git', 'memory', 'models', 'projectIndex', 'providers', 'recovery', 'semanticIndex', 'settings', 'suggestions', 'updates', 'validation', 'workspace'])
     await expect(api.recovery.list()).resolves.toEqual([])
     await api.clipboard.writeText('commit sugerido')
     await expect(api.clipboard.readText()).resolves.toBe('commit sugerido')
@@ -309,6 +309,14 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     const conversation = await api.conversations.create(workspace)
     expect((await api.conversations.messages(conversation.id)).map((message) => message.content)).toEqual([])
     expect(conversation).toMatchObject({ id: expect.any(String), title: 'Nova conversa', workspace })
+    const executionId = '00000000-0000-4000-8000-000000000091'
+    database!.createExecution({ id: executionId, workspace, conversationId: conversation.id, prompt: 'evidence', mode: 'review', status: 'completed', decision: 'pending', retryOf: null, startedAt: new Date().toISOString(), finishedAt: null, error: null })
+    const manifest = database!.workspaceEvidence.record({ workspace, executionId, sourceId: executionId, kind: 'context', paths: [{ path: 'file.ts', hash: 'a'.repeat(64) }] })
+    await expect(api.evidence.list(conversation.id, executionId)).resolves.toEqual([manifest])
+    const otherConversation = await api.conversations.create(workspace)
+    await expect(api.evidence.list(otherConversation.id, executionId)).rejects.toThrow(/conversa autorizada/)
+    await expect(api.evidence.list(conversation.id, '../outside')).rejects.toThrow()
+    await api.conversations.delete(otherConversation.id)
     await api.conversations.delete(conversation.id)
   })
 

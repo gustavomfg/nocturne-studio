@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
 import { changeSetStatuses, changeStatuses, hunkStatuses, type ChangeHunkRecord, type ChangeRecord, type ChangeSetRecord } from '../../shared/changeControl'
 import type { DatabaseTransactionRunner } from './DatabaseTransaction'
+import { WorkspaceEvidenceRepository } from './WorkspaceEvidenceRepository'
 
 interface ChangeRow extends ChangeRecord {
   beforeHash: string | null
@@ -144,6 +145,14 @@ export class ChangeSetRepository {
       this.update(changeSet)
       this.updateChange(change)
       this.database.prepare('UPDATE executions SET decision=? WHERE id=?').run(changeSet.status, changeSet.executionId)
+      if (operationId) {
+        const execution = this.database.prepare('SELECT workspace FROM executions WHERE id=?').get(changeSet.executionId) as { workspace: string }
+        new WorkspaceEvidenceRepository(this.database).record({
+          kind: 'decision', sourceId: operationId, workspace: execution.workspace, executionId: changeSet.executionId,
+          paths: [{ path: change.relativePath, hash: change.status === 'rejected' ? change.beforeHash : change.afterHash }],
+          references: [{ kind: 'before', id: changeSet.beforeCheckpointId }, { kind: 'after', id: changeSet.afterCheckpointId }, { kind: 'change', id: change.id }],
+        })
+      }
       if (operationId) this.database.prepare("UPDATE change_decision_operations SET status='completed',finished_at=? WHERE id=? AND status='running'").run(change.updatedAt, operationId)
     })
   }

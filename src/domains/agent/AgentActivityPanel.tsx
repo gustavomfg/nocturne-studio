@@ -5,6 +5,7 @@ import type { Activity, Approval, BuildRollbackStatus, ChangedFile, DocumentUpda
 import { useAppStore } from '../../store'
 import { errorMessage } from '../../shared/format'
 import { ChangeControlPanel } from './ChangeControlPanel'
+import { WorkspaceEvidencePanel } from './WorkspaceEvidencePanel'
 import { parseAwarenessSnapshot } from '../../../shared/awareness'
 import { useI18n } from '../../shared/i18n'
 import { DocumentUpdateDialog } from './DocumentUpdateDialog'
@@ -129,6 +130,7 @@ export function AgentActivityPanel({ gitInfo, onDecide, onError, onNotify, onGit
     <ActivityTimeline activities={activities}/>
     {awareness && <details className="activity-section awareness-section"><summary><Sparkles size={14}/>{t('agent.contextUsed')} <span>{awareness.selections.length}</span></summary><div className="awareness-panel">{awareness.selections.length ? awareness.selections.map((selection) => <article key={`${selection.source}-${selection.id}`}><header><strong>{selection.title}</strong><span>{selection.relevance}% {t('agent.relevant')}</span></header><p>{selection.reason}</p><small>{t('agent.source')}: {awarenessSourceLabel(selection.sourceType, t)} · {t('agent.scope')}: {selection.scope === 'conversation' ? t('agent.conversation') : t('agent.workspace')}{selection.updatedAt ? ` · ${t('agent.updatedAt')} ${new Date(selection.updatedAt).toLocaleString(language === 'en' ? 'en-US' : 'pt-BR')}` : ''}</small><details><summary>{t('agent.usedExcerpt')}</summary><pre>{selection.contentPreview}</pre></details></article>) : <p>{t('agent.noRelevantMemory')}</p>}</div></details>}
     <ChangeControlPanel conversationId={activeId} executionId={executionId} onError={onError} onNotify={onNotify}/>
+    <WorkspaceEvidencePanel conversationId={activeId} executionId={executionId}/>
     {rollback?.createdAt && <details className="activity-section"><summary><RotateCcw size={14}/>{t('agent.lastBuildRollback')}</summary><div className="document-panel"><p>{rollback.available ? t('agent.canRestoreFiles', { count: rollback.files.length }) : rollback.reason}</p><button disabled={!rollback.available || rollingBack} onClick={() => void rollbackBuild()}>{rollingBack ? t('agent.reverting') : t('agent.revertChanges')}</button></div></details>}
     {!!files.length && <details className="activity-section" open><summary><FileCode2 size={14}/>{t('agent.changedFiles')} <span>{files.length}</span></summary><div className="files-panel">{files.slice(-300).map((file) => <ChangedFileRow key={file.path} file={file} onPreview={onPreview} onOpen={open}/>)}</div></details>}
     {diff && <DiffSection diff={diff}/>}

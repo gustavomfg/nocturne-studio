@@ -1,5 +1,6 @@
 import { dialog, type BrowserWindow } from 'electron'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import { checkWorkspaceEvidence } from '../workspaces/WorkspaceEvidenceService'
 import path from 'node:path'
 import type { AwarenessSnapshot } from '../../shared/awareness'
 import { AI_TASK_LIMITS, type NormalizedTaskInput } from '../../shared/ai/task'
@@ -51,6 +52,7 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
   ipcMain.handle(IPC_CHANNELS.ai.send, async (_event, value: unknown) => {
     const { conversationId, prompt, attachments, mode } = aiSendSchema.parse(value)
     const conversation = getAuthorizedConversation(database, conversationId)
+    const contextStartedAt = new Date().toISOString()
     attachments.forEach((filePath) => assertInsideWorkspace(filePath, conversation.workspace))
 
     const bindings = database.workspaceModelBindings.get(conversation.workspace)
@@ -161,7 +163,17 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
       error: null,
     }
     database.createExecution(execution)
-    database.addMessage(conversationId, 'user', prompt, { executionId, attachments, awareness })
+    const contextEvidence = database.workspaceEvidence.record({
+      kind: 'context', sourceId: executionId, executionId, workspace: conversation.workspace, startedAt: contextStartedAt,
+      paths: assembledContext.sources.flatMap((source) => source.provenance?.sourcePath ? [{ path: source.provenance.sourcePath, hash: source.provenance.sourceHash ?? null }] : []),
+      references: [
+        ...assembledContext.sources.map((source) => ({ kind: 'context-source', id: source.id, payloadHash: createHash('sha256').update(source.content).digest('hex') })),
+        ...(projectContext?.runId && assembledContext.sources.some((source) => source.type === 'project-index') ? [{ kind: 'project-index', id: projectContext.runId }] : []),
+        ...assembledContext.sources.filter((source) => source.type === 'semantic-index').map((source) => ({ kind: 'semantic-unit', id: source.id.replace(/^semantic-index:/, '') })),
+      ],
+    })
+    await checkWorkspaceEvidence(database.workspaceEvidence, contextEvidence)
+    database.addMessage(conversationId, 'user', prompt, { executionId, attachments, awareness, workspaceStateManifestId: contextEvidence.id })
     if (conversation.title === 'Nova conversa') database.renameFromPrompt(conversationId, prompt)
 
     const attachmentMessages = await buildAttachmentMessages(attachments, conversation.workspace)

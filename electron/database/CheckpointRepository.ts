@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import type { CheckpointFileRecord, CheckpointRecord } from '../../shared/changeControl'
 import type { DatabaseTransactionRunner } from './DatabaseTransaction'
+import { WorkspaceEvidenceRepository } from './WorkspaceEvidenceRepository'
 
 interface CheckpointFileRow extends Omit<CheckpointFileRecord, 'exists'> {
   existsFlag: number
@@ -17,6 +18,21 @@ export class CheckpointRepository {
     this.database.prepare(`INSERT INTO checkpoints(
       id,execution_id,workspace,phase,status,captured_at,root_path,error
     ) VALUES(@id,@executionId,@workspace,@phase,@status,@capturedAt,@rootPath,@error)`).run(checkpoint)
+  }
+
+  recordEvidence(checkpoint: CheckpointRecord, files: CheckpointFileRecord[]) {
+    return new WorkspaceEvidenceRepository(this.database).record({
+      kind: checkpoint.phase, sourceId: checkpoint.id, workspace: checkpoint.workspace, executionId: checkpoint.executionId,
+      startedAt: checkpoint.capturedAt, paths: files.map((file) => ({ path: file.relativePath, hash: file.hash, exists: file.exists })),
+    })
+  }
+
+  completeCapture(checkpoint: CheckpointRecord, files: CheckpointFileRecord[]) {
+    return this.transactions.run('checkpoints.complete', () => {
+      this.replaceFiles(checkpoint.id, files)
+      this.update(checkpoint)
+      return this.recordEvidence(checkpoint, files)
+    })
   }
 
   update(checkpoint: CheckpointRecord) {

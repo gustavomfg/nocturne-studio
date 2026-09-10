@@ -21,10 +21,12 @@ import { ChangeSetRepository } from './ChangeSetRepository'
 import { ExecutionEvidenceRepository } from './ExecutionEvidenceRepository'
 import type { DatabaseTransactionRunner } from './DatabaseTransaction'
 import { OperationRecoveryRepository } from './OperationRecoveryRepository'
+import { WorkspaceEvidenceRepository } from './WorkspaceEvidenceRepository'
 import { EngineeringIntelligenceRepository } from './EngineeringIntelligenceRepository'
 
 export interface DatabaseRepositories {
   operationRecovery: OperationRecoveryRepository
+  workspaceEvidence: WorkspaceEvidenceRepository
   approvals: ApprovalRepository
   conversations: ConversationRepository
   artifacts: ArtifactRepository
@@ -59,6 +61,7 @@ export function createDatabaseRepositories(runtime: DatabaseRuntime): DatabaseRe
 
   return {
     operationRecovery: new OperationRecoveryRepository(database, transactions),
+    workspaceEvidence: new WorkspaceEvidenceRepository(database),
     approvals: new ApprovalRepository(database),
     conversations,
     artifacts: new ArtifactRepository(database),

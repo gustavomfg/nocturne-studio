@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3'
 import type { DatabaseTransactionRunner } from './DatabaseTransaction'
+import { WorkspaceEvidenceRepository } from './WorkspaceEvidenceRepository'
 import {
   SEMANTIC_INDEX_VERSION,
   type SemanticEmbeddingSpace,
@@ -85,23 +86,26 @@ export class SemanticIndexRepository {
   }
 
   updateRun(run: SemanticIndexRun) {
-    this.database.prepare(`UPDATE semantic_index_runs SET
-      status=@status,total_files=@totalFiles,processed_files=@processedFiles,indexed_units=@indexedUnits,
-      lexical_only_units=@lexicalOnlyUnits,failed_files=@failedFiles,excluded_files=@excludedFiles,
-      completed_at=@completedAt,updated_at=@updatedAt,error=@error
-      WHERE id=@id AND workspace=@workspace`).run({
-      id: run.id,
-      workspace: run.workspace,
-      status: run.status,
-      totalFiles: run.totalFiles,
-      processedFiles: run.processedFiles,
-      indexedUnits: run.indexedUnits,
-      lexicalOnlyUnits: run.lexicalOnlyUnits,
-      failedFiles: run.failedFiles,
-      excludedFiles: run.excludedFiles,
-      completedAt: run.completedAt,
-      updatedAt: run.updatedAt,
-      error: run.error,
+    this.transactions.run('semanticIndex.updateRun', () => {
+      if (['completed', 'failed', 'cancelled'].includes(run.status)) new WorkspaceEvidenceRepository(this.database).recordIndex('semantic-index', run.workspace, run.id, run.startedAt)
+      this.database.prepare(`UPDATE semantic_index_runs SET
+        status=@status,total_files=@totalFiles,processed_files=@processedFiles,indexed_units=@indexedUnits,
+        lexical_only_units=@lexicalOnlyUnits,failed_files=@failedFiles,excluded_files=@excludedFiles,
+        completed_at=@completedAt,updated_at=@updatedAt,error=@error
+        WHERE id=@id AND workspace=@workspace`).run({
+        id: run.id,
+        workspace: run.workspace,
+        status: run.status,
+        totalFiles: run.totalFiles,
+        processedFiles: run.processedFiles,
+        indexedUnits: run.indexedUnits,
+        lexicalOnlyUnits: run.lexicalOnlyUnits,
+        failedFiles: run.failedFiles,
+        excludedFiles: run.excludedFiles,
+        completedAt: run.completedAt,
+        updatedAt: run.updatedAt,
+        error: run.error,
+      })
     })
   }
 

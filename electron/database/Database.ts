@@ -50,6 +50,7 @@ export class LocalDatabase {
   get engineeringIntelligence() { return this.repositories.engineeringIntelligence }
   get dataDirectory() { return this.runtime.dataDirectory }
   get operationRecovery() { return this.repositories.operationRecovery }
+  get workspaceEvidence() { return this.repositories.workspaceEvidence }
 
   constructor(userDataPath: string) {
     this.runtime = new DatabaseRuntime(userDataPath)

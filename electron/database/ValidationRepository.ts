@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3'
 import type { ValidationArtifact, ValidationRun } from '../../shared/codeIntelligence'
 import { CODE_INTELLIGENCE_LIMITS } from '../../shared/constants'
 import type { DatabaseTransactionRunner } from './DatabaseTransaction'
+import { WorkspaceEvidenceRepository } from './WorkspaceEvidenceRepository'
 
 interface ValidationRunRow {
   id: string
@@ -28,11 +29,15 @@ export class ValidationRepository {
   ) {}
 
   create(run: ValidationRun) {
-    this.database.prepare(`INSERT INTO validation_runs(
-      id,workspace,execution_id,kind,command,args_json,status,exit_code,duration_ms,output_summary,
-      artifacts_json,started_at,completed_at,error
-    ) VALUES(@id,@workspace,@executionId,@kind,@command,@argsJson,@status,@exitCode,@durationMs,@outputSummary,
-      @artifactsJson,@startedAt,@completedAt,@error)`).run(toParameters(run))
+    this.transactions.run('validation.create', () => {
+      const evidence = new WorkspaceEvidenceRepository(this.database)
+      evidence.record({ kind: 'validation', sourceId: run.id, workspace: run.workspace, executionId: run.executionId, startedAt: run.startedAt, references: [...evidence.indexReferences(run.workspace), ...evidence.checkpointReferences(run.executionId)] })
+      this.database.prepare(`INSERT INTO validation_runs(
+        id,workspace,execution_id,kind,command,args_json,status,exit_code,duration_ms,output_summary,
+        artifacts_json,started_at,completed_at,error
+      ) VALUES(@id,@workspace,@executionId,@kind,@command,@argsJson,@status,@exitCode,@durationMs,@outputSummary,
+        @artifactsJson,@startedAt,@completedAt,@error)`).run(toParameters(run))
+    })
   }
 
   update(run: ValidationRun) {

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
+import { WorkspaceEvidenceRepository } from './WorkspaceEvidenceRepository'
 import { ENGINEERING_INTELLIGENCE_LIMITS } from '../../shared/constants'
 import type {
   EngineeringHealthSnapshot,
@@ -104,6 +105,16 @@ export class EngineeringIntelligenceRepository {
         snapshot.stateFingerprint,
       ) as EngineeringSnapshotRow | undefined
       if (existing) return fromSnapshotRow(existing)
+      new WorkspaceEvidenceRepository(this.database).record({
+        kind: 'engineering', sourceId: snapshot.id, workspace: snapshot.workspace, startedAt: snapshot.evaluatedAt,
+        references: [
+          ...(snapshot.sources.projectIndexRunId ? [{ kind: 'project-index', id: snapshot.sources.projectIndexRunId }] : []),
+          ...(snapshot.sources.semanticIndexRunId ? [{ kind: 'semantic-index', id: snapshot.sources.semanticIndexRunId }] : []),
+          ...snapshot.sources.validationRunIds.map((id) => ({ kind: 'validation', id })),
+          ...snapshot.sources.executionIds.map((id) => ({ kind: 'execution', id })),
+          ...snapshot.sources.changeSetIds.map((id) => ({ kind: 'change-set', id })),
+        ],
+      })
 
       this.database.prepare(`INSERT INTO engineering_health_snapshots(
         id,workspace,policy_version,evaluated_at,previous_snapshot_id,sources_json,categories_json,

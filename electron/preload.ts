@@ -55,6 +55,7 @@ async function modelResult<T>(result: Promise<ModelIpcResult<T>>): Promise<T> {
 
 export const nocturneApi: NocturneApi = {
   recovery: { list: () => ipcRenderer.invoke(channels.recovery.list) },
+  evidence: { list: (conversationId, executionId) => ipcRenderer.invoke(channels.evidence.list, { conversationId, executionId }) },
   workspace: {
     select: (expectedWorkspace?: string) => ipcRenderer.invoke(channels.workspace.select, expectedWorkspace),
     validate: (workspace: string) => ipcRenderer.invoke(channels.workspace.validate, workspace),
