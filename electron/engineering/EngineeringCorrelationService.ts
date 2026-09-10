@@ -27,7 +27,8 @@ export class EngineeringCorrelationService {
       ))
     }
     const failedValidations = testing.filter((signal) => signal.kind.startsWith('validation-failure-'))
-    if (failedValidations.length >= 2) {
+    const validationKinds = new Set(failedValidations.map(validationKind))
+    if (validationKinds.size >= 2) {
       correlations.push(this.createCorrelation(
         'multiple-validation-failures',
         'Mais de uma validação falhou na mesma avaliação',
@@ -58,6 +59,11 @@ export class EngineeringCorrelationService {
       confidence: Math.min(90, Math.min(...signals.map((signal) => signal.confidence))),
     }
   }
+}
+
+function validationKind(signal: EngineeringSignal): string {
+  const value = signal.kind.slice('validation-failure-'.length)
+  return value.split('-')[0] || value
 }
 
 function deduplicateEvidence(evidence: readonly EngineeringEvidence[]): EngineeringEvidence[] {

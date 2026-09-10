@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3'
 import { WorkspaceEvidenceRepository } from './WorkspaceEvidenceRepository'
 import { ENGINEERING_INTELLIGENCE_LIMITS } from '../../shared/constants'
 import type {
+  EngineeringHealthCategory,
   EngineeringHealthSnapshot,
   EngineeringInsight,
   EngineeringSignal,
@@ -64,6 +65,13 @@ interface EngineeringInsightRow {
   lastSeenAt: string
 }
 
+export interface EngineeringEvaluationPersistenceOptions {
+  /** Categories whose missing signals may be resolved by the default policy. */
+  skipCategoryResolution?: readonly EngineeringHealthCategory[]
+  /** Explicitly comparable observations that may resolve historical signals. */
+  resolveSignalFingerprints?: readonly string[]
+}
+
 /** Persists bounded, reproducible engineering findings and completed evaluations. */
 export class EngineeringIntelligenceRepository {
   constructor(
@@ -71,7 +79,11 @@ export class EngineeringIntelligenceRepository {
     private readonly transactions: DatabaseTransactionRunner,
   ) {}
 
-  saveEvaluation(signals: readonly EngineeringSignal[], snapshot: EngineeringHealthSnapshot): EngineeringHealthSnapshot {
+  saveEvaluation(
+    signals: readonly EngineeringSignal[],
+    snapshot: EngineeringHealthSnapshot,
+    options: EngineeringEvaluationPersistenceOptions = {},
+  ): EngineeringHealthSnapshot {
     for (const signal of signals) engineeringSignalSchema.parse(signal)
     engineeringHealthSnapshotSchema.parse(snapshot)
 
@@ -81,6 +93,7 @@ export class EngineeringIntelligenceRepository {
 
       const assessedCategories = snapshot.categories
         .filter((category) => category.status === 'assessed')
+        .filter((category) => !options.skipCategoryResolution?.includes(category.category))
         .map((category) => category.category)
       if (assessedCategories.length > 0) {
         const categoryPlaceholders = assessedCategories.map(() => '?').join(',')
@@ -95,6 +108,13 @@ export class EngineeringIntelligenceRepository {
               WHERE workspace=? AND fingerprint=? AND status='active'`).run(snapshot.evaluatedAt, snapshot.workspace, row.fingerprint)
           }
         }
+      }
+
+      const explicitFingerprints = new Set(options.resolveSignalFingerprints ?? [])
+      for (const fingerprint of explicitFingerprints) {
+        if (fingerprints.has(fingerprint)) continue
+        this.database.prepare(`UPDATE engineering_signals SET status='resolved',resolved_at=?
+          WHERE workspace=? AND fingerprint=? AND status='active'`).run(snapshot.evaluatedAt, snapshot.workspace, fingerprint)
       }
 
       const existing = this.database.prepare(`SELECT id,workspace,policy_version policyVersion,evaluated_at evaluatedAt,
@@ -201,6 +221,14 @@ export class EngineeringIntelligenceRepository {
       ? this.database.prepare(`${insightSelect} WHERE workspace=? AND status=? ORDER BY updated_at DESC LIMIT ?`).all(workspace, status, boundedLimit)
       : this.database.prepare(`${insightSelect} WHERE workspace=? ORDER BY updated_at DESC LIMIT ?`).all(workspace, boundedLimit)) as EngineeringInsightRow[]
     return rows.map(fromInsightRow)
+  }
+
+  resolveInsight(workspace: string, id: string, resolvedAt: string): boolean {
+    return this.transactions.run('engineeringIntelligence.resolveInsight', () => {
+      const result = this.database.prepare(`UPDATE engineering_insights SET status='resolved',updated_at=?
+        WHERE workspace=? AND id=? AND status='active'`).run(resolvedAt, workspace, id)
+      return result.changes > 0
+    })
   }
 
   private upsertSignal(signal: EngineeringSignal) {

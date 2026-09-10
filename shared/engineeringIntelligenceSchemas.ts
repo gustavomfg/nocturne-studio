@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { CODE_INTELLIGENCE_LIMITS, ENGINEERING_INTELLIGENCE_LIMITS } from './constants'
 import {
   engineeringEvidenceSources,
+  engineeringEvidenceValidities,
   engineeringHealthCategories,
   engineeringSignalSeverities,
   engineeringSignalSources,
@@ -31,6 +32,7 @@ export const engineeringEvidenceSchema = z.object({
   sourceHash: hash.optional(),
   runId: boundedId.optional(),
   location: engineeringEvidenceLocationSchema.optional(),
+  validity: z.enum(engineeringEvidenceValidities).optional(),
   detail: z.string().trim().min(1).max(ENGINEERING_INTELLIGENCE_LIMITS.maxEvidenceDetailCharacters),
   observedAt: timestamp,
 }).strict()

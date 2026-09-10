@@ -1,4 +1,4 @@
-export const ENGINEERING_HEALTH_POLICY_VERSION = 1
+export const ENGINEERING_HEALTH_POLICY_VERSION = 2
 
 export const engineeringHealthCategories = [
   'architecture',
@@ -45,6 +45,9 @@ export type EngineeringEvidenceSource = typeof engineeringEvidenceSources[number
 export const engineeringSignalSources = ['deterministic', 'correlation'] as const
 export type EngineeringSignalSource = typeof engineeringSignalSources[number]
 
+export const engineeringEvidenceValidities = ['current', 'stale', 'unknown'] as const
+export type EngineeringEvidenceValidity = typeof engineeringEvidenceValidities[number]
+
 export interface EngineeringEvidenceLocation {
   startLine: number
   startColumn?: number
@@ -61,6 +64,8 @@ export interface EngineeringEvidence {
   sourceHash?: string
   runId?: string
   location?: EngineeringEvidenceLocation
+  /** Currency of this observation; unknown is not proof of current workspace bytes. */
+  validity?: EngineeringEvidenceValidity
   detail: string
   observedAt: string
 }

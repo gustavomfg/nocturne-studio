@@ -164,6 +164,7 @@ export function registerIpc(
   engineeringSignals = new EngineeringSignalEngine(database.engineeringIntelligence, projectIndex, validation, {
     insightService: new EngineeringInsightService(database.engineeringIntelligence),
     semanticIndex,
+    workspaceEvidence: database.workspaceEvidence,
     executionIds: (workspace) => database.listExecutions(workspace).map((execution) => execution.id),
     changeSetIds: (workspace) => database.listExecutions(workspace).flatMap((execution) => database.changeSets.list(execution.id).map((changeSet) => changeSet.id)),
     onEvaluation: (evaluation) => win.webContents.send(IPC_CHANNELS.engineeringIntelligence.changed, {

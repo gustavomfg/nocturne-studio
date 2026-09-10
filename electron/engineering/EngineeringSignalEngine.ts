@@ -16,6 +16,7 @@ import {
   type HealthCategoryResult,
 } from '../../shared/engineeringIntelligence'
 import type { EngineeringIntelligenceRepository } from '../database/EngineeringIntelligenceRepository'
+import type { WorkspaceEvidenceRepository } from '../database/WorkspaceEvidenceRepository'
 import { engineeringFingerprint } from './EngineeringFingerprint'
 import { EngineeringHealthAnalyzer } from './EngineeringHealthAnalyzer'
 import type { EngineeringInsightService } from './EngineeringInsightService'
@@ -69,6 +70,7 @@ export interface EngineeringSignalEngineOptions {
   insightService?: EngineeringInsightService
   trendService?: EngineeringTrendService
   semanticIndex?: EngineeringSemanticIndexSource
+  workspaceEvidence?: Pick<WorkspaceEvidenceRepository, 'bySource'>
   executionIds?(workspace: string): string[]
   changeSetIds?(workspace: string): string[]
   onEvaluation?(evaluation: EngineeringHealthEvaluation): void
@@ -82,6 +84,7 @@ export class EngineeringSignalEngine {
   private readonly insightService: EngineeringInsightService | undefined
   private readonly trendService: EngineeringTrendService
   private readonly semanticIndex: EngineeringSemanticIndexSource | undefined
+  private readonly workspaceEvidence: Pick<WorkspaceEvidenceRepository, 'bySource'> | undefined
   private readonly executionIds: ((workspace: string) => string[]) | undefined
   private readonly changeSetIds: ((workspace: string) => string[]) | undefined
   private readonly onEvaluation: ((evaluation: EngineeringHealthEvaluation) => void) | undefined
@@ -108,6 +111,7 @@ export class EngineeringSignalEngine {
     this.insightService = options.insightService
     this.trendService = options.trendService ?? new EngineeringTrendService()
     this.semanticIndex = options.semanticIndex
+    this.workspaceEvidence = options.workspaceEvidence
     this.executionIds = options.executionIds
     this.changeSetIds = options.changeSetIds
     this.onEvaluation = options.onEvaluation
@@ -142,8 +146,9 @@ export class EngineeringSignalEngine {
       const validationRuns = this.validation.list(workspace, 100)
       const semanticSummary = this.semanticIndex?.getSummary(workspace)
       const project = assessArchitecture(workspace, projectSummary, projectFiles, imports, evaluatedAt)
-      const testing = assessTesting(validationRuns, evaluatedAt)
-      const developerExperience = assessDeveloperExperience(validationRuns, evaluatedAt)
+      const validationObservations = latestValidationObservations(validationRuns, this.workspaceEvidence)
+      const testing = assessTesting(validationObservations, evaluatedAt)
+      const developerExperience = assessDeveloperExperience(validationObservations, evaluatedAt)
       const signals = [...project.signals, ...testing.signals, ...developerExperience.signals]
       const categories = [
         project.category,
@@ -170,7 +175,12 @@ export class EngineeringSignalEngine {
         categories,
         signals,
       })
-      const persistedSnapshot = this.repository.saveEvaluation(signals, snapshot)
+      const activeSignals = this.repository.listSignals(workspace, 'active')
+      const resolveValidationSignals = validationResolutionFingerprints(activeSignals, signals, validationRuns, validationObservations)
+      const persistedSnapshot = this.repository.saveEvaluation(signals, snapshot, {
+        skipCategoryResolution: ['testing', 'developer-experience'],
+        resolveSignalFingerprints: resolveValidationSignals,
+      })
       const insights = this.insightService?.generate(workspace, signals, evaluatedAt) ?? []
       const trends = this.trendService.compare(previous, persistedSnapshot)
       const durationMs = Math.max(0, Date.now() - started)
@@ -201,6 +211,13 @@ export class EngineeringSignalEngine {
 interface SignalAssessment {
   category: HealthCategoryResult
   signals: EngineeringSignal[]
+}
+
+interface ValidationObservation {
+  run: ValidationRun
+  evidence: EngineeringEvidence
+  /** Null means this engine was constructed without an evidence source. */
+  validity: EngineeringEvidence['validity'] | null
 }
 
 function assessArchitecture(
@@ -238,19 +255,19 @@ function assessArchitecture(
   }
 }
 
-function assessTesting(runs: readonly ValidationRun[], evaluatedAt: string): SignalAssessment {
-  if (!runs.length) return { category: emptyCategory('testing', evaluatedAt), signals: [] }
-  const ordered = [...runs].sort((left, right) => right.startedAt.localeCompare(left.startedAt))
-  const concreteRuns = ordered.filter((run) => run.status === 'passed' || (run.status === 'failed' && !isEnvironmentFailure(run)))
-  const signals = ordered
-    .filter((run) => run.status === 'failed' && !isEnvironmentFailure(run))
+function assessTesting(observations: readonly ValidationObservation[], evaluatedAt: string): SignalAssessment {
+  if (!observations.length) return { category: emptyCategory('testing', evaluatedAt), signals: [] }
+  const concreteRuns = observations.filter(({ run }) => run.status === 'passed' || (run.status === 'failed' && !isEnvironmentFailure(run)))
+  const signals = deduplicateSignals(observations
+    .filter(({ run, validity }) => run.status === 'failed' && !isEnvironmentFailure(run) && validity !== 'stale')
     .slice(0, 20)
-    .map((run) => createValidationFailureSignal(run))
-  const evidence = ordered.slice(0, 20).map((run) => validationEvidence(run))
+    .map(({ run, evidence }) => createValidationFailureSignal(run, evidence)))
+  const evidence = observations.slice(0, 20).map(({ evidence }) => evidence)
+  const incomplete = observations.some(({ run, validity }) => !isConcreteValidation(run) || validity === 'stale' || validity === 'unknown')
   return {
     category: {
       category: 'testing',
-      status: concreteRuns.length ? 'assessed' : 'partial',
+      status: concreteRuns.length && !incomplete ? 'assessed' : 'partial',
       score: null,
       coverage: { available: evidence.length, expected: null, percent: null },
       signalIds: signals.map((signal) => signal.id),
@@ -261,11 +278,11 @@ function assessTesting(runs: readonly ValidationRun[], evaluatedAt: string): Sig
   }
 }
 
-function assessDeveloperExperience(runs: readonly ValidationRun[], evaluatedAt: string): SignalAssessment {
-  const blocked = runs.filter((run) => run.status === 'blocked' || (run.status === 'failed' && isEnvironmentFailure(run))).slice(0, 20)
+function assessDeveloperExperience(observations: readonly ValidationObservation[], evaluatedAt: string): SignalAssessment {
+  const blocked = observations.filter(({ run }) => run.status === 'blocked' || (run.status === 'failed' && isEnvironmentFailure(run))).slice(0, 20)
   if (!blocked.length) return { category: emptyCategory('developer-experience', evaluatedAt), signals: [] }
-  const signals = blocked.map((run) => createValidationEnvironmentSignal(run))
-  const evidence = blocked.map(validationEvidence)
+  const signals = deduplicateSignals(blocked.filter(({ validity }) => validity !== 'stale').map(({ run, evidence }) => createValidationEnvironmentSignal(run, evidence)))
+  const evidence = blocked.map(({ evidence }) => evidence)
   return {
     category: {
       category: 'developer-experience',
@@ -294,20 +311,20 @@ function emptyCategory(category: (typeof engineeringHealthCategories)[number], e
 
 function createIndexFailureSignal(workspace: string, run: ProjectIndexRun, files: readonly ProjectIndexFile[], detectedAt: string): EngineeringSignal {
   const evidence = files.slice(0, 20).map((file) => fileEvidence(file, 'Arquivo permaneceu em estado de falha após a indexação.'))
-  return createSignal(workspace, 'project-index-failure', 'Falha parcial no índice estrutural', `${files.length} arquivo(s) não puderam ser processado(s) pelo Project Index.`, 'medium', evidence, { name: 'failedFiles', value: files.length, unit: 'files' }, detectedAt, { runId: run.id, severityInput: files.length })
+  return createSignal(workspace, 'project-index-failure', 'Falha parcial no índice estrutural', `${files.length} arquivo(s) não puderam ser processado(s) pelo Project Index.`, 'medium', evidence, { name: 'failedFiles', value: files.length, unit: 'files' }, detectedAt, { runId: run.id, stableKey: 'failed-files' })
 }
 
 function createUnresolvedImportSignal(workspace: string, run: ProjectIndexRun, imports: readonly ProjectImport[], detectedAt: string): EngineeringSignal {
   const evidence = imports.slice(0, 20).map((item) => importEvidence(item, run.updatedAt))
-  return createSignal(workspace, 'unresolved-local-import', 'Referências locais não resolvidas', `${imports.length} relação(ões) de import/export não foram resolvidas pelo Project Index.`, imports.length >= 10 ? 'medium' : 'low', evidence, { name: 'unresolvedImports', value: imports.length, unit: 'relations' }, detectedAt, { runId: run.id, severityInput: imports.length })
+  return createSignal(workspace, 'unresolved-local-import', 'Referências locais não resolvidas', `${imports.length} relação(ões) de import/export não foram resolvidas pelo Project Index.`, imports.length >= 10 ? 'medium' : 'low', evidence, { name: 'unresolvedImports', value: imports.length, unit: 'relations' }, detectedAt, { runId: run.id, stableKey: 'unresolved-imports' })
 }
 
-function createValidationFailureSignal(run: ValidationRun): EngineeringSignal {
-  return createSignal(run.workspace, `validation-failure-${run.kind}-${run.exitCode ?? 'unknown'}`, `Validação ${run.kind} falhou`, `A validação ${run.kind} terminou com falha concreta do projeto.`, 'medium', [validationEvidence(run)], { name: 'exitCode', value: run.exitCode, unit: 'process' }, run.completedAt ?? run.startedAt, { stableKey: `${run.kind}:${run.exitCode ?? 'unknown'}` })
+function createValidationFailureSignal(run: ValidationRun, evidence = validationEvidence(run)): EngineeringSignal {
+  return createSignal(run.workspace, `validation-failure-${run.kind}`, `Validação ${run.kind} falhou`, `A validação ${run.kind} terminou com falha concreta do projeto.`, 'medium', [evidence], { name: 'exitCode', value: run.exitCode, unit: 'process' }, run.completedAt ?? run.startedAt, { stableKey: run.kind })
 }
 
-function createValidationEnvironmentSignal(run: ValidationRun): EngineeringSignal {
-  return createSignal(run.workspace, `validation-environment-${run.kind}`, `Validação ${run.kind} indisponível`, `A validação ${run.kind} não foi executada por uma condição do ambiente ou da política local.`, 'info', [validationEvidence(run)], { name: 'status', value: run.status }, run.completedAt ?? run.startedAt, { stableKey: `${run.kind}:${run.status}:${environmentReason(run)}` })
+function createValidationEnvironmentSignal(run: ValidationRun, evidence = validationEvidence(run)): EngineeringSignal {
+  return createSignal(run.workspace, `validation-environment-${run.kind}`, `Validação ${run.kind} indisponível`, `A validação ${run.kind} não foi executada por uma condição do ambiente ou da política local.`, 'info', [evidence], { name: 'status', value: run.status }, run.completedAt ?? run.startedAt, { stableKey: `${run.kind}:${environmentReason(run)}` })
 }
 
 function createSignal(
@@ -319,16 +336,14 @@ function createSignal(
   evidence: EngineeringEvidence[],
   metric: EngineeringSignal['metric'],
   detectedAt: string,
-  options: { runId?: string; stableKey?: string; severityInput?: number } = {},
+  options: { runId?: string; stableKey?: string } = {},
 ): EngineeringSignal {
   const normalizedEvidence = deduplicateEvidence(evidence).slice(0, 20)
   const signalFingerprint = engineeringFingerprint({
     policyVersion: ENGINEERING_HEALTH_POLICY_VERSION,
     category: kind.startsWith('validation-') ? (kind.startsWith('validation-environment') ? 'developer-experience' : 'testing') : 'architecture',
     kind,
-    severity,
-    stableKey: options.stableKey ?? options.severityInput ?? null,
-    evidence: normalizedEvidence.map(({ source, relativePath, sourceHash, location, detail }) => ({ source, relativePath, sourceHash, location, detail })),
+    stableKey: options.stableKey ?? null,
   })
   const confidence = evidenceQuality(normalizedEvidence)
   return {
@@ -382,15 +397,66 @@ function importEvidence(item: ProjectImport, observedAt: string): EngineeringEvi
   }
 }
 
-function validationEvidence(run: ValidationRun): EngineeringEvidence {
+function validationEvidence(run: ValidationRun, validity?: EngineeringEvidence['validity']): EngineeringEvidence {
   return {
     id: `validation-run:${run.id}`,
     source: 'validation-run',
     sourceId: run.id,
     runId: run.id,
+    ...(validity ? { validity } : {}),
     detail: `Validação ${run.kind} terminou com status ${run.status}${run.exitCode === null ? '' : ` e exit code ${run.exitCode}`}.`,
     observedAt: run.completedAt ?? run.startedAt,
   }
+}
+
+function latestValidationObservations(
+  runs: readonly ValidationRun[],
+  workspaceEvidence?: Pick<WorkspaceEvidenceRepository, 'bySource'>,
+): ValidationObservation[] {
+  const ordered = [...runs].sort((left, right) => right.startedAt.localeCompare(left.startedAt) || right.id.localeCompare(left.id))
+  const latest = new Map<string, ValidationRun>()
+  for (const run of ordered) {
+    const key = validationComparisonKey(run)
+    if (!latest.has(key)) latest.set(key, run)
+  }
+  return [...latest.values()].map((run) => {
+    const manifest = workspaceEvidence?.bySource('validation', run.id)
+    const validity = workspaceEvidence ? (manifest?.validity ?? 'unknown') : null
+    return { run, validity, evidence: validationEvidence(run, validity ?? undefined) }
+  })
+}
+
+function validationComparisonKey(run: Pick<ValidationRun, 'kind' | 'command' | 'args'>): string {
+  return JSON.stringify({ kind: run.kind, command: run.command, args: run.args })
+}
+
+function isConcreteValidation(run: ValidationRun): boolean {
+  return run.status === 'passed' || (run.status === 'failed' && !isEnvironmentFailure(run))
+}
+
+function validationResolutionFingerprints(
+  activeSignals: readonly EngineeringSignal[],
+  currentSignals: readonly EngineeringSignal[],
+  allRuns: readonly ValidationRun[],
+  observations: readonly ValidationObservation[],
+): string[] {
+  const currentFingerprints = new Set(currentSignals.map((signal) => signal.fingerprint))
+  const runsById = new Map(allRuns.map((run) => [run.id, run]))
+  const latestByKey = new Map(observations.map((observation) => [validationComparisonKey(observation.run), observation]))
+  const resolved = new Set<string>()
+  for (const signal of activeSignals) {
+    if (signal.category !== 'testing' && signal.category !== 'developer-experience') continue
+    const source = signal.evidence.find((item) => item.source === 'validation-run' && (item.runId || item.sourceId))
+    const previousRun = source?.runId ? runsById.get(source.runId) : source ? runsById.get(source.sourceId) : undefined
+    if (!previousRun) continue
+    const current = latestByKey.get(validationComparisonKey(previousRun))
+    if (!current || !isConcreteValidation(current.run)) continue
+    if (current.run.id === previousRun.id && currentFingerprints.has(signal.fingerprint)) continue
+    // A stale manifest cannot establish that the newer command observed a comparable state.
+    if (current.validity === 'stale') continue
+    resolved.add(signal.fingerprint)
+  }
+  return [...resolved]
 }
 
 function evidenceQuality(evidence: readonly EngineeringEvidence[]): number {
@@ -401,6 +467,10 @@ function evidenceQuality(evidence: readonly EngineeringEvidence[]): number {
 
 function deduplicateEvidence(evidence: readonly EngineeringEvidence[]): EngineeringEvidence[] {
   return [...new Map(evidence.map((item) => [item.id, item])).values()]
+}
+
+function deduplicateSignals(signals: readonly EngineeringSignal[]): EngineeringSignal[] {
+  return [...new Map(signals.map((signal) => [signal.fingerprint, signal])).values()]
 }
 
 function isEnvironmentFailure(run: ValidationRun): boolean {
