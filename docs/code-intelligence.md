@@ -45,8 +45,10 @@ interfaces, types, enums, methods, components, imports and exports. New
 adapters can be added to `ParserRegistry` without changing the SQLite model.
 
 Imports and exports record paths, hashes, specifiers, locations and local,
-external or unresolved resolution. The model remains independent from the AI
-and does not render a graph.
+external or unresolved resolution. Their derived identity is scoped by
+workspace both in the stable id and in the SQLite primary key, so identical
+clones can coexist in one local database. The model remains independent from
+the AI and does not render a graph.
 
 ## Stack and validation
 
@@ -60,7 +62,10 @@ supported stack fallback exists. Commands start in the main process, inside the
 authorized workspace, without a generic Nocturne shell; output is bounded and
 sanitized, and artifacts are persisted only when they resolve to existing files
 inside the workspace. Missing commands or destructive risk produce `blocked`
-status instead of an implicit execution.
+status instead of an implicit execution. A workspace still has one active
+process slot, but deduplication is limited to requests with the same kind,
+resolved command/arguments and execution identity; a different request is
+rejected explicitly instead of receiving the first request's result.
 
 ## Semantic Index — Phase 4
 
@@ -86,6 +91,12 @@ Retrieval normalizes lexical, vector, structural and shallow dependency signals
 before combining them. `ContextAssemblyService` applies source priority,
 deduplication, token limits and provenance. Results exposed to the AI include
 the source path, analyzed hash, chunk hash, index version and retrieval reason.
+Every candidate first passes the Project Index hash/state gate, including FTS
+and dependency-expanded candidates. The bounded top-candidate window then
+checks the actual file bytes; results carry `validity: "current"`, `"stale"`,
+or `"unknown"`. Stale candidates are dropped, while unknown I/O is exposed as
+potentially outdated. This is a relevant-scope check, not a claim that the
+whole workspace was an atomic snapshot.
 
 ## AI and observability
 
