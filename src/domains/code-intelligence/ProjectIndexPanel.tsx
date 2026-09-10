@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Check, FileCode2, LoaderCircle, Play, RefreshCw, Search, Sparkles, Square, TriangleAlert } from 'lucide-react'
 import type { ProjectIndexStatus, ProjectIndexSummary, ProjectSymbol, StackEvidence, ValidationKind, ValidationRun } from '../../../shared/codeIntelligence'
 import type { SemanticIndexStatus, SemanticIndexSummary, SemanticSearchResult } from '../../../shared/semanticIndex'
-import type { EngineeringHealthReport, EngineeringHealthCategory, EngineeringInsight, HealthAssessmentStatus } from '../../../shared/engineeringIntelligence'
+import type { EngineeringEvidenceValidity, EngineeringHealthReport, EngineeringHealthCategory, EngineeringInsight, EngineeringSignal, HealthAssessmentStatus } from '../../../shared/engineeringIntelligence'
 import { useI18n } from '../../shared/i18n'
 
 export interface ProjectIndexPanelProps {
@@ -70,7 +70,7 @@ function EngineeringHealthSection({ report, activeConversationId, onCreateSugges
   return <section className="project-index-section engineering-health" aria-live="polite">
     <div className="engineering-health-heading"><h3>{t('engineeringHealth.title')}</h3><small>{t('engineeringHealth.policy', { version: report.snapshot.policyVersion })}</small></div>
     <div className="engineering-health-grid">{categories.map((category) => <article key={category.category} className={`engineering-health-category ${category.status}`}><strong>{categoryLabel(category.category, t)}</strong><span>{statusLabelForHealth(category.status, t)}</span>{category.score !== null && <b>{category.score}/100</b>}<small>{t('engineeringHealth.evidence', { count: category.coverage.available })}</small></article>)}</div>
-    {report.signals.length > 0 && <div className="engineering-health-findings"><strong>{t('engineeringHealth.findings')}</strong>{report.signals.slice(0, 5).map((signal) => <div key={signal.fingerprint}><span>{signal.title}</span><small>{signal.evidence[0]?.relativePath ?? signal.evidence[0]?.source} · {t('engineeringHealth.confidence', { count: signal.confidence })}</small></div>)}</div>}
+    {report.signals.length > 0 && <div className="engineering-health-findings"><strong>{t('engineeringHealth.findings')}</strong>{report.signals.slice(0, 5).map((signal) => <div key={signal.fingerprint}><span>{signal.title}</span><small>{signal.evidence[0]?.relativePath ?? signal.evidence[0]?.source} · {t('engineeringHealth.confidence', { count: signal.confidence })} · {t(`engineeringHealth.validity.${signalValidity(signal)}`)}</small></div>)}</div>}
     {report.insights.length > 0 && <div className="engineering-health-findings"><strong>{t('engineeringHealth.insights')}</strong>{report.insights.slice(0, 3).map((insight) => <div key={insight.fingerprint}><span>{insight.title}</span><small>{insight.explanation}</small><button type="button" className="engineering-health-action" disabled={!activeConversationId} onClick={() => onCreateSuggestion(insight)}>{activeConversationId ? t('engineeringHealth.createSuggestion') : t('engineeringHealth.noConversation')}</button></div>)}</div>}
     {report.trends.length > 0 && <div className="engineering-health-findings"><strong>{t('engineeringHealth.trends')}</strong>{report.trends.slice(0, 4).map((trend) => <div key={trend.id}><span>{trend.category}</span><small>{trend.kind}</small></div>)}</div>}
   </section>
@@ -82,6 +82,13 @@ function categoryLabel(category: EngineeringHealthCategory, t: (key: string, val
 
 function statusLabelForHealth(status: HealthAssessmentStatus, t: (key: string, values?: Record<string, string | number>) => string) {
   return t(`engineeringHealth.status.${status}`)
+}
+
+function signalValidity(signal: EngineeringSignal): EngineeringEvidenceValidity {
+  const validities = signal.evidence.map((evidence) => evidence.validity)
+  if (validities.includes('stale')) return 'stale'
+  if (!validities.length || validities.some((validity) => !validity || validity === 'unknown')) return 'unknown'
+  return 'current'
 }
 
 const validationKinds: ValidationKind[] = ['typecheck', 'lint', 'test', 'build', 'smoke']
