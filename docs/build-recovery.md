@@ -2,12 +2,18 @@
 
 [Português do Brasil](build-recovery.pt-BR.md)
 
-Before a Build run, Nocturne records the Git state of the authorized workspace.
-Rollback is offered only when there is a `HEAD` commit, the workspace was clean,
-the agent reported changed paths and every path remains contained by the
-authorized root.
+Build rollback uses the private immutable BEFORE/AFTER checkpoints. It does not
+read a mutable Git HEAD or reset the Git index. Existing user changes are part
+of BEFORE and are preserved.
 
-After explicit confirmation, versioned reported files are restored from `HEAD`
-and reported new files are removed. Rollback is not offered when pre-existing
-user changes make attribution unsafe. If restoration stops, the failure path and
-current state remain visible for inspection; review the diff before retrying.
+After explicit confirmation, each target must match AFTER, including mode and
+bytes. Displaced files are retained under `.nocturne/rollback/<operation>` with
+an operation journal. A restored file is published exclusively: it never
+replaces a competing newly created path. A conflict or partial failure preserves
+the displaced bytes and reports the recovery directory. Delete and rename are
+restored through their file-level BEFORE/AFTER manifests.
+
+This is not a filesystem-wide transaction. External programs can retain open
+descriptors to displaced files; those files are deliberately retained. On a
+conflict, inspect both the workspace and recovery directory. No automatic
+continuation of an interrupted rollback is implied.

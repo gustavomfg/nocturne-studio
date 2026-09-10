@@ -184,7 +184,6 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
       const settings = database.getSettings()
       if (mode === 'build') {
         await changeControl.begin(executionId, conversation.workspace)
-        await buildRollback.begin(conversationId, conversation.workspace)
       }
       try {
         await aiExecutions.startCodex({
@@ -208,7 +207,6 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
       } catch (error) {
         if (mode === 'build') {
           changeControl.abort(executionId)
-          buildRollback.abort(conversationId)
         }
         throw error
       }
@@ -241,7 +239,7 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
       cancelId: 0,
       title: 'Reverter alterações do Build',
       message: `Restaurar ${status.files.length} arquivo(s) para o estado anterior ao Build?`,
-      detail: 'A reversão é limitada aos caminhos reportados pelo agente e exige que o workspace estivesse limpo antes da execução. Revise o diff atual antes de continuar.',
+      detail: 'A reversão usa BEFORE/AFTER. Alterações posteriores produzem conflito; bytes deslocados são preservados para recuperação. Revise o diff atual antes de continuar.',
     })
     if (confirmation.response !== 1) return null
     const result = await buildRollback.rollback(conversation.id, conversation.workspace)

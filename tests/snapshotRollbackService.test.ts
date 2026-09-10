@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CheckpointService } from '../electron/change-control/CheckpointService'
 import { SnapshotRollbackService } from '../electron/change-control/SnapshotRollbackService'
 import { WorkspaceCheckpointStore } from '../electron/change-control/WorkspaceCheckpointStore'
@@ -11,6 +11,7 @@ const directories: string[] = []
 const databases: LocalDatabase[] = []
 
 afterEach(() => {
+  vi.restoreAllMocks()
   for (const database of databases.splice(0)) database.close()
   for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true })
 })
@@ -29,6 +30,77 @@ async function fixture() {
 }
 
 describe('SnapshotRollbackService', () => {
+  it('reverte delete e rename como operações de bytes sem depender de Git', async () => {
+    const value = await fixture()
+    fs.writeFileSync(path.join(value.workspace, 'deleted.txt'), 'deleted before')
+    fs.writeFileSync(path.join(value.workspace, 'old.txt'), 'renamed before')
+    const before = await value.checkpoints.capture(value.executionId, value.workspace, 'before')
+    fs.unlinkSync(path.join(value.workspace, 'deleted.txt'))
+    fs.renameSync(path.join(value.workspace, 'old.txt'), path.join(value.workspace, 'new.txt'))
+    const after = await value.checkpoints.capture(value.executionId, value.workspace, 'after')
+    const result = await value.rollback.rollback(value.executionId, value.workspace, before.checkpoint.id, after.checkpoint.id)
+    expect(result.status).toBe('restored')
+    expect(fs.readFileSync(path.join(value.workspace, 'old.txt'), 'utf8')).toBe('renamed before')
+    expect(fs.readFileSync(path.join(value.workspace, 'deleted.txt'), 'utf8')).toBe('deleted before')
+    expect(fs.existsSync(path.join(value.workspace, 'new.txt'))).toBe(false)
+  })
+
+  it('não substitui arquivo criado por outro processo durante a publicação', async () => {
+    const value = await fixture()
+    const target = path.join(value.workspace, 'file.txt')
+    fs.writeFileSync(target, 'before')
+    const before = await value.checkpoints.capture(value.executionId, value.workspace, 'before')
+    fs.writeFileSync(target, 'after')
+    const after = await value.checkpoints.capture(value.executionId, value.workspace, 'after')
+    const rename = fs.promises.rename.bind(fs.promises)
+    vi.spyOn(fs.promises, 'rename').mockImplementation(async (source, destination) => {
+      await rename(source, destination)
+      if (source === target) fs.writeFileSync(target, 'concurrent replacement')
+    })
+    const result = await value.rollback.rollback(value.executionId, value.workspace, before.checkpoint.id, after.checkpoint.id)
+    expect(result.status).toBe('conflicted')
+    expect(fs.readFileSync(target, 'utf8')).toBe('concurrent replacement')
+    expect(result.recoveryDirectory).toBeTruthy()
+  })
+
+  it('registra rollback parcial e preserva os dois estados ao interromper a segunda restauração', async () => {
+    const value = await fixture()
+    for (const name of ['a.txt', 'b.txt']) fs.writeFileSync(path.join(value.workspace, name), 'before')
+    const before = await value.checkpoints.capture(value.executionId, value.workspace, 'before')
+    for (const name of ['a.txt', 'b.txt']) fs.writeFileSync(path.join(value.workspace, name), 'after')
+    const after = await value.checkpoints.capture(value.executionId, value.workspace, 'after')
+    const read = value.checkpoints.readContent.bind(value.checkpoints)
+    vi.spyOn(value.checkpoints, 'readContent').mockImplementation(async (file) => {
+      if (file.relativePath === 'b.txt') throw new Error('filesystem unavailable')
+      return read(file)
+    })
+    const result = await value.rollback.rollback(value.executionId, value.workspace, before.checkpoint.id, after.checkpoint.id)
+    expect(result).toMatchObject({ status: 'conflicted', restored: ['a.txt'], conflicts: ['b.txt'] })
+    expect(fs.readFileSync(path.join(value.workspace, 'a.txt'), 'utf8')).toBe('before')
+    expect(fs.readFileSync(path.join(value.workspace, 'b.txt'), 'utf8')).toBe('after')
+    expect(JSON.parse(fs.readFileSync(path.join(result.recoveryDirectory!, 'operation.json'), 'utf8'))).toMatchObject({ status: 'conflicted', restored: ['a.txt'] })
+  })
+
+  it('preserva edição externa feita depois da verificação inicial do rollback', async () => {
+    const value = await fixture()
+    const target = path.join(value.workspace, 'tracked.txt')
+    fs.writeFileSync(target, 'antes\n')
+    const before = await value.checkpoints.capture(value.executionId, value.workspace, 'before')
+    fs.writeFileSync(target, 'agente\n')
+    const after = await value.checkpoints.capture(value.executionId, value.workspace, 'after')
+    const read = value.checkpoints.readContent.bind(value.checkpoints)
+    vi.spyOn(value.checkpoints, 'readContent').mockImplementation(async (file) => {
+      const content = await read(file)
+      fs.writeFileSync(target, 'trabalho posterior\n')
+      return content
+    })
+
+    const result = await value.rollback.rollback(value.executionId, value.workspace, before.checkpoint.id, after.checkpoint.id)
+
+    expect(result.status).toBe('conflicted')
+    expect(fs.readFileSync(target, 'utf8')).toBe('trabalho posterior\n')
+  })
+
   it('restaura estado anterior sem exigir Git', async () => {
     const value = await fixture()
     fs.writeFileSync(path.join(value.workspace, 'tracked.txt'), 'antes\n')

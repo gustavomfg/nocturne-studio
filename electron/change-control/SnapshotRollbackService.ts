@@ -4,11 +4,14 @@ import path from 'node:path'
 import type { CheckpointFileRecord } from '../../shared/changeControl'
 import { resolveInsideWorkspace } from '../security/ExecutionPolicy'
 import type { CheckpointService } from './CheckpointService'
+import { enqueueSerializedWrite } from '../persistence/SerializedWriteQueue'
+import { writeAtomicFile } from '../persistence/AtomicFile'
 
 export interface SnapshotRollbackResult {
   status: 'restored' | 'conflicted'
   restored: string[]
   conflicts: string[]
+  recoveryDirectory?: string
 }
 
 interface CurrentState {
@@ -16,6 +19,7 @@ interface CurrentState {
   kind: CheckpointFileRecord['kind']
   size: number | null
   hash: string | null
+  mode: number | null
 }
 
 /** Restores a checkpoint only when every target still matches the expected AFTER state. */
@@ -27,6 +31,10 @@ export class SnapshotRollbackService {
   }
 
   async rollbackPaths(executionId: string, workspace: string, beforeId: string, afterId: string, requestedPaths?: readonly string[]): Promise<SnapshotRollbackResult> {
+    return enqueueSerializedWrite(`rollback:${path.resolve(workspace)}`, () => this.restore(executionId, workspace, beforeId, afterId, requestedPaths))
+  }
+
+  private async restore(executionId: string, workspace: string, beforeId: string, afterId: string, requestedPaths?: readonly string[]): Promise<SnapshotRollbackResult> {
     const before = this.checkpoints.get(beforeId, executionId)
     const after = this.checkpoints.get(afterId, executionId)
     if (!before || !after || before.status !== 'ready' || after.status !== 'ready') throw new Error('Os checkpoints necessários para o rollback não estão disponíveis.')
@@ -52,10 +60,26 @@ export class SnapshotRollbackService {
     if (conflicts.length) return { status: 'conflicted', restored: [], conflicts }
 
     const restored: string[] = []
+    // Keep displaced bytes and a durable intent before touching the workspace.
+    // Exclusive links publish restored files without replacing a racing writer.
+    const recoveryDirectory = resolveInsideWorkspace(`.nocturne/rollback/${randomUUID()}`, workspace)
+    await fs.promises.mkdir(recoveryDirectory, { recursive: true, mode: 0o700 })
+    const journal = { executionId, beforeId, afterId, status: 'running', restored, paths: restorations.map((item) => item.relativePath) }
+    const journalPath = path.join(recoveryDirectory, 'operation.json')
+    await writeAtomicFile(journalPath, JSON.stringify(journal))
     for (const restoration of restorations) {
-      await restoreFile(workspace, restoration.relativePath, restoration.before, this.checkpoints)
-      restored.push(restoration.relativePath)
+      try {
+        await restoreFile(workspace, restoration.relativePath, restoration.before, restoration.after, this.checkpoints, recoveryDirectory)
+        restored.push(restoration.relativePath)
+        await writeAtomicFile(journalPath, JSON.stringify(journal))
+      } catch {
+        journal.status = 'conflicted'
+        await writeAtomicFile(journalPath, JSON.stringify(journal))
+        return { status: 'conflicted', restored, conflicts: [restoration.relativePath], recoveryDirectory }
+      }
     }
+    journal.status = 'restored'
+    await writeAtomicFile(journalPath, JSON.stringify(journal))
     return { status: 'restored', restored, conflicts: [] }
   }
 }
@@ -65,7 +89,7 @@ function missingFile(checkpointId: string, relativePath: string): CheckpointFile
 }
 
 function sameState(left: CheckpointFileRecord | CurrentState, right: CheckpointFileRecord | CurrentState) {
-  return left.exists === right.exists && left.kind === right.kind && left.size === right.size && left.hash === right.hash
+  return left.exists === right.exists && left.kind === right.kind && left.size === right.size && left.hash === right.hash && left.mode === right.mode
 }
 
 async function inspectCurrent(workspace: string, relativePath: string): Promise<CurrentState> {
@@ -74,28 +98,40 @@ async function inspectCurrent(workspace: string, relativePath: string): Promise<
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
     throw error
   })
-  if (!stat) return { exists: false, kind: 'missing', size: null, hash: null }
-  if (!stat.isFile()) return { exists: true, kind: stat.isDirectory() ? 'directory' : 'symlink', size: stat.size, hash: null }
+  if (!stat) return { exists: false, kind: 'missing', size: null, hash: null, mode: null }
+  if (!stat.isFile()) return { exists: true, kind: stat.isDirectory() ? 'directory' : 'symlink', size: stat.size, hash: null, mode: stat.mode }
   const content = await fs.promises.readFile(resolved)
-  return { exists: true, kind: 'file', size: content.length, hash: createHash('sha256').update(content).digest('hex') }
+  return { exists: true, kind: 'file', size: content.length, hash: createHash('sha256').update(content).digest('hex'), mode: stat.mode }
 }
 
-async function restoreFile(workspace: string, relativePath: string, before: CheckpointFileRecord, checkpoints: CheckpointService) {
+async function restoreFile(workspace: string, relativePath: string, before: CheckpointFileRecord, after: CheckpointFileRecord, checkpoints: CheckpointService, recoveryDirectory: string) {
+  if ((before.exists && before.kind !== 'file') || (after.exists && after.kind !== 'file')) throw new Error('Tipo não restaurável com segurança.')
+  const content = before.exists ? await checkpoints.readContent(before) : null
+  if (content && createHash('sha256').update(content).digest('hex') !== before.hash) throw new Error('Checkpoint corrompido.')
   const resolved = resolveInsideWorkspace(relativePath, workspace)
   const current = await inspectCurrent(workspace, relativePath)
-  if (!before.exists) {
-    if (current.kind !== 'file') throw new Error(`Não é seguro remover ${relativePath}.`)
-    await fs.promises.unlink(resolved)
-    return
-  }
-  if (before.kind !== 'file') throw new Error(`O rollback não suporta restaurar o tipo ${before.kind} em ${relativePath}.`)
-  const content = await checkpoints.readContent(before)
+  if (!sameState(current, after)) throw new Error('O arquivo não corresponde ao AFTER.')
   await fs.promises.mkdir(path.dirname(resolved), { recursive: true, mode: 0o700 })
-  await writeAtomicBuffer(resolved, content)
-  if (before.mode !== null) await fs.promises.chmod(resolved, before.mode)
+  const displaced = path.join(recoveryDirectory, `${createHash('sha256').update(relativePath).digest('hex')}.after`)
+  if (after.exists) {
+    await fs.promises.rename(resolved, displaced)
+    const moved = await inspectCurrent(workspace, path.relative(workspace, displaced))
+    if (!sameState(moved, after)) {
+      // Never overwrite an external replacement to put the displaced file back.
+      await fs.promises.link(displaced, resolved).catch(() => undefined)
+      throw new Error('Alteração concorrente preservada no diretório de recuperação.')
+    }
+  }
+  try {
+    if (content) await writeExclusiveBuffer(resolved, content, before.mode ?? 0o600)
+    if (after.exists && !sameState(await inspectCurrent(workspace, path.relative(workspace, displaced)), after)) throw new Error('O arquivo deslocado recebeu uma edição concorrente.')
+  } catch (error) {
+    if (after.exists) await fs.promises.link(displaced, resolved).catch(() => undefined)
+    throw error
+  }
 }
 
-async function writeAtomicBuffer(filePath: string, content: Buffer) {
+async function writeExclusiveBuffer(filePath: string, content: Buffer, mode: number) {
   const temporary = `${filePath}.tmp-${process.pid}-${randomUUID()}`
   let handle: fs.promises.FileHandle | undefined
   try {
@@ -104,8 +140,9 @@ async function writeAtomicBuffer(filePath: string, content: Buffer) {
     await handle.sync()
     await handle.close()
     handle = undefined
-    await fs.promises.chmod(temporary, 0o600)
-    await fs.promises.rename(temporary, filePath)
+    await fs.promises.chmod(temporary, mode)
+    await fs.promises.link(temporary, filePath)
+    await fs.promises.unlink(temporary)
   } catch (error) {
     await handle?.close().catch(() => undefined)
     await fs.promises.unlink(temporary).catch(() => undefined)

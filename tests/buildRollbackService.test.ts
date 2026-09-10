@@ -2,74 +2,44 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, expect, it } from 'vitest'
 import { BuildRollbackService } from '../electron/ai/BuildRollbackService'
-import { removeTestDirectoryAsync } from './helpers/platform'
+import { LocalDatabase } from '../electron/database/Database'
+import { CheckpointService } from '../electron/change-control/CheckpointService'
+import { WorkspaceCheckpointStore } from '../electron/change-control/WorkspaceCheckpointStore'
+import { ChangeCaptureService } from '../electron/change-control/ChangeCaptureService'
+import { SnapshotRollbackService } from '../electron/change-control/SnapshotRollbackService'
 
-const directories: string[] = []
+const cleanup: Array<() => void> = []
+afterEach(() => cleanup.splice(0).reverse().forEach((fn) => fn()))
 
-afterEach(async () => {
-  for (const directory of directories.splice(0)) {
-    await removeTestDirectoryAsync(directory)
-  }
-})
-
-function repository() {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-build-rollback-'))
-  directories.push(directory)
-  execFileSync('git', ['init'], { cwd: directory })
-  execFileSync('git', ['config', 'user.name', 'Nocturne Test'], { cwd: directory })
-  execFileSync('git', ['config', 'user.email', 'nocturne@example.invalid'], { cwd: directory })
-  execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: directory })
-  fs.writeFileSync(path.join(directory, 'tracked.txt'), 'antes\n')
-  execFileSync('git', ['add', 'tracked.txt'], { cwd: directory })
-  execFileSync('git', ['commit', '-m', 'test: baseline'], { cwd: directory })
-  return directory
-}
-
-describe('BuildRollbackService', () => {
-  it('restaura somente caminhos reportados de um workspace inicialmente limpo', async () => {
-    const workspace = repository()
-    const service = new BuildRollbackService()
-    await expect(service.begin('conversation-1', workspace)).resolves.toMatchObject({
-      available: true,
-      files: [],
-    })
-
-    fs.writeFileSync(path.join(workspace, 'tracked.txt'), 'depois\n')
-    fs.writeFileSync(path.join(workspace, 'created.txt'), 'novo\n')
-    service.complete('conversation-1', ['tracked.txt', 'created.txt'])
-
-    await expect(service.rollback('conversation-1', workspace)).resolves.toEqual({
-      restored: ['tracked.txt', 'created.txt'],
-    })
-    expect(fs.readFileSync(path.join(workspace, 'tracked.txt'), 'utf8')).toBe('antes\n')
-    expect(fs.existsSync(path.join(workspace, 'created.txt'))).toBe(false)
-    expect(service.status('conversation-1').available).toBe(false)
-  })
-
-  it('não oferece rollback quando já havia alterações do usuário', async () => {
-    const workspace = repository()
-    fs.writeFileSync(path.join(workspace, 'tracked.txt'), 'alteração do usuário\n')
-    const service = new BuildRollbackService()
-    const status = await service.begin('conversation-1', workspace)
-    expect(status).toMatchObject({
-      available: false,
-      reason: expect.stringContaining('já possuía alterações'),
-    })
-    service.complete('conversation-1', ['tracked.txt'])
-    await expect(service.rollback('conversation-1', workspace)).rejects.toThrow(/já possuía alterações/)
-    expect(fs.readFileSync(path.join(workspace, 'tracked.txt'), 'utf8')).toBe('alteração do usuário\n')
-  })
-
-  it('recusa caminhos externos reportados pela execução', async () => {
-    const workspace = repository()
-    const service = new BuildRollbackService()
-    await service.begin('conversation-1', workspace)
-    service.complete('conversation-1', ['../outside.txt'])
-    expect(service.status('conversation-1')).toMatchObject({
-      available: false,
-      reason: expect.stringContaining('fora do workspace'),
-    })
-  })
+it('usa BEFORE imutável com HEAD alterado e recusa edição posterior ao AFTER', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-build-invariant-'))
+  cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }))
+  const workspace = path.join(root, 'project')
+  fs.mkdirSync(workspace)
+  const database = new LocalDatabase(root)
+  cleanup.push(() => database.close())
+  const conversation = database.createConversation(workspace)
+  const executionId = 'rollback-execution'
+  database.createExecution({ id: executionId, workspace, conversationId: conversation.id, prompt: 'test', mode: 'build', status: 'completed', decision: 'pending', retryOf: null, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), error: null })
+  const checkpoints = new CheckpointService(database.checkpoints, new WorkspaceCheckpointStore(path.join(root, 'snapshots')))
+  const target = path.join(workspace, 'file.txt')
+  fs.writeFileSync(target, 'before')
+  const before = await checkpoints.capture(executionId, workspace, 'before')
+  fs.writeFileSync(target, 'after')
+  await new ChangeCaptureService(checkpoints, database.changeSets).capture(executionId, workspace, before.checkpoint.id, 'codex-command')
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: workspace, stdio: 'pipe' })
+  git('init')
+  git('config', 'user.name', 'Test')
+  git('config', 'user.email', 'test@example.invalid')
+  git('add', 'file.txt')
+  git('commit', '-m', 'after')
+  const service = new BuildRollbackService(database, new SnapshotRollbackService(checkpoints))
+  fs.writeFileSync(target, 'user')
+  await expect(service.rollback(conversation.id, workspace)).rejects.toThrow(/conflito/)
+  expect(fs.readFileSync(target, 'utf8')).toBe('user')
+  fs.writeFileSync(target, 'after')
+  await service.rollback(conversation.id, workspace)
+  expect(fs.readFileSync(target, 'utf8')).toBe('before')
 })

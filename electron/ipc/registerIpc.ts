@@ -262,9 +262,9 @@ export function registerIpc(
   const disposeClipboard = registerClipboardIpc(win, ipcMain)
 
   const approvalDetails = new Map<string, { command?: string; risk?: string }>()
-  const buildRollback = new BuildRollbackService()
   const checkpoints = new CheckpointService(database.checkpoints, new WorkspaceCheckpointStore(path.join(database.dataDirectory, 'change-checkpoints')))
   const snapshotRollback = new SnapshotRollbackService(checkpoints)
+  const buildRollback = new BuildRollbackService(database, snapshotRollback)
   const changeControl = new ExecutionChangeControlService(checkpoints, new ChangeCaptureService(checkpoints, database.changeSets), changeGate)
   const changeDiffs = new ChangeDiffService(checkpoints, database.changeSets)
   const changeDecisions = new ChangeDecisionService(database.changeSets)
@@ -280,7 +280,6 @@ export function registerIpc(
     async (snapshot) => {
       const persisted = persistCompletedTurn(database, snapshot)
       if (snapshot.mode === 'build') {
-        buildRollback.complete(snapshot.conversationId, snapshot.files)
         if (snapshot.executionId) {
           try {
             const captured = await changeControl.complete(snapshot.executionId, snapshot.workspace, 'codex-command')
