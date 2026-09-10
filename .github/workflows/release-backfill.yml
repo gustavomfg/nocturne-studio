@@ -161,7 +161,7 @@ jobs:
           test "$OPERATIONAL_REF" = "v1.0.1-backfill"
           test "$(git -C tooling rev-parse HEAD)" = "$WORKFLOW_SHA"
           test "$(git -C tooling rev-list -n 1 "$RELEASE_TAG")" = "$APPLICATION_SHA"
-          remote_tag_sha="$(git ls-remote origin "refs/tags/$RELEASE_TAG" | awk '{print $1}')"
+          remote_tag_sha="$(git -C tooling ls-remote origin "refs/tags/$RELEASE_TAG" | awk '{print $1}')"
           test "$remote_tag_sha" = "$APPLICATION_SHA"
           npm --prefix tooling run verify:release-assets -- --platforms windows,macos release-assets
           existing_assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
