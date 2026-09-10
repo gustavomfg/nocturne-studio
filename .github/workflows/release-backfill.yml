@@ -7,8 +7,8 @@ on:
         description: Existing stable tag whose missing assets will be backfilled
         required: true
         type: string
-      candidate_sha:
-        description: Full commit SHA that the tag must reference
+      application_sha:
+        description: Full application commit SHA that the stable tag must reference
         required: true
         type: string
 
@@ -37,7 +37,9 @@ jobs:
             architecture: arm64
     env:
       RELEASE_TAG: ${{ inputs.release_tag }}
-      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      APPLICATION_SHA: ${{ inputs.application_sha }}
+      WORKFLOW_SHA: ${{ github.sha }}
+      OPERATIONAL_REF: ${{ github.ref_name }}
       RELEASE_PLATFORM: ${{ matrix.platform }}
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       APPLE_ID: ''
@@ -67,8 +69,10 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$CANDIDATE_SHA"
+          test "$OPERATIONAL_REF" = "v1.0.1-backfill"
+          test "$(git -C ../tooling rev-parse HEAD)" = "$WORKFLOW_SHA"
+          test "$(git rev-parse HEAD)" = "$APPLICATION_SHA"
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$APPLICATION_SHA"
           node -e "const v=require('./package.json').version;if('$RELEASE_TAG' !== 'v'+v)throw new Error('Tag e versão divergentes: '+v)"
       - name: Confirm unsigned platform policy
         shell: bash
@@ -118,7 +122,9 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ inputs.release_tag }}
-      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      APPLICATION_SHA: ${{ inputs.application_sha }}
+      WORKFLOW_SHA: ${{ github.sha }}
+      OPERATIONAL_REF: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -152,9 +158,11 @@ jobs:
       - name: Verify tag, existing Linux assets and missing-platform inventory
         shell: bash
         run: |
-          test "$(git -C tooling rev-list -n 1 "$RELEASE_TAG")" = "$CANDIDATE_SHA"
+          test "$OPERATIONAL_REF" = "v1.0.1-backfill"
+          test "$(git -C tooling rev-parse HEAD)" = "$WORKFLOW_SHA"
+          test "$(git -C tooling rev-list -n 1 "$RELEASE_TAG")" = "$APPLICATION_SHA"
           remote_tag_sha="$(git ls-remote origin "refs/tags/$RELEASE_TAG" | awk '{print $1}')"
-          test "$remote_tag_sha" = "$CANDIDATE_SHA"
+          test "$remote_tag_sha" = "$APPLICATION_SHA"
           npm --prefix tooling run verify:release-assets -- --platforms windows,macos release-assets
           existing_assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
           for required in \

@@ -74,11 +74,15 @@ existente.
 ## Backfill de uma release existente
 
 `Release · backfill cross-platform assets` é o caminho operacional para
-reconciliar uma release já publicada. Informe a tag existente e o SHA que ela
-deve referenciar. O workflow:
+reconciliar uma release já publicada. Como `stable-release` aceita apenas tags
+`v*`, ele deve ser executado pelo ref temporário `v1.0.1-backfill` durante esta
+reconciliação. Informe a tag existente e o SHA da aplicação que ela deve
+referenciar. O workflow:
 
 - faz checkout separado do código da tag e das ferramentas da branch em que o
-  workflow foi executado;
+- faz checkout separado do código da tag e das ferramentas do ref operacional;
+- mantém `WORKFLOW_SHA` (infraestrutura) separado de `APPLICATION_SHA` (o SHA
+  exato da aplicação) e recusa qualquer outro ref operacional;
 - prova que o package foi construído do SHA da tag, nunca de `main`;
 - empacota somente Windows x64 e macOS ARM64 quando esses assets estão ausentes;
 - valida smoke, updater metadata, blockmaps, checksums e nomes exatos;
@@ -87,8 +91,8 @@ deve referenciar. O workflow:
 - publica apenas os assets faltantes e atualiza o corpo com as notas inglesas
   versionadas, dentro do environment protegido.
 
-Esse fluxo não recria tags, não cria uma nova versão, não assina artefatos sem
-credencial e não modifica `v1.0.0`.
+Esse fluxo não recria a tag de release, não cria uma nova versão, não assina
+artefatos sem credencial e não modifica `v1.0.0`.
 
 ## Proteções de release
 
