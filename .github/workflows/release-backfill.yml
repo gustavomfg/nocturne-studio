@@ -164,7 +164,7 @@ jobs:
           remote_tag_sha="$(git -C tooling ls-remote origin "refs/tags/$RELEASE_TAG" | awk '{print $1}')"
           test "$remote_tag_sha" = "$APPLICATION_SHA"
           npm --prefix tooling run verify:release-assets -- --platforms windows,macos ../release-assets
-          existing_assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          existing_assets="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
           for required in \
             "Nocturne.Studio-Linux-$(node -p "require('./tooling/package.json').version").AppImage" \
             "Nocturne.Studio-Linux-$(node -p "require('./tooling/package.json').version").tar.gz" \
@@ -181,15 +181,15 @@ jobs:
           done
       - name: Upload only missing Windows and macOS assets
         shell: bash
-        run: gh release upload "$RELEASE_TAG" release-assets/*
+        run: gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" release-assets/*
       - name: Update release body from versioned English notes
         shell: bash
-        run: gh release edit "$RELEASE_TAG" --title "Nocturne Studio $RELEASE_TAG" --notes-file "tooling/docs/releases/$RELEASE_TAG.md"
+        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --title "Nocturne Studio $RELEASE_TAG" --notes-file "tooling/docs/releases/$RELEASE_TAG.md"
       - name: Verify completed release inventory and body
         shell: bash
         run: |
-          asset_count="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets | length')"
+          asset_count="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')"
           test "$asset_count" -eq 16
-          gh release view "$RELEASE_TAG" --json body,isDraft,isPrerelease --jq '.body' | grep -Fq "# Nocturne Studio v1.0.1"
-          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')" = false
-          test "$(gh release view "$RELEASE_TAG" --json isPrerelease --jq '.isPrerelease')" = false
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json body,isDraft,isPrerelease --jq '.body' | grep -Fq "# Nocturne Studio v1.0.1"
+          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')" = false
+          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease')" = false
