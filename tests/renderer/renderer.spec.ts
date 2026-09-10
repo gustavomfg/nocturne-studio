@@ -928,7 +928,8 @@ test.describe('renderer do produto', () => {
     expect(await page.evaluate(() => (window as unknown as { __suggestionSendCount: number }).__suggestionSendCount)).toBe(0)
   })
 
-  test('recalcula a Saúde do Projeto quando uma sugestão é aplicada', async ({ page }) => {
+  for (const terminalStatus of ['completed', 'unknown'] as const) {
+  test(`recalcula a Saúde do Projeto somente com resultado confirmado (${terminalStatus})`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await ready(page)
     await page.evaluate(() => {
@@ -953,11 +954,17 @@ test.describe('renderer do produto', () => {
     await page.locator('.suggestion-card').filter({ hasText: 'Refinar fronteiras' }).getByRole('button', { name: 'Aplicar' }).click()
     await page.getByRole('button', { name: 'Preparar aplicação' }).click()
     await expect(architecture.getByText('7/10', { exact: true })).toBeVisible()
-    await page.evaluate(() => {
+    await page.evaluate((status) => {
       const bridge = (window as unknown as { __nocturneTest: { emitEvent(payload: unknown): void } }).__nocturneTest
       bridge.emitEvent({ method: 'item/completed', params: { item: { id: 'file-change-health', type: 'fileChange', status: 'completed', changes: [{ path: 'src/App.tsx', kind: 'modified', status: 'completed' }] } } })
-      bridge.emitEvent({ method: 'turn/completed', params: { turn: { id: 'turn-live-health' }, threadId: 'thread-1' } })
-    })
+      bridge.emitEvent({ method: 'turn/completed', params: { turn: { id: 'turn-live-health', status }, threadId: 'thread-1' } })
+    }, terminalStatus)
+    if (terminalStatus === 'unknown') {
+      await expect(page.getByRole('alert').filter({ hasText: 'A execução não foi concluída.' })).toBeVisible()
+      await expect(architecture.getByText('7/10', { exact: true })).toBeVisible()
+      await expect(architecture).not.toHaveClass(/improved/)
+      return
+    }
     const healthCard = page.locator('.health-card')
     await expect(healthCard.locator('.sr-only[role="status"]')).toContainText('Arquitetura passou de 7 para 8')
     await expect(architecture).toHaveClass(/improved/)
@@ -966,6 +973,7 @@ test.describe('renderer do produto', () => {
     await page.locator('#agent-inspector .inspector-scroll').evaluate((element) => { element.scrollTop = 0 })
     await expect(page.locator('#agent-inspector')).toHaveScreenshot('project-health-updated.png', { animations: 'disabled', caret: 'hide' })
   })
+  }
 
   for (const viewport of [{ width: 1440, height: 900 }, { width: 980, height: 820 }, { width: 720, height: 800 }, { width: 520, height: 760 }]) {
     test(`mantém a referência visual em ${viewport.width}px`, async ({ page }) => {
