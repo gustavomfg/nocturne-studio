@@ -32,6 +32,7 @@ const contextSourceSchema = z.object({
     embeddingProviderId: z.string().max(512).optional(),
     embeddingModelId: z.string().max(512).optional(),
     retrievalReason: z.string().max(2_000).optional(),
+    validity: z.enum(['current', 'stale', 'unknown']).optional(),
   }).strict().optional(),
 }).strict()
 

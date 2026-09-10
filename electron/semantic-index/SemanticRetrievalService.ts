@@ -1,5 +1,8 @@
+import crypto from 'node:crypto'
 import { SEMANTIC_INDEX_VERSION } from '../../shared/semanticIndex'
 import type { SemanticSearchQuery, SemanticSearchResult, SemanticUnit } from '../../shared/semanticIndex'
+import { WORKSPACE_READ_LIMITS } from '../../shared/constants'
+import { readWorkspaceFile } from '../security/ExecutionPolicy'
 import type { ProjectIndexService } from '../project-index/ProjectIndexService'
 import type { SemanticEmbeddingOperations } from './SemanticIndexService'
 import { SemanticIndexRepository, type SemanticLexicalMatch, type StoredSemanticEmbedding } from '../database/SemanticIndexRepository'
@@ -20,6 +23,8 @@ interface Candidate {
   dependency: number
 }
 
+type CandidateValidity = 'current' | 'stale' | 'unknown'
+
 /** Combines independent retrieval signals without comparing their raw scales. */
 export class SemanticRetrievalService {
   constructor(
@@ -31,7 +36,11 @@ export class SemanticRetrievalService {
   async search(input: SemanticSearchQuery): Promise<SemanticSearchResult[]> {
     const workspace = input.workspace
     const filters = input.filters ?? {}
+    // Lexical FTS is intentionally independent from the structural index. Do
+    // not let an eligible-looking FTS row bypass the same hash gate used by
+    // vector and structural candidates.
     const lexical = this.repository.searchLexical(workspace, input.query, filters, RETRIEVAL_LIMITS.lexicalCandidates)
+      .filter((match) => this.isStructurallyCurrent(workspace, match.unit))
     const embedding = await this.resolveQueryEmbedding(workspace, input.query)
     const vectors = embedding ? this.repository.listIndexedEmbeddings(workspace, embedding.space) : []
     const vectorScores = embedding ? rankVectors(vectors, embedding.vector) : new Map<string, number>()
@@ -41,7 +50,7 @@ export class SemanticRetrievalService {
     const candidates = new Map<string, Candidate>()
 
     for (const unit of structuralCandidates) {
-      if (!this.isCurrent(workspace, unit)) continue
+      if (!this.isStructurallyCurrent(workspace, unit)) continue
       candidates.set(unit.id, {
         unit,
         vector: vectorScores.get(unit.id) ?? 0,
@@ -52,7 +61,7 @@ export class SemanticRetrievalService {
     }
     for (const match of lexical) this.addCandidate(candidates, match.unit, input.query, lexicalScores.get(match.unit.id) ?? 0, dependencyPaths)
     for (const stored of vectors.slice(0, RETRIEVAL_LIMITS.vectorCandidates)) {
-      if (!this.isCurrent(workspace, stored.unit)) continue
+      if (!this.isStructurallyCurrent(workspace, stored.unit)) continue
       const current = candidates.get(stored.unit.id)
       if (current) {
         current.vector = vectorScores.get(stored.unit.id) ?? 0
@@ -63,7 +72,7 @@ export class SemanticRetrievalService {
     }
 
     const hasVector = vectorScores.size > 0
-    return [...candidates.values()]
+    const ranked = [...candidates.values()]
       .map((candidate) => {
         const final = combineScores(candidate, hasVector)
         const reasons = []
@@ -72,6 +81,28 @@ export class SemanticRetrievalService {
         if (candidate.structural > 0) reasons.push('símbolo ou caminho relevante')
         if (candidate.dependency > 0) reasons.push('relação de importação próxima')
         return {
+          candidate,
+          final,
+          reasons,
+        }
+      })
+      .filter((result) => result.final > 0)
+      .sort((left, right) => right.final - left.final || left.candidate.unit.relativePath.localeCompare(right.candidate.unit.relativePath))
+
+    const requestedLimit = Math.max(1, Math.min(100, Math.trunc(input.limit ?? 20)))
+    // Live verification is deliberately bounded to the best candidates. It
+    // catches edits that arrive after indexing/retrieval started without
+    // hashing the whole workspace for every query.
+    const verificationLimit = Math.min(ranked.length, Math.max(requestedLimit, requestedLimit * 2))
+    const validityByPath = new Map<string, Promise<CandidateValidity>>()
+    const checked = await Promise.all(ranked.slice(0, verificationLimit).map(async ({ candidate, final, reasons }) => {
+      let validity = validityByPath.get(candidate.unit.relativePath)
+      if (!validity) {
+        validity = this.verifyLiveCandidate(workspace, candidate.unit)
+        validityByPath.set(candidate.unit.relativePath, validity)
+      }
+      const candidateValidity = await validity
+      return {
           unit: {
             id: candidate.unit.id,
             relativePath: candidate.unit.relativePath,
@@ -97,13 +128,12 @@ export class SemanticRetrievalService {
             chunkStrategyVersion: candidate.unit.chunkStrategyVersion,
             embeddingSpace: candidate.unit.embeddingSpace,
             reason: reasons.length ? reasons.join(', ') : 'unidade estrutural elegível',
-            potentiallyOutdated: false,
+            validity: candidateValidity,
+            potentiallyOutdated: candidateValidity !== 'current',
           },
-        }
-      })
-      .filter((result) => result.scores.final > 0)
-      .sort((left, right) => right.scores.final - left.scores.final || left.unit.relativePath.localeCompare(right.unit.relativePath))
-      .slice(0, Math.max(1, Math.min(100, Math.trunc(input.limit ?? 20))))
+      } satisfies SemanticSearchResult
+      }))
+    return checked.filter((result) => result.provenance.validity !== 'stale').slice(0, requestedLimit)
   }
 
   private addCandidate(candidates: Map<string, Candidate>, unit: SemanticUnit, query: string, lexical: number, dependencyPaths: ReadonlySet<string>) {
@@ -117,9 +147,27 @@ export class SemanticRetrievalService {
     })
   }
 
-  private isCurrent(workspace: string, unit: SemanticUnit) {
+  private isStructurallyCurrent(workspace: string, unit: SemanticUnit) {
     const file = this.projectIndex.getFile(workspace, unit.relativePath)
-    return Boolean(file && file.analyzedHash === unit.sourceHash && ['indexed', 'unsupported'].includes(file.state) && ['indexed', 'lexical-only'].includes(unit.status))
+    return Boolean(file
+      && file.analyzedHash === unit.sourceHash
+      && (!file.observedHash || file.observedHash === file.analyzedHash)
+      && ['indexed', 'unsupported'].includes(file.state)
+      && ['indexed', 'lexical-only'].includes(unit.status))
+  }
+
+  private async verifyLiveCandidate(workspace: string, unit: SemanticUnit): Promise<CandidateValidity> {
+    if (!this.isStructurallyCurrent(workspace, unit)) return 'stale'
+    try {
+      const current = await readWorkspaceFile(unit.relativePath, workspace, WORKSPACE_READ_LIMITS.codeIndexBytes)
+      const hash = crypto.createHash('sha256').update(current.content).digest('hex')
+      return hash === unit.sourceHash ? 'current' : 'stale'
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'stale'
+      // Permission, size and transient I/O failures do not prove either
+      // currency or staleness. Keep the candidate visible but mark it unknown.
+      return 'unknown'
+    }
   }
 
   private dependencyExpansion(workspace: string, matches: readonly SemanticLexicalMatch[]) {

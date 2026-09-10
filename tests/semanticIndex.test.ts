@@ -1,10 +1,12 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it } from 'vitest'
 import { LocalDatabase } from '../electron/database/Database'
 import { ProjectIndexService } from '../electron/project-index/ProjectIndexService'
 import { SemanticIndexService } from '../electron/semantic-index/SemanticIndexService'
+import { SemanticRetrievalService } from '../electron/semantic-index/SemanticRetrievalService'
 
 const directories: string[] = []
 const databases: LocalDatabase[] = []
@@ -15,6 +17,87 @@ afterEach(async () => {
 })
 
 describe('Semantic Index', () => {
+  it('não apresenta uma unidade lexical derivada de hash antigo como atual', async () => {
+    const fixture = createFixture()
+    const target = path.join(fixture.workspace, 'main.ts')
+    fs.writeFileSync(target, 'export const oldTerm = true\n')
+    const projectIndex = new ProjectIndexService(fixture.database.projectIndex)
+    await projectIndex.ensureIndexed(fixture.workspace)
+    const semantic = new SemanticIndexService(fixture.database.semanticIndex, { projectIndex })
+    await semantic.ensureIndexed(fixture.workspace)
+
+    const oldUnit = fixture.database.semanticIndex.listFileUnits(fixture.workspace, 'main.ts')[0]
+    expect(oldUnit?.sourceHash).toBeTruthy()
+    const retrieval = new SemanticRetrievalService(fixture.database.semanticIndex, projectIndex)
+    await expect(retrieval.search({ workspace: fixture.workspace, query: 'oldTerm', limit: 10 })).resolves.toEqual([
+      expect.objectContaining({ provenance: expect.objectContaining({ validity: 'current', potentiallyOutdated: false }) }),
+    ])
+    fs.writeFileSync(target, 'export const newTerm = true\n')
+    const current = projectIndex.getFile(fixture.workspace, 'main.ts')!
+    const newHash = createHash('sha256').update(fs.readFileSync(target)).digest('hex')
+    fixture.database.projectIndex.upsertFile({ ...current, observedHash: newHash, analyzedHash: newHash, state: 'indexed' })
+
+    await expect(retrieval.search({ workspace: fixture.workspace, query: 'oldTerm', limit: 10 })).resolves.toEqual([])
+    await semantic.dispose()
+  })
+
+  it('não apresenta vetor antigo quando o arquivo muda durante a consulta', async () => {
+    const fixture = createFixture()
+    const target = path.join(fixture.workspace, 'main.ts')
+    fs.writeFileSync(target, 'export const vectorTerm = true\n')
+    const projectIndex = new ProjectIndexService(fixture.database.projectIndex)
+    await projectIndex.ensureIndexed(fixture.workspace)
+    const semantic = new SemanticIndexService(fixture.database.semanticIndex, { projectIndex })
+    await semantic.ensureIndexed(fixture.workspace)
+    const unit = fixture.database.semanticIndex.listFileUnits(fixture.workspace, 'main.ts')[0]!
+    const embeddingSpace = { providerId: 'local', modelId: 'test', modelVersion: '1', dimensions: 2 }
+    fixture.database.semanticIndex.replaceFileUnits(fixture.workspace, 'main.ts', [{
+      ...unit,
+      status: 'indexed',
+      embeddingSpace,
+      embedding: [1, 0],
+    }])
+
+    let mutated = false
+    const retrieval = new SemanticRetrievalService(fixture.database.semanticIndex, projectIndex, {
+      resolve: async () => ({ space: embeddingSpace, remote: false, remoteAllowed: true }),
+      embed: async () => {
+        if (!mutated) {
+          mutated = true
+          fs.writeFileSync(target, 'export const replacementTerm = true\n')
+        }
+        return [[1, 0]]
+      },
+    })
+
+    await expect(retrieval.search({ workspace: fixture.workspace, query: 'vectorTerm', limit: 10 })).resolves.toEqual([])
+    await semantic.dispose()
+  })
+
+  it('não usa vetor quando o Project Index já conhece outro hash estrutural', async () => {
+    const fixture = createFixture()
+    const target = path.join(fixture.workspace, 'main.ts')
+    fs.writeFileSync(target, 'export const vectorOnlyTerm = true\n')
+    const projectIndex = new ProjectIndexService(fixture.database.projectIndex)
+    await projectIndex.ensureIndexed(fixture.workspace)
+    const semantic = new SemanticIndexService(fixture.database.semanticIndex, { projectIndex })
+    await semantic.ensureIndexed(fixture.workspace)
+    const unit = fixture.database.semanticIndex.listFileUnits(fixture.workspace, 'main.ts')[0]!
+    const embeddingSpace = { providerId: 'local', modelId: 'test', modelVersion: '1', dimensions: 2 }
+    fixture.database.semanticIndex.replaceFileUnits(fixture.workspace, 'main.ts', [{ ...unit, status: 'indexed', embeddingSpace, embedding: [1, 0] }])
+    fs.writeFileSync(target, 'export const changedVectorTerm = true\n')
+    const current = projectIndex.getFile(fixture.workspace, 'main.ts')!
+    const newHash = createHash('sha256').update(fs.readFileSync(target)).digest('hex')
+    fixture.database.projectIndex.upsertFile({ ...current, observedHash: newHash, analyzedHash: newHash, state: 'indexed' })
+    const retrieval = new SemanticRetrievalService(fixture.database.semanticIndex, projectIndex, {
+      resolve: async () => ({ space: embeddingSpace, remote: false, remoteAllowed: true }),
+      embed: async () => [[1, 0]],
+    })
+
+    await expect(retrieval.search({ workspace: fixture.workspace, query: 'qualquer', limit: 10 })).resolves.toEqual([])
+    await semantic.dispose()
+  })
+
   it('preserva unidades lexicais quando um arquivo falha e mantém o restante utilizável', async () => {
     const fixture = createFixture()
     fs.writeFileSync(path.join(fixture.workspace, 'good.ts'), 'export function good() { return true }\n')

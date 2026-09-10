@@ -58,6 +58,7 @@ export interface ContextProvenance {
   embeddingProviderId?: string
   embeddingModelId?: string
   retrievalReason?: string
+  validity?: 'current' | 'stale' | 'unknown'
 }
 
 export type TaskModelSelection =

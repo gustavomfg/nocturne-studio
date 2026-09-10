@@ -98,7 +98,7 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
       scope: 'workspace',
       relevance: result.scores.final,
       potentiallyOutdated: result.provenance.potentiallyOutdated,
-      stale: result.provenance.potentiallyOutdated,
+      stale: result.provenance.validity === 'stale',
       provenance: {
         sourcePath: result.unit.relativePath,
         sourceHash: result.unit.sourceHash,
@@ -108,6 +108,7 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
         embeddingProviderId: result.provenance.embeddingSpace?.providerId,
         embeddingModelId: result.provenance.embeddingSpace?.modelId,
         retrievalReason: result.provenance.reason,
+        validity: result.provenance.validity,
       },
     })))
     const assembledContext = contextAssembly.assemble({ sources: contextSources })

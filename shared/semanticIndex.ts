@@ -139,6 +139,8 @@ export interface SemanticSearchResult {
     chunkStrategyVersion: string
     embeddingSpace: SemanticEmbeddingSpace | null
     reason: string
+    /** Bounded currency of the candidate source, not a global workspace snapshot. */
+    validity: 'current' | 'stale' | 'unknown'
     potentiallyOutdated: boolean
   }
 }
