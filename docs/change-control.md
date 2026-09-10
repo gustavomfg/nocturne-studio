@@ -21,6 +21,24 @@ against the `BEFORE` content before persistence.
 
 ## Security and index
 
+## Decision invariants (stabilization batch 1)
+
+File **accept** retains the observed AFTER bytes after verifying them. File
+**reject** restores BEFORE through the conflict-safe rollback. Both validate
+the transition, serialize by workspace, persist a running decision intent,
+then verify/mutate and commit the resulting file, ChangeSet and execution
+decision together. A filesystem/commit failure is a conflict, not success;
+the persistent intent remains available for startup reconciliation.
+
+Hunk **edit**, **accept** and **reject** are review annotations only. They do
+not apply patches and do not decide the file. The UI labels this explicitly.
+There is no effective file-edit operation in this contract. Editing in an
+external editor invalidates the AFTER comparison and requires reconciliation.
+An acceptance is an observation at decision time, not a lock on future edits.
+
+SQLite and the filesystem do not share a transaction. Interrupted mutations
+must remain visibly unresolved; they are never retried automatically.
+
 Protected paths such as `.git` and `.nocturne` are blocked. Environment files,
 deletions and renames require additional review. A rejection is applied only
 when the file still matches the `AFTER` hash; an external edit produces a

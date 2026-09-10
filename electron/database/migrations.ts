@@ -629,6 +629,20 @@ export const migrations: Migration[] = [
       db.exec("ALTER TABLE engineering_health_snapshots ADD COLUMN signal_states_json TEXT NOT NULL DEFAULT '[]' CHECK(length(signal_states_json) BETWEEN 2 AND 100000)")
     }
   } },
+  { version: 28, up: (db) => db.exec(`
+    CREATE TABLE IF NOT EXISTS change_decision_operations (
+      id TEXT PRIMARY KEY,
+      execution_id TEXT NOT NULL REFERENCES executions(id) ON DELETE CASCADE,
+      change_id TEXT NOT NULL REFERENCES changes(id) ON DELETE CASCADE,
+      decision TEXT NOT NULL CHECK(decision IN ('accepted','rejected')),
+      status TEXT NOT NULL CHECK(status IN ('running','completed','conflicted','interrupted')),
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      error TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_change_decision_active ON change_decision_operations(change_id)
+      WHERE status IN ('running','conflicted','interrupted');
+  `) },
 ]
 
 export function migrateDatabase(db: Database.Database, currentVersion: number, availableMigrations: Migration[] = migrations) {

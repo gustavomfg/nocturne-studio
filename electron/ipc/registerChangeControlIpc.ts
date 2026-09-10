@@ -90,13 +90,7 @@ export function registerChangeControlIpc(win: BrowserWindow, dependencies: Depen
     const persisted = dependencies.database.changeSets.getChange(data.changeId)
     const executionRecord = persisted ? dependencies.database.getExecution(persisted.executionId, conversation.workspace) : null
     if (!executionRecord || executionRecord.conversationId !== conversation.id) throw new Error('A mudança não pertence à conversa autorizada.')
-    if (data.status === 'rejected') {
-      const changeSet = dependencies.database.changeSets.get(persisted!.changeSetId, executionRecord.id)
-      if (!changeSet) throw new Error('O ChangeSet da mudança não está disponível para rollback.')
-      const rollback = await dependencies.rollback.rollbackPaths(executionRecord.id, conversation.workspace, changeSet.beforeCheckpointId, changeSet.afterCheckpointId, [persisted!.relativePath])
-      if (rollback.status === 'conflicted') throw new Error(`O rollback seguro encontrou conflito em: ${rollback.conflicts.join(', ')}.`)
-    }
-    const result = dependencies.decisions.decide(executionRecord.id, data.changeId, data.status)
+    const result = await dependencies.decisions.decide(executionRecord.id, data.changeId, data.status, conversation.workspace)
     const resolvedChanges = dependencies.database.changeSets.listChanges(result.changeSet.id)
     if (resolvedChanges.length > 0 && resolvedChanges.every((item) => item.status === 'accepted' || item.status === 'rejected')) {
       dependencies.resolveExecution(executionRecord.id)

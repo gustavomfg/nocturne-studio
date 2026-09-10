@@ -267,7 +267,7 @@ export function registerIpc(
   const buildRollback = new BuildRollbackService(database, snapshotRollback)
   const changeControl = new ExecutionChangeControlService(checkpoints, new ChangeCaptureService(checkpoints, database.changeSets), changeGate)
   const changeDiffs = new ChangeDiffService(checkpoints, database.changeSets)
-  const changeDecisions = new ChangeDecisionService(database.changeSets)
+  const changeDecisions = new ChangeDecisionService(database.changeSets, snapshotRollback)
   const changeHunks = new ChangeHunkService(checkpoints, changeDiffs, database.changeSets)
   const documentUpdates = new DocumentUpdateService()
   const codexAccount = new CodexAccountService()

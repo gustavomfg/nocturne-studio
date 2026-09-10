@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { randomUUID } from 'node:crypto'
 import { changeSetStatuses, changeStatuses, hunkStatuses, type ChangeHunkRecord, type ChangeRecord, type ChangeSetRecord } from '../../shared/changeControl'
 import type { DatabaseTransactionRunner } from './DatabaseTransaction'
 
@@ -13,6 +14,17 @@ export class ChangeSetRepository {
     private readonly database: Database.Database,
     private readonly transactions: DatabaseTransactionRunner,
   ) {}
+
+  reserveDecision(executionId: string, changeId: string, decision: 'accepted' | 'rejected') {
+    const id = randomUUID()
+    this.database.prepare(`INSERT INTO change_decision_operations(id,execution_id,change_id,decision,status,started_at)
+      VALUES(?,?,?,?,'running',?)`).run(id, executionId, changeId, decision, new Date().toISOString())
+    return id
+  }
+
+  failDecision(id: string, error: string) {
+    this.database.prepare("UPDATE change_decision_operations SET status='conflicted',error=?,finished_at=? WHERE id=?").run(error, new Date().toISOString(), id)
+  }
 
   create(changeSet: ChangeSetRecord) {
     this.database.prepare(`INSERT INTO change_sets(
@@ -127,10 +139,12 @@ export class ChangeSetRepository {
       WHERE id=@id AND change_id=@changeId`).run(hunk)
   }
 
-  saveDecision(changeSet: ChangeSetRecord, change: ChangeRecord) {
+  saveDecision(changeSet: ChangeSetRecord, change: ChangeRecord, operationId?: string) {
     this.transactions.run('changes.decision', () => {
       this.update(changeSet)
       this.updateChange(change)
+      this.database.prepare('UPDATE executions SET decision=? WHERE id=?').run(changeSet.status, changeSet.executionId)
+      if (operationId) this.database.prepare("UPDATE change_decision_operations SET status='completed',finished_at=? WHERE id=? AND status='running'").run(change.updatedAt, operationId)
     })
   }
 }

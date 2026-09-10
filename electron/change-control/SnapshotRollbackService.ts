@@ -26,6 +26,17 @@ interface CurrentState {
 export class SnapshotRollbackService {
   constructor(private readonly checkpoints: CheckpointService) {}
 
+  async verifyPaths(executionId: string, workspace: string, checkpointId: string, paths: readonly string[]) {
+    const checkpoint = this.checkpoints.get(checkpointId, executionId)
+    if (!checkpoint || checkpoint.workspace !== workspace || checkpoint.status !== 'ready') throw new Error('Checkpoint indisponível.')
+    const files = new Map(this.checkpoints.listFiles(checkpointId).map((file) => [file.relativePath, file]))
+    const conflicts: string[] = []
+    for (const relativePath of paths) {
+      if (!sameState(await inspectCurrent(workspace, relativePath), files.get(relativePath) ?? missingFile(checkpointId, relativePath))) conflicts.push(relativePath)
+    }
+    return conflicts
+  }
+
   async rollback(executionId: string, workspace: string, beforeId: string, afterId: string): Promise<SnapshotRollbackResult> {
     return this.rollbackPaths(executionId, workspace, beforeId, afterId)
   }

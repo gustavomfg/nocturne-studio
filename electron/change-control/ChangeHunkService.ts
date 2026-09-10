@@ -35,9 +35,14 @@ export class ChangeHunkService {
     if (finalPatch.length > MAX_PATCH_CHARACTERS) throw new Error('O patch excede o limite seguro de edição.')
     const hunk = this.repository.getHunk(hunkId)
     if (!hunk) throw new Error('Hunk não encontrado.')
+    if (hunk.status !== 'pending' && hunk.status !== 'edited') throw new Error('A anotação já possui uma decisão ou conflito.')
     const change = this.repository.getChange(hunk.changeId, executionId)
     if (!change) throw new Error('A mudança do hunk não pertence à execução.')
+    if (change.status !== 'pending' && change.status !== 'edited') throw new Error('A decisão do arquivo já foi encerrada.')
     const valid = await this.validatePatch(change, finalPatch, executionId)
+    const latest = this.repository.getHunk(hunkId)
+    const latestChange = this.repository.getChange(hunk.changeId, executionId)
+    if (latest?.status !== hunk.status || latest.finalPatch !== hunk.finalPatch || latestChange?.status !== change.status) throw new Error('A revisão mudou durante a edição.')
     const updated: ChangeHunkRecord = {
       ...hunk,
       finalPatch,
@@ -51,9 +56,11 @@ export class ChangeHunkService {
   async decide(hunkId: string, status: Extract<ChangeHunkRecord['status'], 'accepted' | 'rejected'>, executionId?: string) {
     const hunk = this.repository.getHunk(hunkId)
     if (!hunk) throw new Error('Hunk não encontrado.')
+    if (hunk.status !== 'pending' && hunk.status !== 'edited') throw new Error('A anotação já possui uma decisão ou conflito.')
     if (executionId) {
       const change = this.repository.getChange(hunk.changeId, executionId)
       if (!change) throw new Error('A decisão do hunk não pertence à execução.')
+      if (change.status !== 'pending' && change.status !== 'edited') throw new Error('A decisão do arquivo já foi encerrada.')
     }
     const updated = { ...hunk, status, decisionAt: this.now().toISOString() }
     this.repository.updateHunk(updated)

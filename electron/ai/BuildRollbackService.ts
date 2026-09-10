@@ -1,5 +1,6 @@
 import type { LocalDatabase } from '../database/Database'
 import type { SnapshotRollbackService } from '../change-control/SnapshotRollbackService'
+import { ChangeDecisionService } from '../change-control/ChangeDecisionService'
 
 export interface BuildRollbackStatus {
   available: boolean
@@ -34,8 +35,15 @@ export class BuildRollbackService {
     const value = this.latest(conversationId)
     const status = this.status(conversationId)
     if (!value || value.execution.workspace !== workspace || !status.available) throw new Error(status.reason ?? 'Rollback indisponível.')
-    const result = await this.snapshots.rollbackPaths(value.execution.id, workspace, value.changeSet.beforeCheckpointId, value.changeSet.afterCheckpointId, status.files)
-    if (result.status === 'conflicted') throw new Error(`Rollback interrompido; conflito em ${result.conflicts.join(', ')}. Restaurados: ${result.restored.join(', ') || 'nenhum'}. Recuperação: ${result.recoveryDirectory ?? 'checkpoints preservados'}.`)
-    return { restored: result.restored }
+    const conflicts = await this.snapshots.verifyPaths(value.execution.id, workspace, value.changeSet.afterCheckpointId, status.files)
+    if (conflicts.length) throw new Error(`Rollback em conflito: ${conflicts.join(', ')}.`)
+    const decisions = new ChangeDecisionService(this.database.changeSets, this.snapshots)
+    const restored: string[] = []
+    for (const change of this.database.changeSets.listChanges(value.changeSet.id)) {
+      if (!status.files.includes(change.relativePath)) continue
+      await decisions.decide(value.execution.id, change.id, 'rejected', workspace, true)
+      restored.push(change.relativePath)
+    }
+    return { restored }
   }
 }

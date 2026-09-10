@@ -154,6 +154,7 @@ export interface ChangeSetRecord {
 }
 
 export interface ChangeHunkRecord {
+  /** Review annotation only: finalPatch and its decision never mutate workspace bytes. */
   id: string
   changeId: string
   sequence: number
