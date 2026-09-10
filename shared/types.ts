@@ -23,7 +23,7 @@ export interface GitInfo { branch: string; status: string; diff: string; diffTru
 export type AppLanguage = 'pt-BR' | 'en'
 export type AppTheme = 'dark' | 'light'
 export interface AppSettings { model: string; sandbox: 'read-only' | 'workspace-write'; approvalPolicy: 'untrusted' | 'on-request'; diagnosticMode?: boolean; theme?: AppTheme; language?: AppLanguage; pandocVersion?: string }
-export interface BuildRollbackStatus { available: boolean; files: string[]; createdAt?: string; reason?: string }
+export interface BuildRollbackStatus { available: boolean; files: string[]; createdAt?: string; reason?: string; executionId?: string }
 export interface DocumentUpdatePreview { target: string; name: string; existing: string; generated: string; expectedHash: string | null }
 export interface RendererPerformanceStats {
   responseSize: number

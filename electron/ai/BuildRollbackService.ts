@@ -7,6 +7,7 @@ export interface BuildRollbackStatus {
   files: string[]
   createdAt?: string
   reason?: string
+  executionId?: string
 }
 
 /** Whole-Build rollback uses the same immutable checkpoints as file rejection. */
@@ -28,13 +29,14 @@ export class BuildRollbackService {
     const changes = this.database.changeSets.listChanges(value.changeSet.id)
     const files = changes.filter((change) => change.status !== 'rejected').map((change) => change.relativePath)
     const available = files.length > 0 && !changes.some((change) => change.policy === 'blocked' || change.status === 'conflicted')
-    return { available, files, createdAt: value.changeSet.createdAt, ...(!available ? { reason: 'Build já revertido ou com conflito que exige reconciliação.' } : {}) }
+    return { available, files, executionId: value.execution.id, createdAt: value.changeSet.createdAt, ...(!available ? { reason: 'Build já revertido ou com conflito que exige reconciliação.' } : {}) }
   }
 
-  async rollback(conversationId: string, workspace: string) {
+  async rollback(conversationId: string, workspace: string, expectedExecutionId?: string) {
     const value = this.latest(conversationId)
     const status = this.status(conversationId)
     if (!value || value.execution.workspace !== workspace || !status.available) throw new Error(status.reason ?? 'Rollback indisponível.')
+    if (expectedExecutionId && value.execution.id !== expectedExecutionId) throw new Error('O Build mudou durante a confirmação. Revise novamente antes de reverter.')
     const conflicts = await this.snapshots.verifyPaths(value.execution.id, workspace, value.changeSet.afterCheckpointId, status.files)
     if (conflicts.length) throw new Error(`Rollback em conflito: ${conflicts.join(', ')}.`)
     const decisions = new ChangeDecisionService(this.database.changeSets, this.snapshots)

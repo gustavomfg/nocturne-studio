@@ -36,6 +36,8 @@ it('usa BEFORE imutável com HEAD alterado e recusa edição posterior ao AFTER'
   git('add', 'file.txt')
   git('commit', '-m', 'after')
   const service = new BuildRollbackService(database, new SnapshotRollbackService(checkpoints))
+  await expect(service.rollback(conversation.id, workspace, 'different-execution')).rejects.toThrow(/Build mudou/)
+  expect(fs.readFileSync(target, 'utf8')).toBe('after')
   fs.writeFileSync(target, 'user')
   await expect(service.rollback(conversation.id, workspace)).rejects.toThrow(/conflito/)
   expect(fs.readFileSync(target, 'utf8')).toBe('user')

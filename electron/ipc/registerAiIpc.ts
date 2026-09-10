@@ -242,7 +242,12 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
       detail: 'A reversão usa BEFORE/AFTER. Alterações posteriores produzem conflito; bytes deslocados são preservados para recuperação. Revise o diff atual antes de continuar.',
     })
     if (confirmation.response !== 1) return null
-    const result = await buildRollback.rollback(conversation.id, conversation.workspace)
+    const result = await buildRollback.rollback(conversation.id, conversation.workspace, status.executionId)
+    if (status.executionId) {
+      changeControl.resolve(status.executionId)
+      const changeSet = database.changeSets.list(status.executionId)[0]
+      if (changeSet) win.webContents.send(IPC_CHANNELS.changeControl.changed, { executionId: status.executionId, changeSetId: changeSet.id })
+    }
     logger.info('ai', 'Rollback de Build concluído', { conversationId: conversation.id, files: result.restored })
     return result
   })

@@ -136,6 +136,7 @@ async function restoreFile(workspace: string, relativePath: string, before: Chec
   try {
     if (content) await writeExclusiveBuffer(resolved, content, before.mode ?? 0o600)
     if (after.exists && !sameState(await inspectCurrent(workspace, path.relative(workspace, displaced)), after)) throw new Error('O arquivo deslocado recebeu uma edição concorrente.')
+    if (!sameState(await inspectCurrent(workspace, relativePath), before)) throw new Error('O estado produzido mudou durante o rollback.')
   } catch (error) {
     if (after.exists) await fs.promises.link(displaced, resolved).catch(() => undefined)
     throw error

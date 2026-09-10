@@ -45,10 +45,10 @@ describe('SnapshotRollbackService', () => {
     expect(fs.existsSync(path.join(value.workspace, 'new.txt'))).toBe(false)
   })
 
-  it('não substitui arquivo criado por outro processo durante a publicação', async () => {
+  it.each([true, false])('não substitui arquivo criado por outro processo durante a publicação (before existe: %s)', async (existedBefore) => {
     const value = await fixture()
     const target = path.join(value.workspace, 'file.txt')
-    fs.writeFileSync(target, 'before')
+    if (existedBefore) fs.writeFileSync(target, 'before')
     const before = await value.checkpoints.capture(value.executionId, value.workspace, 'before')
     fs.writeFileSync(target, 'after')
     const after = await value.checkpoints.capture(value.executionId, value.workspace, 'after')

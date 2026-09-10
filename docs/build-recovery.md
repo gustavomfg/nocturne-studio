@@ -17,3 +17,8 @@ This is not a filesystem-wide transaction. External programs can retain open
 descriptors to displaced files; those files are deliberately retained. On a
 conflict, inspect both the workspace and recovery directory. No automatic
 continuation of an interrupted rollback is implied.
+
+The confirmation is bound to an execution ID. The produced path is checked
+again before reporting restoration, including the expected absence of a newly
+created file. A successful whole-Build rollback resolves its pending decision
+gate and publishes the durable ChangeSet update to the renderer.
