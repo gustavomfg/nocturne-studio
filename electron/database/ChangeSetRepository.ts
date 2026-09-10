@@ -96,7 +96,7 @@ export class ChangeSetRepository {
   list(executionId: string): ChangeSetRecord[] {
     const rows = this.database.prepare(`SELECT id,execution_id executionId,before_checkpoint_id beforeCheckpointId,
       after_checkpoint_id afterCheckpointId,status,created_at createdAt,updated_at updatedAt
-      FROM change_sets WHERE execution_id=? ORDER BY updated_at DESC`).all(executionId) as ChangeSetRecord[]
+      FROM change_sets WHERE execution_id=? ORDER BY updated_at DESC,created_at DESC,rowid DESC`).all(executionId) as ChangeSetRecord[]
     return rows.map((row) => {
       if (!changeSetStatuses.includes(row.status)) throw new Error('O ChangeSet persistido possui um estado inválido.')
       return row
