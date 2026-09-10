@@ -40,8 +40,6 @@ jobs:
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
       RELEASE_PLATFORM: ${{ matrix.platform }}
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      CSC_LINK: ''
-      WIN_CSC_LINK: ''
       APPLE_ID: ''
       APPLE_APP_SPECIFIC_PASSWORD: ''
       APPLE_TEAM_ID: ''
@@ -75,10 +73,10 @@ jobs:
       - name: Confirm unsigned platform policy
         shell: bash
         run: |
-          test -z "$CSC_LINK"
-          test -z "$WIN_CSC_LINK"
-          test -z "$APPLE_ID"
-          test -z "$APPLE_API_KEY"
+          test -z "${CSC_LINK:-}"
+          test -z "${WIN_CSC_LINK:-}"
+          test -z "${APPLE_ID:-}"
+          test -z "${APPLE_API_KEY:-}"
           echo "$RELEASE_PLATFORM artifacts are intentionally unsigned under the current release policy."
       - run: npm ci
         working-directory: source

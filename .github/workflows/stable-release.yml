@@ -144,8 +144,6 @@ jobs:
       GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      CSC_LINK: ''
-      WIN_CSC_LINK: ''
       APPLE_ID: ''
       APPLE_APP_SPECIFIC_PASSWORD: ''
       APPLE_TEAM_ID: ''
@@ -178,10 +176,10 @@ jobs:
         if: matrix.platform != 'linux'
         shell: bash
         run: |
-          test -z "$CSC_LINK"
-          test -z "$WIN_CSC_LINK"
-          test -z "$APPLE_ID"
-          test -z "$APPLE_API_KEY"
+          test -z "${CSC_LINK:-}"
+          test -z "${WIN_CSC_LINK:-}"
+          test -z "${APPLE_ID:-}"
+          test -z "${APPLE_API_KEY:-}"
           echo "${{ matrix.platform }} artifacts are intentionally unsigned under the current release policy."
       - run: npm ci
       - name: Import Linux release key
