@@ -163,7 +163,7 @@ jobs:
           test "$(git -C tooling rev-list -n 1 "$RELEASE_TAG")" = "$APPLICATION_SHA"
           remote_tag_sha="$(git -C tooling ls-remote origin "refs/tags/$RELEASE_TAG" | awk '{print $1}')"
           test "$remote_tag_sha" = "$APPLICATION_SHA"
-          npm --prefix tooling run verify:release-assets -- --platforms windows,macos release-assets
+          npm --prefix tooling run verify:release-assets -- --platforms windows,macos ../release-assets
           existing_assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
           for required in \
             "Nocturne.Studio-Linux-$(node -p "require('./tooling/package.json').version").AppImage" \
