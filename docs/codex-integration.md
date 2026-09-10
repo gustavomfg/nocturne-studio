@@ -66,3 +66,8 @@ coordinator normalizes its result once: `completed`, `failed`, or `cancelled`
 approval does not terminate its parent turn. Persistence warnings are separate
 from the task outcome; they must not rewrite a completed task as failed. The
 execution repository rejects terminal-to-different-terminal updates.
+
+Completion is correlated by both thread and turn ID. Late/duplicate completions
+cannot terminate a subsequent turn in the same thread. Up to eight early
+completion notifications are held while `turn/start` is pending and matched only
+after its response supplies the turn identity.

@@ -40,6 +40,8 @@ export class CodexClient extends EventEmitter {
   private starting: Promise<void> | null = null
   private loadedThreads = new Set<string>()
   private activeTurns = new Map<string, string>()
+  private startingTurns = new Set<string>()
+  private earlyCompletions = new Map<string, RpcMessage[]>()
   private intentionalStop = false
   private executable = 'codex'
   private machine = new AgentStateMachine(
@@ -63,6 +65,8 @@ export class CodexClient extends EventEmitter {
     this.process.on('exit', (code, _signal, intentional: boolean) => {
       this.loadedThreads.clear()
       this.activeTurns.clear()
+      this.startingTurns.clear()
+      this.earlyCompletions.clear()
       this.approvalRequests.clear()
       this.rejectPending(new Error(
         `Codex App Server foi encerrado${code === null ? '.' : ` com código ${code}.`}`,
@@ -195,9 +199,10 @@ export class CodexClient extends EventEmitter {
     memory = '',
     mode: AgentMode = 'build',
   ) {
-    if (this.activeTurns.size) {
+    if (this.activeTurns.size || this.startingTurns.size) {
       throw new Error('Já existe uma execução do agente em andamento. Cancele-a antes de iniciar outra.')
     }
+    this.startingTurns.add(threadId)
     this.setStatus('planning')
     try {
       const result = await this.call('turn/start', {
@@ -238,10 +243,17 @@ export class CodexClient extends EventEmitter {
       const turnId = typeof result.turn?.id === 'string' ? result.turn.id : ''
       if (!turnId) throw new Error('turn/start não retornou um identificador válido.')
       this.activeTurns.set(threadId, turnId)
+      this.startingTurns.delete(threadId)
+      const completions = this.earlyCompletions.get(threadId) ?? []
+      this.earlyCompletions.delete(threadId)
+      for (const completion of completions) this.handleMessage(completion)
       return turnId
     } catch (error) {
       this.setStatus('failed', `Falha ao iniciar turno: ${errorMessage(error)}`)
       throw error
+    } finally {
+      this.startingTurns.delete(threadId)
+      this.earlyCompletions.delete(threadId)
     }
   }
 
@@ -397,7 +409,15 @@ export class CodexClient extends EventEmitter {
     }
     if (message.method === 'turn/completed') {
       const threadId = String(params.threadId ?? '')
-      if (threadId) this.activeTurns.delete(threadId)
+      if (this.startingTurns.has(threadId)) {
+        const queued = this.earlyCompletions.get(threadId) ?? []
+        if (queued.length < 8) this.earlyCompletions.set(threadId, [...queued, message])
+        return
+      }
+      const turn = params.turn as { id?: unknown } | undefined
+      const turnId = typeof turn?.id === 'string' ? turn.id : ''
+      if (!turnId || this.activeTurns.get(threadId) !== turnId) return
+      this.activeTurns.delete(threadId)
       this.setStatus('ready')
     }
     this.emit('event', { method: message.method, params } satisfies CodexEvent)

@@ -101,6 +101,36 @@ async function createThread(client: CodexClient, process: FakeCodexProcess) {
 }
 
 describe('CodexClient', () => {
+  it('correlaciona uma conclusão recebida antes da resposta de turn/start', async () => {
+    const { client, process } = await readyClient()
+    const events: unknown[] = []
+    client.on('event', (event) => events.push(event))
+    const pending = client.sendTurn('thread-1', '/workspace', 'first')
+    process.emit('message', { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status: 'completed' } } })
+    expect(events).toHaveLength(0)
+    process.respond('turn/start', { turn: { id: 'turn-1' } })
+    await pending
+    expect(events).toHaveLength(1)
+    const second = client.sendTurn('thread-1', '/workspace', 'second')
+    process.respond('turn/start', { turn: { id: 'turn-2' } })
+    await second
+    client.stop()
+  })
+  it('ignora conclusão atrasada de outro turno na mesma thread', async () => {
+    const { client, process } = await readyClient()
+    let pending = client.sendTurn('thread-1', '/workspace', 'first')
+    process.respond('turn/start', { turn: { id: 'turn-1' } })
+    await pending
+    process.emit('message', { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status: 'completed' } } })
+    pending = client.sendTurn('thread-1', '/workspace', 'second')
+    process.respond('turn/start', { turn: { id: 'turn-2' } })
+    await pending
+    const events: unknown[] = []
+    client.on('event', (event) => events.push(event))
+    process.emit('message', { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status: 'failed' } } })
+    expect(events).toHaveLength(0)
+    client.stop()
+  })
   it.each(['completed', 'failed', 'interrupted', 'unrecognized'])('mantém protocolo, SQLite e renderer concordantes: %s', async (status) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-terminal-'))
     const database = new LocalDatabase(root)
