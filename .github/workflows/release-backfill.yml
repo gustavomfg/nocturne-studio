@@ -1,0 +1,189 @@
+name: Release · backfill cross-platform assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing stable tag whose missing assets will be backfilled
+        required: true
+        type: string
+      candidate_sha:
+        description: Full commit SHA that the tag must reference
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: release-backfill-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Build tagged ${{ matrix.platform }} package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            architecture: x64
+          - os: macos-latest
+            platform: macos
+            architecture: arm64
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      RELEASE_PLATFORM: ${{ matrix.platform }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      CSC_LINK: ''
+      WIN_CSC_LINK: ''
+      APPLE_ID: ''
+      APPLE_APP_SPECIFIC_PASSWORD: ''
+      APPLE_TEAM_ID: ''
+      APPLE_API_KEY: ''
+      APPLE_API_KEY_ID: ''
+      APPLE_API_ISSUER: ''
+      APPLE_KEYCHAIN_PROFILE: ''
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_tag }}
+          path: source
+          fetch-depth: 0
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: tooling
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - name: Prove package source is the approved tag SHA
+        working-directory: source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$CANDIDATE_SHA"
+          node -e "const v=require('./package.json').version;if('$RELEASE_TAG' !== 'v'+v)throw new Error('Tag e versão divergentes: '+v)"
+      - name: Confirm unsigned platform policy
+        shell: bash
+        run: |
+          test -z "$CSC_LINK"
+          test -z "$WIN_CSC_LINK"
+          test -z "$APPLE_ID"
+          test -z "$APPLE_API_KEY"
+          echo "$RELEASE_PLATFORM artifacts are intentionally unsigned under the current release policy."
+      - run: npm ci
+        working-directory: source
+      - run: npm run package -- --publish never
+        working-directory: source
+      - name: Verify packaged updater identity
+        working-directory: source
+        shell: bash
+        run: node "../tooling/scripts/verify-packaged-metadata.mjs" --platform "$RELEASE_PLATFORM" --architecture "${{ matrix.architecture }}"
+      - name: Smoke test packaged application
+        working-directory: source
+        run: npm run smoke:package
+      - run: npm run checksums
+        working-directory: source
+      - name: Stage exact platform inventory
+        working-directory: source
+        shell: bash
+        run: node "../tooling/scripts/stage-release-assets.mjs" --platform "$RELEASE_PLATFORM" --release-directory "release/$(node -p "require('./package.json').version")" --output release-output
+      - name: Verify exact platform inventory
+        working-directory: source
+        shell: bash
+        run: node "../tooling/scripts/verify-release-assets.mjs" --platform "$RELEASE_PLATFORM" release-output
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nocturne-backfill-${{ matrix.platform }}-${{ matrix.architecture }}
+          path: source/release-output/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish missing assets and release notes
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: stable-release
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: tooling
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tooling/package-lock.json
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: nocturne-backfill-*
+          path: release-assets
+          merge-multiple: true
+      - name: Normalize backfill artifact layout
+        shell: bash
+        run: |
+          while IFS= read -r -d '' artifact_file; do
+            artifact_name="$(basename "$artifact_file")"
+            target="release-assets/$artifact_name"
+            if [ "$artifact_file" != "$target" ]; then
+              test ! -e "$target"
+              mv -- "$artifact_file" "$target"
+            fi
+          done < <(find release-assets -mindepth 1 -type f -print0)
+          find release-assets -mindepth 1 -type d -empty -delete
+      - run: npm ci --ignore-scripts
+        working-directory: tooling
+      - name: Verify tag, existing Linux assets and missing-platform inventory
+        shell: bash
+        run: |
+          test "$(git -C tooling rev-list -n 1 "$RELEASE_TAG")" = "$CANDIDATE_SHA"
+          remote_tag_sha="$(git ls-remote origin "refs/tags/$RELEASE_TAG" | awk '{print $1}')"
+          test "$remote_tag_sha" = "$CANDIDATE_SHA"
+          npm --prefix tooling run verify:release-assets -- --platforms windows,macos release-assets
+          existing_assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          for required in \
+            "Nocturne.Studio-Linux-$(node -p "require('./tooling/package.json').version").AppImage" \
+            "Nocturne.Studio-Linux-$(node -p "require('./tooling/package.json').version").tar.gz" \
+            latest-linux.yml SHA256SUMS-Linux SHA256SUMS-Linux.sig
+          do
+            grep -Fqx "$required" <<< "$existing_assets"
+          done
+          for candidate in release-assets/*; do
+            candidate_name="$(basename "$candidate")"
+            if grep -Fqx "$candidate_name" <<< "$existing_assets"; then
+              echo "Refusing to replace existing release asset: $candidate_name" >&2
+              exit 1
+            fi
+          done
+      - name: Upload only missing Windows and macOS assets
+        shell: bash
+        run: gh release upload "$RELEASE_TAG" release-assets/*
+      - name: Update release body from versioned English notes
+        shell: bash
+        run: gh release edit "$RELEASE_TAG" --title "Nocturne Studio $RELEASE_TAG" --notes-file "tooling/docs/releases/$RELEASE_TAG.md"
+      - name: Verify completed release inventory and body
+        shell: bash
+        run: |
+          asset_count="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets | length')"
+          test "$asset_count" -eq 16
+          gh release view "$RELEASE_TAG" --json body,isDraft,isPrerelease --jq '.body' | grep -Fq "# Nocturne Studio v1.0.1"
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')" = false
+          test "$(gh release view "$RELEASE_TAG" --json isPrerelease --jq '.isPrerelease')" = false

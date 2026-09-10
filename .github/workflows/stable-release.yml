@@ -117,7 +117,7 @@ jobs:
       - run: npm run test:renderer
 
   signed-package:
-    name: Sign and verify (${{ matrix.os }})
+    name: Package and attest (${{ matrix.platform }}, ${{ matrix.os }})
     needs: source-gate
     environment: stable-release
     runs-on: ${{ matrix.os }}
@@ -125,12 +125,34 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            architecture: x64
+            checksum_suffix: Linux
+          - os: windows-latest
+            platform: windows
+            architecture: x64
+            checksum_suffix: Windows
+          - os: macos-latest
+            platform: macos
+            architecture: arm64
+            checksum_suffix: macOS
     env:
       RELEASE_TAG: ${{ inputs.release_tag }}
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
       GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      CSC_LINK: ''
+      WIN_CSC_LINK: ''
+      APPLE_ID: ''
+      APPLE_APP_SPECIFIC_PASSWORD: ''
+      APPLE_TEAM_ID: ''
+      APPLE_API_KEY: ''
+      APPLE_API_KEY_ID: ''
+      APPLE_API_ISSUER: ''
+      APPLE_KEYCHAIN_PROFILE: ''
     steps:
       - uses: actions/checkout@v6
         with:
@@ -147,43 +169,68 @@ jobs:
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$CANDIDATE_SHA"
       - name: Require platform signing credentials
+        if: matrix.platform == 'linux'
         shell: bash
         run: |
           test -n "$GPG_PRIVATE_KEY"
           test -n "$GPG_PASSPHRASE"
+      - name: Confirm unsigned platform policy
+        if: matrix.platform != 'linux'
+        shell: bash
+        run: |
+          test -z "$CSC_LINK"
+          test -z "$WIN_CSC_LINK"
+          test -z "$APPLE_ID"
+          test -z "$APPLE_API_KEY"
+          echo "${{ matrix.platform }} artifacts are intentionally unsigned under the current release policy."
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm test
-      - run: npm run test:abi
-      - run: npm run benchmark:sqlite
       - name: Import Linux release key
+        if: matrix.platform == 'linux'
         shell: bash
         run: echo "$GPG_PRIVATE_KEY" | gpg --batch --import
       - run: npm run package -- --publish never
-      - name: Smoke test signed package (Linux)
+      - name: Smoke test packaged application (Linux)
+        if: matrix.platform == 'linux'
         run: xvfb-run -a npm run smoke:package
+      - name: Smoke test packaged application
+        if: matrix.platform != 'linux'
+        run: npm run smoke:package
+      - name: Verify packaged updater identity
+        shell: bash
+        run: node scripts/verify-packaged-metadata.mjs --platform "$RELEASE_PLATFORM" --architecture "${{ matrix.architecture }}"
+        env:
+          RELEASE_PLATFORM: ${{ matrix.platform }}
       - run: npm run checksums
       - name: Sign Linux checksums
+        if: matrix.platform == 'linux'
         shell: bash
         run: |
           version="$(node -p "require('./package.json').version")"
           gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --detach-sign --output "release/$version/SHA256SUMS.sig" "release/$version/SHA256SUMS"
-      - run: npm run verify:signatures
+      - name: Verify Linux signature
+        if: matrix.platform == 'linux'
+        run: npm run verify:signatures
       - name: Preserve platform checksum manifest
         shell: bash
         run: |
           version="$(node -p "require('./package.json').version")"
-          mv "release/$version/SHA256SUMS" "release/$version/SHA256SUMS-${{ runner.os }}"
-          if [ -f "release/$version/SHA256SUMS.sig" ]; then mv "release/$version/SHA256SUMS.sig" "release/$version/SHA256SUMS-${{ runner.os }}.sig"; fi
+          checksum_name="SHA256SUMS-${{ matrix.checksum_suffix }}"
+          mv "release/$version/SHA256SUMS" "release/$version/$checksum_name"
+          if [ -f "release/$version/SHA256SUMS.sig" ]; then mv "release/$version/SHA256SUMS.sig" "release/$version/$checksum_name.sig"; fi
+      - name: Stage exact platform inventory
+        shell: bash
+        env:
+          RELEASE_PLATFORM: ${{ matrix.platform }}
+        run: node scripts/stage-release-assets.mjs --platform "$RELEASE_PLATFORM" --release-directory "release/$(node -p "require('./package.json').version")" --output release-output
+      - name: Verify exact platform inventory
+        shell: bash
+        env:
+          RELEASE_PLATFORM: ${{ matrix.platform }}
+        run: node scripts/verify-release-assets.mjs --platform "$RELEASE_PLATFORM" release-output
       - uses: actions/upload-artifact@v7
         with:
-          name: nocturne-signed-${{ runner.os }}-${{ runner.arch }}
-          path: |
-            release/*/*.AppImage
-            release/*/*.tar.gz
-            release/*/*.yml
-            release/*/SHA256SUMS-*
+          name: nocturne-stable-${{ matrix.platform }}-${{ runner.arch }}
+          path: release-output/*
           if-no-files-found: error
           retention-days: 14
 
@@ -211,29 +258,32 @@ jobs:
           test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$CANDIDATE_SHA"
       - uses: actions/download-artifact@v8
         with:
-          pattern: nocturne-signed-*
+          pattern: nocturne-stable-*
           path: release-assets
           merge-multiple: true
-      - name: Normalize signed Linux artifact layout
+      - name: Normalize platform artifact layout
         shell: bash
         run: |
-          mapfile -t artifact_directories < <(find release-assets -mindepth 1 -maxdepth 1 -type d -print)
-          if [ "${#artifact_directories[@]}" -eq 0 ]; then
-            exit 0
-          fi
-          test "${#artifact_directories[@]}" -eq 1
-          artifact_directory="${artifact_directories[0]}"
-          test -z "$(find "$artifact_directory" -mindepth 1 -type d -print -quit)"
           while IFS= read -r -d '' artifact_file; do
-            mv -- "$artifact_file" release-assets/
-          done < <(find "$artifact_directory" -mindepth 1 -maxdepth 1 -type f -print0)
-          rmdir -- "$artifact_directory"
-      - run: npm run verify:release-assets -- --linux-only release-assets
+            artifact_name="$(basename "$artifact_file")"
+            target="release-assets/$artifact_name"
+            if [ "$artifact_file" != "$target" ]; then
+              test ! -e "$target"
+              mv -- "$artifact_file" "$target"
+            fi
+          done < <(find release-assets -mindepth 1 -type f -print0)
+          find release-assets -mindepth 1 -type d -empty -delete
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run verify:release-assets -- release-assets
       - name: Publish verified assets
         shell: bash
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" release-assets/* --clobber
-          else
-            gh release create "$RELEASE_TAG" release-assets/* --verify-tag --generate-notes --title "Nocturne Studio $RELEASE_TAG"
+            echo "A release existente não é alterada pelo stable workflow; use o fluxo de backfill para reconciliação." >&2
+            exit 1
           fi
+          gh release create "$RELEASE_TAG" release-assets/* --verify-tag --notes-file "docs/releases/$RELEASE_TAG.md" --title "Nocturne Studio $RELEASE_TAG"
