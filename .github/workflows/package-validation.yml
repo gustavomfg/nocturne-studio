@@ -25,6 +25,7 @@ on:
       - main
     tags:
       - 'v*'
+      - '!v*-backfill'
 
 permissions:
   contents: read
