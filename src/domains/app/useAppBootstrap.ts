@@ -39,6 +39,8 @@ export function useAppBootstrap(options: AppBootstrapOptions) {
           await current.onOpenConversation(conversations[0].id, conversations, savedWorkspaces)
         }
         if (mounted) current.onRecordStartup()
+        const interrupted = await window.nocturne.recovery.list()
+        if (mounted && interrupted.length) current.onError(interrupted.map((operation) => `${operation.kind} (${operation.originalStatus}) · ${operation.executionId ?? operation.sourceId}: ${operation.message}`).join('\n'))
       } catch (error) {
         if (mounted) optionsRef.current.onError(errorMessage(error))
       }

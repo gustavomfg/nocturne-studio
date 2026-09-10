@@ -643,6 +643,16 @@ export const migrations: Migration[] = [
     CREATE UNIQUE INDEX IF NOT EXISTS idx_change_decision_active ON change_decision_operations(change_id)
       WHERE status IN ('running','conflicted','interrupted');
   `) },
+  { version: 29, up: (db) => db.exec(`
+    CREATE TABLE IF NOT EXISTS interrupted_operations (
+      id TEXT PRIMARY KEY,
+      workspace TEXT NOT NULL REFERENCES workspaces(path) ON DELETE CASCADE,
+      execution_id TEXT REFERENCES executions(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL, source_id TEXT NOT NULL, original_status TEXT NOT NULL,
+      detected_at TEXT NOT NULL, message TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_interrupted_operations_workspace ON interrupted_operations(workspace,detected_at);
+  `) },
 ]
 
 export function migrateDatabase(db: Database.Database, currentVersion: number, availableMigrations: Migration[] = migrations) {

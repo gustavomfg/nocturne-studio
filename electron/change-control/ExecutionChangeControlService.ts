@@ -100,6 +100,14 @@ export class ExecutionChangeControlService {
     return [...this.pending.values()].some((value) => path.resolve(value) === path.resolve(workspace))
   }
 
+  restorePending(records: Array<{ executionId: string; workspace: string }>) {
+    for (const record of records) {
+      this.pending.set(record.executionId, record.workspace)
+      this.gate.begin(record.workspace)
+    }
+    this.metrics.pendingChangeSets = this.pending.size
+  }
+
   before(executionId: string) {
     return this.active.get(executionId)?.before ?? null
   }

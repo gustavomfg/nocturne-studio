@@ -266,6 +266,8 @@ export function registerIpc(
   const snapshotRollback = new SnapshotRollbackService(checkpoints)
   const buildRollback = new BuildRollbackService(database, snapshotRollback)
   const changeControl = new ExecutionChangeControlService(checkpoints, new ChangeCaptureService(checkpoints, database.changeSets), changeGate)
+  changeControl.restorePending(database.operationRecovery.pendingDecisions())
+  ipcMain.handle(IPC_CHANNELS.recovery.list, () => database.operationRecovery.list())
   const changeDiffs = new ChangeDiffService(checkpoints, database.changeSets)
   const changeDecisions = new ChangeDecisionService(database.changeSets, snapshotRollback)
   const changeHunks = new ChangeHunkService(checkpoints, changeDiffs, database.changeSets)

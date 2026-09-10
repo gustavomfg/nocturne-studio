@@ -49,10 +49,12 @@ export class LocalDatabase {
   get executionEvidence() { return this.repositories.executionEvidence }
   get engineeringIntelligence() { return this.repositories.engineeringIntelligence }
   get dataDirectory() { return this.runtime.dataDirectory }
+  get operationRecovery() { return this.repositories.operationRecovery }
 
   constructor(userDataPath: string) {
     this.runtime = new DatabaseRuntime(userDataPath)
     this.repositories = createDatabaseRepositories(this.runtime)
+    this.operationRecovery.reconcile()
   }
 
   runInTransaction<T>(operation: () => T): T {

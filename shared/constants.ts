@@ -1,4 +1,4 @@
-export const DATABASE_SCHEMA_VERSION = 28
+export const DATABASE_SCHEMA_VERSION = 29
 
 export const RENDERER_LIMITS = {
   activities: 300,

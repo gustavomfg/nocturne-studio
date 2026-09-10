@@ -50,6 +50,7 @@ export async function installNocturneMock(page: Page, options: { empty?: boolean
     let appSettings = { model: '', sandbox: 'workspace-write' as const, approvalPolicy: 'on-request' as const, theme: 'dark' as 'dark' | 'light', defaultAgentMode: 'review' as const, authenticated: !signedOut, authStatus: signedOut ? 'Login necessário' : 'Autenticado', serverStatus: 'ready' }
     const noop = async () => undefined
     const api = {
+      recovery: { list: async () => [] },
       workspace: {
         select: async (expected?: string) => {
           selectedExpected = expected

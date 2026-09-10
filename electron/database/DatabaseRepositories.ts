@@ -20,9 +20,11 @@ import { CheckpointRepository } from './CheckpointRepository'
 import { ChangeSetRepository } from './ChangeSetRepository'
 import { ExecutionEvidenceRepository } from './ExecutionEvidenceRepository'
 import type { DatabaseTransactionRunner } from './DatabaseTransaction'
+import { OperationRecoveryRepository } from './OperationRecoveryRepository'
 import { EngineeringIntelligenceRepository } from './EngineeringIntelligenceRepository'
 
 export interface DatabaseRepositories {
+  operationRecovery: OperationRecoveryRepository
   approvals: ApprovalRepository
   conversations: ConversationRepository
   artifacts: ArtifactRepository
@@ -56,6 +58,7 @@ export function createDatabaseRepositories(runtime: DatabaseRuntime): DatabaseRe
   const workspaceModelBindings = new WorkspaceModelBindingRepository(database)
 
   return {
+    operationRecovery: new OperationRecoveryRepository(database, transactions),
     approvals: new ApprovalRepository(database),
     conversations,
     artifacts: new ArtifactRepository(database),

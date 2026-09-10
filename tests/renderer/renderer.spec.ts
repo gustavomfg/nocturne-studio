@@ -21,6 +21,14 @@ test.describe('renderer do produto', () => {
     await expect(page.getByRole('button', { name: 'Abrir no WebStorm' })).toBeVisible()
   })
 
+  test('informa operações interrompidas no startup sem retomar execução', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.nocturne.recovery.list = async () => [{ id: 'recovery', workspace: '/workspace/sample-project', executionId: 'interrupted-run', kind: 'decision', sourceId: 'decision-1', originalStatus: 'running', detectedAt: '2026-07-13T20:00:00.000Z', message: 'Operação interrompida; o estado precisa ser reconciliado.' }]
+    })
+    await ready(page)
+    await expect(page.getByText(/decision \(running\).*interrupted-run/)).toBeVisible()
+  })
+
   test('oferece ajuda contextual por botão e atalho de teclado', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await ready(page)
