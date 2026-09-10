@@ -25,6 +25,10 @@ export class ExecutionRepository {
   }
 
   update(record: ExecutionRecord) {
+    const current = this.get(record.id, record.workspace)
+    if (current && ['completed', 'failed', 'cancelled'].includes(current.status) && current.status !== record.status) {
+      throw new Error('O resultado terminal de uma execução é imutável.')
+    }
     this.database.prepare(`UPDATE executions SET
       prompt=@prompt,mode=@mode,status=@status,decision=@decision,retry_of=@retryOf,
       started_at=@startedAt,finished_at=@finishedAt,error=@error

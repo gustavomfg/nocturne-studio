@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { turnOutcome } from '../../shared/turnOutcome'
 import type { BrowserWindow } from 'electron'
 import type { WorkspaceModelBindings } from '../../shared/ai/bindings'
 import type { NormalizedTaskInput } from '../../shared/ai/task'
@@ -52,7 +53,6 @@ interface CodexTurnInput {
 }
 
 export class AiExecutionCoordinator {
-  private readonly codex = new CodexClient()
   private active: ActiveExecution | null = null
   private disposed = false
 
@@ -67,6 +67,7 @@ export class AiExecutionCoordinator {
     private readonly createRunId: () => string = randomUUID,
     private readonly now: () => Date = () => new Date(),
     private readonly persistExecutionState: (executionId: string, lifecycle: AgentRunState) => void = () => undefined,
+    private readonly codex = new CodexClient(),
   ) {
     this.codex.on('event', this.onCodexEvent)
     this.codex.on('status', this.onCodexStatus)
@@ -176,22 +177,13 @@ export class AiExecutionCoordinator {
       this.pushExecutionStatus(active, 'running')
       void turn.completion
         .then((outcome) => {
-          if (outcome.status === 'completed') {
-            this.pushExecutionStatusIfCurrent(active, 'completed')
-          } else if (outcome.status === 'cancelled') {
-            this.pushExecutionStatusIfCurrent(active, 'ready', undefined, true)
-          } else {
-            this.pushExecutionStatusIfCurrent(active, 'failed', outcome.error?.message ?? 'A execução do Provider falhou.')
-          }
+          return this.persistAndComplete(active, { turn: { id: turn.executionId, ...outcome } })
         })
         .catch((error: unknown) => {
           const message = error instanceof Error ? error.message : String(error)
           if (!this.isCurrentOrFinished(active)) return
           this.pushEvent('error', { message }, active)
-          this.pushEvent('turn/completed', {
-            turn: { id: turn.executionId, error: { message } },
-          }, active)
-          this.pushExecutionStatusIfCurrent(active, 'failed', message)
+          void this.persistAndComplete(active, { turn: { id: turn.executionId, status: 'failed', error: { message } } })
         })
     } catch (error) {
       if (this.active?.runId === runId) {
@@ -308,7 +300,8 @@ export class AiExecutionCoordinator {
       this.pushTransportStatus(nextStatus, status.error)
       return
     }
-    this.pushExecutionStatus(active, nextStatus, status.error, nextStatus === 'ready' && active.lifecycle?.state === 'cancelling')
+    // Transport readiness/completion cannot terminate an active task.
+    if (nextStatus !== 'ready' && nextStatus !== 'completed' && nextStatus !== 'failed') this.pushExecutionStatus(active, nextStatus, status.error)
     if (nextStatus === 'failed' && status.error && active?.kind === 'codex' && active.threadId && !active.finishing) {
       this.pushEvent('error', { message: status.error }, active)
       void this.persistAndComplete(active, {
@@ -382,6 +375,8 @@ export class AiExecutionCoordinator {
   private async persistAndComplete(active: ActiveExecution, params: Record<string, unknown>) {
     if (this.active !== active || active.finishing) return
     active.finishing = true
+    const rawTurn = params.turn && typeof params.turn === 'object' ? params.turn as Record<string, unknown> : {}
+    params = { ...params, turn: { ...rawTurn, ...turnOutcome(rawTurn) } }
     try {
       const persisted = await this.finalizeTurn({
         ...(active.executionId ? { executionId: active.executionId } : {}),
@@ -399,16 +394,11 @@ export class AiExecutionCoordinator {
     } catch (error) {
       const warning = `A resposta não pôde ser persistida no processo principal: ${error instanceof Error ? error.message : String(error)}`
       this.logger.error('persistence', warning, error)
-      this.applyLifecycle(active, { type: 'run.failed', error: warning })
+      this.applyCompletionLifecycle(active, params)
       this.pushEvent('turn/completed', { ...params, persistenceWarning: warning }, active)
     } finally {
       if (this.active === active) this.active = null
     }
-  }
-
-  private pushExecutionStatusIfCurrent(active: ActiveExecution, status: AgentState, error?: string, cancelled = false) {
-    if (!this.isCurrentOrFinished(active)) return
-    this.pushExecutionStatus(active, status, error, cancelled)
   }
 
   private pushExecutionStatus(active: ActiveExecution, status: AgentState, error?: string, cancelled = false) {
@@ -499,7 +489,7 @@ export class AiExecutionCoordinator {
     } else {
       accepted = this.applyLifecycle(active, { type: 'run.completed' })
     }
-    if (active.kind === 'provider' && accepted) {
+    if (accepted) {
       if (turn?.status === 'cancelled') this.pushStatusForRun(active, 'ready')
       else if (turn?.status === 'failed' || turn?.error) this.pushStatusForRun(active, 'failed')
       else this.pushStatusForRun(active, 'completed')

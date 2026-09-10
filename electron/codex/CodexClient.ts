@@ -269,10 +269,8 @@ export class CodexClient extends EventEmitter {
       },
     })
     this.approvalRequests.delete(key)
-    this.setStatus(
-      accepted ? 'running' : 'failed',
-      accepted ? undefined : 'Execução recusada pelo usuário.',
-    )
+    // Declining one tool is not the terminal result of the turn.
+    this.setStatus('running')
   }
 
   stop() {
@@ -400,7 +398,7 @@ export class CodexClient extends EventEmitter {
     if (message.method === 'turn/completed') {
       const threadId = String(params.threadId ?? '')
       if (threadId) this.activeTurns.delete(threadId)
-      this.setStatus(this.status === 'cancelling' ? 'ready' : 'completed')
+      this.setStatus('ready')
     }
     this.emit('event', { method: message.method, params } satisfies CodexEvent)
   }

@@ -16,7 +16,7 @@ export function parseTurnCompletion(params: Record<string, unknown>): TurnComple
     ? rawStatus
     : 'unknown'
   const error = asRecord(turn?.error)
-  const hasError = turn?.error !== undefined && turn.error !== null
+  const hasError = (turn?.error !== undefined && turn.error !== null) || status === 'failed' || status === 'unknown'
   return {
     id: typeof turn?.id === 'string' || typeof turn?.id === 'number' ? String(turn.id) : null,
     status,

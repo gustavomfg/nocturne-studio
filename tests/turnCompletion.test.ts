@@ -16,7 +16,7 @@ describe('turn completion contract', () => {
 
   it('não cria um id artificial para payload sem turno', () => {
     expect(parseTurnCompletion({ threadId: 'thread-1' })).toEqual({
-      id: null, status: 'unknown', hasError: false, errorMessage: null, persistenceWarning: null, persistedMessage: undefined,
+      id: null, status: 'unknown', hasError: true, errorMessage: null, persistenceWarning: null, persistedMessage: undefined,
     })
   })
 })

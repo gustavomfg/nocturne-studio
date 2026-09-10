@@ -58,3 +58,11 @@ If the CLI is absent, unauthenticated, incompatible, times out or exits, the
 operation ends with a visible error and cleanup. The renderer never receives
 Codex credentials or a generic process transport. Use **Settings > AI >
 Diagnostics** for a sanitized report.
+# Terminal outcome invariant
+
+`turn/completed` closes a transport turn; it does not imply task success. The
+coordinator normalizes its result once: `completed`, `failed`, or `cancelled`
+(`interrupted` on the Codex wire). Unknown outcomes fail closed. Declining a tool
+approval does not terminate its parent turn. Persistence warnings are separate
+from the task outcome; they must not rewrite a completed task as failed. The
+execution repository rejects terminal-to-different-terminal updates.

@@ -1,5 +1,13 @@
 import { EventEmitter } from 'node:events'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { LocalDatabase } from '../electron/database/Database'
+import { AiExecutionCoordinator } from '../electron/ai/AiExecutionCoordinator'
+import { ModelRegistry } from '../electron/ai/ModelRegistry'
+import { ProviderRegistry } from '../electron/ai/ProviderRegistry'
+import { parseTurnCompletion } from '../src/domains/agent/turnCompletion'
 import { CodexClient, type CodexProcessAdapter } from '../electron/codex/CodexClient'
 import { buildCodexEnvironment } from '../electron/codex/CodexProcess'
 import type { RpcMessage, RpcRequest } from '../electron/codex/protocol'
@@ -93,6 +101,57 @@ async function createThread(client: CodexClient, process: FakeCodexProcess) {
 }
 
 describe('CodexClient', () => {
+  it.each(['completed', 'failed', 'interrupted', 'unrecognized'])('mantém protocolo, SQLite e renderer concordantes: %s', async (status) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-terminal-'))
+    const database = new LocalDatabase(root)
+    const { client, process } = await readyClient()
+    const conversation = database.createConversation(root)
+    const id = 'execution-terminal'
+    database.createExecution({ id, workspace: root, conversationId: conversation.id, prompt: 'test', mode: 'review', status: 'created', decision: 'pending', retryOf: null, startedAt: new Date().toISOString(), finishedAt: null, error: null })
+    const sent: Array<{ channel: string; payload: Record<string, unknown> }> = []
+    const terminals: string[] = []
+    const coordinator = new AiExecutionCoordinator(
+      { isDestroyed: () => false, webContents: { send: (channel: string, payload: Record<string, unknown>) => sent.push({ channel, payload }) } } as never,
+      new ModelRegistry(), new ProviderRegistry(), { warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as never,
+      new Map(), async () => { await Promise.resolve(); return { message: null } }, undefined, undefined, undefined,
+      (_, lifecycle) => {
+        const state = lifecycle.state === 'waiting-approval' || lifecycle.state === 'cancelling' ? 'running' : lifecycle.state
+        database.saveExecution({ ...database.getExecution(id)!, status: state, error: lifecycle.error ?? null })
+        if (['completed', 'failed', 'cancelled'].includes(state)) terminals.push(state)
+      }, client,
+    )
+    try {
+      const started = coordinator.startCodex({ conversationId: conversation.id, executionId: id, workspace: root, prompt: 'test', initialPrompt: 'test', attachments: [], memory: '', mode: 'review', settings: {} as never })
+      await waitForRequest(process, 'thread/start')
+      process.respond('thread/start', { thread: { id: 'thread-1' } })
+      await waitForRequest(process, 'turn/start')
+      process.respond('turn/start', { turn: { id: 'turn-1' } })
+      await started
+      process.emit('message', { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status } } })
+      process.emit('message', { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status } } })
+      await vi.waitFor(() => expect(terminals).toHaveLength(1))
+      const expected = status === 'interrupted' ? 'cancelled' : status === 'completed' ? 'completed' : 'failed'
+      expect(terminals).toEqual([expected])
+      expect(database.getExecution(id)?.status).toBe(expected)
+      const completion = sent.find((event) => event.channel === 'ai:event' && event.payload.method === 'turn/completed')!
+      expect(parseTurnCompletion(completion.payload.params as Record<string, unknown>).status).toBe(expected)
+      expect(() => database.saveExecution({ ...database.getExecution(id)!, status: expected === 'failed' ? 'completed' : 'failed' })).toThrow(/imutável/)
+    } finally {
+      coordinator.dispose(); database.close(); fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+  it('não publica completed para um turno que falhou no protocolo', async () => {
+    const { client, process } = await readyClient()
+    const pending = client.sendTurn('thread-1', '/workspace', 'test')
+    process.respond('turn/start', { turn: { id: 'turn-1' } })
+    await pending
+    const states: unknown[] = []
+    client.on('status', (value) => states.push(value.status))
+    process.emit('message', { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status: 'failed', error: { message: 'real failure' } } } })
+    expect(states).not.toContain('completed')
+    client.stop()
+  })
+
   it('passa ao App Server apenas o ambiente permitido e preserva a autenticação persistida', () => {
     const environment = buildCodexEnvironment({
       PATH: '/usr/bin',
