@@ -98,6 +98,66 @@ describe('Semantic Index', () => {
     await semantic.dispose()
   })
 
+  it('descarta a unidade antiga quando o arquivo é removido e recriado', async () => {
+    const fixture = createFixture()
+    const target = path.join(fixture.workspace, 'main.ts')
+    fs.writeFileSync(target, 'export const oldTerm = true\n')
+    const projectIndex = new ProjectIndexService(fixture.database.projectIndex)
+    await projectIndex.ensureIndexed(fixture.workspace)
+    const semantic = new SemanticIndexService(fixture.database.semanticIndex, { projectIndex })
+    await semantic.ensureIndexed(fixture.workspace)
+    const retrieval = new SemanticRetrievalService(fixture.database.semanticIndex, projectIndex)
+
+    await expect(retrieval.search({ workspace: fixture.workspace, query: 'oldTerm', limit: 10 })).resolves.toHaveLength(1)
+    fs.rmSync(target)
+    await expect(retrieval.search({ workspace: fixture.workspace, query: 'oldTerm', limit: 10 })).resolves.toEqual([])
+    fs.writeFileSync(target, 'export const replacementTerm = true\n')
+    await expect(retrieval.search({ workspace: fixture.workspace, query: 'oldTerm', limit: 10 })).resolves.toEqual([])
+    await semantic.dispose()
+  })
+
+  it('não usa unidade semântica enquanto o Project Index conhece estado pending', async () => {
+    const fixture = createFixture()
+    const target = path.join(fixture.workspace, 'main.ts')
+    fs.writeFileSync(target, 'export const pendingTerm = true\n')
+    const projectIndex = new ProjectIndexService(fixture.database.projectIndex)
+    await projectIndex.ensureIndexed(fixture.workspace)
+    const semantic = new SemanticIndexService(fixture.database.semanticIndex, { projectIndex })
+    await semantic.ensureIndexed(fixture.workspace)
+    const retrieval = new SemanticRetrievalService(fixture.database.semanticIndex, projectIndex)
+
+    fs.writeFileSync(target, 'export const refreshedTerm = true\n')
+    const current = projectIndex.getFile(fixture.workspace, 'main.ts')!
+    const observedHash = createHash('sha256').update(fs.readFileSync(target)).digest('hex')
+    fixture.database.projectIndex.upsertFile({ ...current, observedHash, state: 'pending' })
+
+    await expect(retrieval.search({ workspace: fixture.workspace, query: 'pendingTerm', limit: 10 })).resolves.toEqual([])
+    await semantic.dispose()
+  })
+
+  it('não expande dependências a partir de uma unidade lexical stale', async () => {
+    const fixture = createFixture()
+    const target = path.join(fixture.workspace, 'main.ts')
+    fs.writeFileSync(target, "import { dependency } from './dependency'\nexport const oldTerm = dependency\n")
+    fs.writeFileSync(path.join(fixture.workspace, 'dependency.ts'), 'export const dependency = true\n')
+    const projectIndex = new ProjectIndexService(fixture.database.projectIndex)
+    await projectIndex.ensureIndexed(fixture.workspace)
+    const semantic = new SemanticIndexService(fixture.database.semanticIndex, { projectIndex })
+    await semantic.ensureIndexed(fixture.workspace)
+    const retrieval = new SemanticRetrievalService(fixture.database.semanticIndex, projectIndex)
+
+    const initial = await retrieval.search({ workspace: fixture.workspace, query: 'oldTerm', limit: 10 })
+    expect(initial.map((result) => result.unit.relativePath)).toContain('dependency.ts')
+    fs.writeFileSync(target, "import { dependency } from './dependency'\nexport const newTerm = dependency\n")
+    const current = projectIndex.getFile(fixture.workspace, 'main.ts')!
+    const observedHash = createHash('sha256').update(fs.readFileSync(target)).digest('hex')
+    fixture.database.projectIndex.upsertFile({ ...current, observedHash, analyzedHash: observedHash, state: 'indexed' })
+
+    const stale = await retrieval.search({ workspace: fixture.workspace, query: 'oldTerm', limit: 10 })
+    expect(stale).toEqual([])
+    await semantic.dispose()
+  })
+
   it('preserva unidades lexicais quando um arquivo falha e mantém o restante utilizável', async () => {
     const fixture = createFixture()
     fs.writeFileSync(path.join(fixture.workspace, 'good.ts'), 'export function good() { return true }\n')
