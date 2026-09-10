@@ -22,7 +22,7 @@ export class ChangeDiffService {
   async get(changeId: string, executionId?: string): Promise<FileDiff | null> {
     const change = this.repository.getChange(changeId, executionId)
     if (!change) return null
-    const changeSet = this.repository.get(change.changeSetId, executionId ?? change.executionId)
+    const changeSet = this.repository.getById(change.changeSetId, executionId ?? change.executionId)
     if (!changeSet) return null
     const before = findFile(this.checkpoints.listFiles(changeSet.beforeCheckpointId), change.relativePath)
     const after = findFile(this.checkpoints.listFiles(changeSet.afterCheckpointId), change.relativePath)
@@ -30,7 +30,7 @@ export class ChangeDiffService {
   }
 
   async list(changeSetId: string, executionId?: string): Promise<FileDiff[]> {
-    const changeSet = this.repository.get(changeSetId, executionId)
+    const changeSet = this.repository.getById(changeSetId, executionId)
     if (!changeSet) return []
     const beforeFiles = new Map(this.checkpoints.listFiles(changeSet.beforeCheckpointId).map((file) => [file.relativePath, file]))
     const afterFiles = new Map(this.checkpoints.listFiles(changeSet.afterCheckpointId).map((file) => [file.relativePath, file]))

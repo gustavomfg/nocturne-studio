@@ -44,8 +44,17 @@ export class ChangeCaptureService {
     return { changeSet, changes: linked, afterCheckpoint: afterResult.checkpoint }
   }
 
+  getById(id: string, executionId?: string) {
+    return this.repository.getById(id, executionId)
+  }
+
+  getByExecutionId(executionId: string) {
+    return this.repository.getByExecutionId(executionId)
+  }
+
+  /** Compatibility alias for callers that already provide a ChangeSet id. */
   get(id: string, executionId?: string) {
-    return this.repository.get(id, executionId)
+    return this.getById(id, executionId)
   }
 
   list(executionId: string) {

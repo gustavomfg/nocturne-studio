@@ -21,7 +21,7 @@ export class ChangeDecisionService {
     if (change.policy === 'blocked') throw new Error('Esta mudança está bloqueada pela política do workspace.')
     if (change.status === 'conflicted') throw new Error('Esta mudança está em conflito e precisa ser reprocessada antes da decisão.')
     if (change.status !== 'pending' && change.status !== 'edited' && !(revertingBuild && status === 'rejected' && change.status === 'accepted')) throw new Error('Esta mudança já possui uma decisão persistida.')
-    const changeSet = this.repository.get(change.changeSetId, executionId)
+    const changeSet = this.repository.getById(change.changeSetId, executionId)
     if (!changeSet) throw new Error('O ChangeSet da mudança não está disponível.')
     const operationId = this.repository.reserveDecision(executionId, changeId, status)
     try {

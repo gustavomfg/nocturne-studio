@@ -37,12 +37,12 @@ export function registerChangeControlIpc(win: BrowserWindow, dependencies: Depen
 
   ipcMain.handle(IPC_CHANNELS.changeControl.get, (_event, value: unknown) => {
     const { data } = execution(value)
-    return dependencies.database.changeSets.get(data.executionId)
+    return dependencies.database.changeSets.getByExecutionId(data.executionId)
   })
   ipcMain.handle(IPC_CHANNELS.changeControl.changes, (_event, value: unknown) => {
     const data = changeControlSetSchema.parse(value)
     const conversation = getAuthorizedConversation(dependencies.database, data.conversationId)
-    const changeSet = dependencies.database.changeSets.get(data.changeSetId)
+    const changeSet = dependencies.database.changeSets.getById(data.changeSetId)
     if (!changeSet) return []
     const record = dependencies.database.getExecution(changeSet.executionId, conversation.workspace)
     if (!record || record.conversationId !== conversation.id) throw new Error('O ChangeSet não pertence à conversa autorizada.')
@@ -50,7 +50,7 @@ export function registerChangeControlIpc(win: BrowserWindow, dependencies: Depen
   })
   ipcMain.handle(IPC_CHANNELS.changeControl.diff, async (_event, value: unknown) => {
     const { data, conversation } = change(value)
-    const record = dependencies.database.changeSets.get(dependencies.database.changeSets.getChange(data.changeId)?.changeSetId ?? '')
+    const record = dependencies.database.changeSets.getById(dependencies.database.changeSets.getChange(data.changeId)?.changeSetId ?? '')
     const executionRecord = record ? dependencies.database.getExecution(record.executionId, conversation.workspace) : null
     if (!executionRecord || executionRecord.conversationId !== conversation.id) throw new Error('A mudança não pertence à conversa autorizada.')
     return dependencies.diffs.get(data.changeId, executionRecord.id)

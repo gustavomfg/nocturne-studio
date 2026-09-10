@@ -44,8 +44,33 @@ async function fixture() {
     hunks: new ChangeHunkService(checkpoints, diffs, database.changeSets), resolveExecution: () => true,
   }, registrar)
   const decide = (status: 'accepted' | 'rejected') => Promise.resolve().then(() => handlers.get(IPC_CHANNELS.changeControl.decide)!({} as IpcMainInvokeEvent, { conversationId: conversation.id, changeId: captured.changes[0].id, status }))
-  return { database, target, captured, decide, executionId, checkpoints, rollback, workspace }
+  const get = () => Promise.resolve().then(() => handlers.get(IPC_CHANNELS.changeControl.get)!({} as IpcMainInvokeEvent, { conversationId: conversation.id, executionId }))
+  return { database, target, captured, decide, get, executionId, checkpoints, rollback, workspace }
 }
+
+it('resolve o ChangeSet capturado pela identidade da execução através do IPC', async () => {
+  const value = await fixture()
+
+  await expect(value.get()).resolves.toMatchObject({
+    id: value.captured.changeSet.id,
+    executionId: value.executionId,
+  })
+})
+
+it('aplica a política de captura mais recente quando uma execução possui mais de um ChangeSet', async () => {
+  const value = await fixture()
+  const before = await value.checkpoints.capture(value.executionId, value.workspace, 'before')
+  fs.writeFileSync(value.target, 'after-again')
+  const second = await new ChangeCaptureService(value.checkpoints, value.database.changeSets).capture(value.executionId, value.workspace, before.checkpoint.id, 'manual')
+
+  expect(value.database.changeSets.getByExecutionId(value.executionId)?.id).toBe(second.changeSet.id)
+})
+
+it('retorna ausência legítima quando a execução conhecida não possui ChangeSet', async () => {
+  const value = await fixture()
+
+  expect(value.database.changeSets.getByExecutionId('execution-without-capture')).toBeNull()
+})
 
 it('rejeição de decisão terminal nunca modifica bytes pelo IPC', async () => {
   const value = await fixture()

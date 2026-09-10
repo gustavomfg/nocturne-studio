@@ -65,12 +65,32 @@ export class ChangeSetRepository {
     })
   }
 
-  get(id: string, executionId?: string): ChangeSetRecord | null {
+  /** Looks up a ChangeSet by its own durable identity. */
+  getById(id: string, executionId?: string): ChangeSetRecord | null {
     const row = this.database.prepare(`SELECT id,execution_id executionId,before_checkpoint_id beforeCheckpointId,
       after_checkpoint_id afterCheckpointId,status,created_at createdAt,updated_at updatedAt
       FROM change_sets WHERE id=? AND (? IS NULL OR execution_id=?)`).get(id, executionId ?? null, executionId ?? null) as ChangeSetRecord | undefined
     if (row && !changeSetStatuses.includes(row.status)) throw new Error('O ChangeSet persistido possui um estado inválido.')
     return row ?? null
+  }
+
+  /**
+   * Resolves the ChangeSet produced by an execution. An execution normally has
+   * one capture, but the schema intentionally permits more than one (for
+   * retries/reconciliations); the most recently updated capture is the one
+   * shown by the review surface and used by the existing Build rollback flow.
+   */
+  getByExecutionId(executionId: string): ChangeSetRecord | null {
+    const row = this.database.prepare(`SELECT id,execution_id executionId,before_checkpoint_id beforeCheckpointId,
+      after_checkpoint_id afterCheckpointId,status,created_at createdAt,updated_at updatedAt
+      FROM change_sets WHERE execution_id=? ORDER BY updated_at DESC,created_at DESC,rowid DESC LIMIT 1`).get(executionId) as ChangeSetRecord | undefined
+    if (row && !changeSetStatuses.includes(row.status)) throw new Error('O ChangeSet persistido possui um estado inválido.')
+    return row ?? null
+  }
+
+  /** Compatibility alias for callers that already mean ChangeSet id. */
+  get(id: string, executionId?: string): ChangeSetRecord | null {
+    return this.getById(id, executionId)
   }
 
   list(executionId: string): ChangeSetRecord[] {

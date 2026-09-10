@@ -14,6 +14,9 @@ import type {
 import type { ModelDescriptor } from '../shared/ai/model'
 import type { UpdateState } from '../shared/updates'
 import type { UpdateService } from '../electron/updates/UpdateService'
+import { CheckpointService } from '../electron/change-control/CheckpointService'
+import { WorkspaceCheckpointStore } from '../electron/change-control/WorkspaceCheckpointStore'
+import { ChangeCaptureService } from '../electron/change-control/ChangeCaptureService'
 import { canonicalTestPath, expectUserOnlyMode, removeTestDirectory } from './helpers/platform'
 
 type IpcHandler = (event: unknown, ...args: unknown[]) => unknown
@@ -317,6 +320,56 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     await expect(api.evidence.list(otherConversation.id, executionId)).rejects.toThrow(/conversa autorizada/)
     await expect(api.evidence.list(conversation.id, '../outside')).rejects.toThrow()
     await api.conversations.delete(otherConversation.id)
+    await api.conversations.delete(conversation.id)
+  })
+
+  it('recupera o ChangeSet de um Build pelo caminho preload → IPC → SQLite', async () => {
+    electron.dialogs.open.push({ canceled: false, filePaths: [workspace] })
+    await api.workspace.select()
+    const conversation = await api.conversations.create(workspace)
+    const executionId = randomUUID()
+    database!.createExecution({
+      id: executionId,
+      workspace,
+      conversationId: conversation.id,
+      prompt: 'capturar mudanças',
+      mode: 'build',
+      status: 'completed',
+      decision: 'pending',
+      retryOf: null,
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      error: null,
+    })
+    const target = path.join(workspace, 'preload-change-control.txt')
+    fs.writeFileSync(target, 'before')
+    const checkpoints = new CheckpointService(database!.checkpoints, new WorkspaceCheckpointStore(path.join(root, 'change-control-snapshots')))
+    const before = await checkpoints.capture(executionId, workspace, 'before')
+    fs.writeFileSync(target, 'after')
+    const captured = await new ChangeCaptureService(checkpoints, database!.changeSets).capture(executionId, workspace, before.checkpoint.id, 'manual')
+
+    await expect(api.changeControl.get(conversation.id, executionId)).resolves.toMatchObject({
+      id: captured.changeSet.id,
+      executionId,
+    })
+    await expect(api.changeControl.changes(conversation.id, captured.changeSet.id)).resolves.toEqual([
+      expect.objectContaining({ id: captured.changes[0]?.id, relativePath: 'preload-change-control.txt' }),
+    ])
+    const emptyExecutionId = randomUUID()
+    database!.createExecution({
+      id: emptyExecutionId,
+      workspace,
+      conversationId: conversation.id,
+      prompt: 'sem mudanças',
+      mode: 'build',
+      status: 'completed',
+      decision: 'pending',
+      retryOf: null,
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      error: null,
+    })
+    await expect(api.changeControl.get(conversation.id, emptyExecutionId)).resolves.toBeNull()
     await api.conversations.delete(conversation.id)
   })
 

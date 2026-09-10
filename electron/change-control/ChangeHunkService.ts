@@ -70,7 +70,7 @@ export class ChangeHunkService {
   private async validatePatch(change: ChangeRecord, patch: string, executionId?: string) {
     const diff = await this.diffs.get(change.id, executionId)
     if (!diff || diff.kind !== 'text') return false
-    const changeSet = this.repository.get(change.changeSetId, executionId ?? change.executionId)
+    const changeSet = this.repository.getById(change.changeSetId, executionId ?? change.executionId)
     if (!changeSet) return false
     const before = this.checkpoints.listFiles(changeSet.beforeCheckpointId).find((file) => file.relativePath === change.relativePath)
     if (!before || before.kind !== 'file') return false
@@ -85,7 +85,7 @@ export class ChangeHunkService {
   }
 
   private async beforeLineCount(change: ChangeRecord) {
-    const changeSet = this.repository.get(change.changeSetId, change.executionId)
+    const changeSet = this.repository.getById(change.changeSetId, change.executionId)
     if (!changeSet) return 1
     const file = this.checkpoints.listFiles(changeSet.beforeCheckpointId).find((item) => item.relativePath === change.relativePath)
     if (!file || file.kind !== 'file') return 1
