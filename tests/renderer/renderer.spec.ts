@@ -233,6 +233,128 @@ test.describe('renderer do produto', () => {
     }
   })
 
+  test('não aplica resultado semântico atrasado de uma busca anterior', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await ready(page)
+    await page.getByRole('button', { name: 'Inteligência do projeto' }).click()
+    await page.evaluate(() => {
+      const pending: Array<(value: unknown) => void> = []
+      window.nocturne.semanticIndex.search = async () => new Promise((resolve) => { pending.push((value) => resolve(value as never)) })
+      Object.defineProperty(window, '__sessionTest', {
+        configurable: true,
+        value: {
+          pending,
+          resolve(index: number, value: unknown) { pending[index]?.(value) },
+        },
+      })
+    })
+    const input = page.getByRole('textbox', { name: 'Buscar no índice semântico' })
+    const search = page.getByRole('button', { name: 'Buscar no índice semântico' })
+    const result = (name: string) => [{
+      unit: {
+        id: `unit-${name}`, relativePath: `${name}.ts`, kind: 'symbol', language: 'TypeScript', symbolId: null,
+        symbolName: name, location: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }, sourceHash: 'a'.repeat(64), chunkHash: 'b'.repeat(64), status: 'indexed',
+      },
+      excerpt: name,
+      scores: { vector: 0, lexical: 1, structural: 0, dependency: 0, final: 1 },
+      provenance: { indexVersion: 1, chunkStrategyVersion: 'test', embeddingSpace: null, reason: 'test', validity: 'current', potentiallyOutdated: false },
+    }]
+
+    await input.fill('first')
+    await search.click()
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __sessionTest: { pending: unknown[] } }).__sessionTest.pending.length)).toBe(1)
+    await input.fill('second')
+    // The button is disabled while a search is running, but the input remains
+    // usable and Enter is an intentionally supported path for a second call.
+    await input.press('Enter')
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __sessionTest: { pending: unknown[] } }).__sessionTest.pending.length)).toBe(2)
+    await page.evaluate((value) => (window as unknown as { __sessionTest: { resolve(index: number, result: unknown[]): void } }).__sessionTest.resolve(1, value), result('second-result'))
+    await expect(page.getByText('second-result', { exact: true }).first()).toBeVisible()
+    await page.evaluate((value) => (window as unknown as { __sessionTest: { resolve(index: number, result: unknown[]): void } }).__sessionTest.resolve(0, value), result('first-result'))
+    await expect(page.getByText('second-result', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('first-result', { exact: true })).toHaveCount(0)
+  })
+
+  test('não aplica refresh do workspace anterior após trocar de workspace', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await ready(page)
+    await page.evaluate(() => {
+      const pending: Array<{ workspace: string; kind: string; resolve(value: unknown): void }> = []
+      const defer = <T>(kind: string, workspace: string) => new Promise<T>((resolve) => { pending.push({ workspace, kind, resolve: (value) => resolve(value as T) }) })
+      window.nocturne.projectIndex.status = async (workspace) => defer<Awaited<ReturnType<typeof window.nocturne.projectIndex.status>>>('status', workspace)
+      window.nocturne.projectIndex.summary = async (workspace) => defer<Awaited<ReturnType<typeof window.nocturne.projectIndex.summary>>>('summary', workspace)
+      window.nocturne.projectIndex.stack = async (workspace) => defer<Awaited<ReturnType<typeof window.nocturne.projectIndex.stack>>>('stack', workspace)
+      window.nocturne.validation.list = async (workspace) => defer<Awaited<ReturnType<typeof window.nocturne.validation.list>>>('validation', workspace)
+      window.nocturne.semanticIndex.status = async (workspace) => defer<Awaited<ReturnType<typeof window.nocturne.semanticIndex.status>>>('semantic-status', workspace)
+      window.nocturne.semanticIndex.summary = async (workspace) => defer<Awaited<ReturnType<typeof window.nocturne.semanticIndex.summary>>>('semantic-summary', workspace)
+      window.nocturne.engineeringIntelligence.report = async (workspace) => defer<Awaited<ReturnType<typeof window.nocturne.engineeringIntelligence.report>>>('engineering', workspace)
+      window.nocturne.workspace.select = async () => '/workspace/second-project'
+      window.nocturne.workspace.list = async () => [
+        { path: '/workspace/sample-project', name: 'sample-project', favorite: true, authorized: true, availability: 'available', createdAt: '2026-07-13T20:00:00.000Z', lastOpenedAt: '2026-07-13T20:00:00.000Z' },
+        { path: '/workspace/second-project', name: 'second-project', favorite: true, authorized: true, availability: 'available', createdAt: '2026-07-13T20:00:00.000Z', lastOpenedAt: '2026-07-13T20:00:00.000Z' },
+      ]
+      const resolveWorkspace = (workspace: string, marker: string) => {
+        const run = {
+          id: `${marker}-run`, workspace, indexVersion: 1, kind: 'initial', status: 'completed', phase: 'completed', totalFiles: 1,
+          processedFiles: 1, failedFiles: 0, unsupportedFiles: 0, pendingFiles: 0, startedAt: '2026-07-13T20:00:00.000Z',
+          updatedAt: '2026-07-13T20:00:00.000Z', completedAt: '2026-07-13T20:00:00.000Z', error: null, currentPath: null, cancelled: false,
+        }
+        const summary = { workspace, indexVersion: 1, latestRun: run, files: 1, indexedFiles: 1, failedFiles: 0, unsupportedFiles: 0, symbols: 0, imports: 0, exports: 0, stack: { name: marker, stack: [marker], primaryLanguage: 'TypeScript', commands: {}, evidence: [], detectedAt: run.completedAt } }
+        const stack = [{ id: `${marker}-evidence`, workspace, category: 'language', value: marker, confidence: 100, sourcePath: 'package.json', sourceHash: 'a'.repeat(64), sourceLine: null, reason: 'test', detectedAt: run.completedAt }]
+        const engineering = { snapshot: { id: `${marker}-engineering`, workspace, policyVersion: 1, evaluatedAt: run.completedAt, previousSnapshotId: null, sources: { projectIndexRunId: run.id, semanticIndexRunId: null, validationRunIds: [], executionIds: [], changeSetIds: [] }, categories: [], signalFingerprints: [], signalStates: [], stateFingerprint: 'a'.repeat(64) }, signals: [], insights: [], trends: [] }
+        for (const call of pending.filter((item) => item.workspace === workspace)) {
+          call.resolve(call.kind === 'status' ? run : call.kind === 'summary' ? summary : call.kind === 'stack' ? stack : call.kind === 'engineering' ? engineering : call.kind === 'semantic-status' ? null : call.kind === 'semantic-summary' ? { workspace, indexVersion: 1, latestRun: null, files: 0, units: 0, indexedUnits: 0, lexicalOnlyUnits: 0, staleUnits: 0, failedUnits: 0, excludedUnits: 0 } : [])
+        }
+      }
+      Object.defineProperty(window, '__sessionSwitch', { configurable: true, value: { pending, resolveWorkspace } })
+    })
+    await page.getByRole('button', { name: 'Inteligência do projeto' }).click()
+    await page.evaluate(() => (window as unknown as { __nocturneTest: { emitProjectIndexStatus(payload: unknown): void } }).__nocturneTest.emitProjectIndexStatus({ workspace: '/workspace/sample-project', status: 'completed' }))
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __sessionSwitch: { pending: Array<unknown> } }).__sessionSwitch.pending.length)).toBeGreaterThan(0)
+    await page.locator('.workspace-card').click()
+    await expect(page.locator('.workspace-card')).toContainText('second-project')
+    await page.evaluate(() => (window as unknown as { __sessionSwitch: { resolveWorkspace(workspace: string, marker: string): void } }).__sessionSwitch.resolveWorkspace('/workspace/second-project', 'SECOND'))
+    await expect(page.getByText('SECOND', { exact: true })).toBeVisible()
+    await page.evaluate(() => (window as unknown as { __sessionSwitch: { resolveWorkspace(workspace: string, marker: string): void } }).__sessionSwitch.resolveWorkspace('/workspace/sample-project', 'FIRST'))
+    await expect(page.getByText('SECOND', { exact: true })).toBeVisible()
+    await expect(page.getByText('FIRST', { exact: true })).toHaveCount(0)
+  })
+
+  test('não aplica reload de ChangeSet de uma execução anterior após trocar de execução', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await ready(page)
+    await page.evaluate(() => {
+      const pending: Array<{ executionId: string; resolve(value: unknown): void }> = []
+      window.nocturne.changeControl.get = async (_conversationId, executionId) => new Promise((resolve) => {
+        pending.push({ executionId, resolve: (value) => resolve(value as never) })
+      })
+      window.nocturne.changeControl.changes = async (_conversationId, changeSetId) => [{
+        id: `change-${changeSetId}`, executionId: changeSetId, changeSetId, checkpointId: null, relativePath: `${changeSetId}.ts`, originalPath: null,
+        operation: 'modify', origin: 'codex-file-change', beforeHash: 'a'.repeat(64), afterHash: 'b'.repeat(64), beforeSize: 1, afterSize: 2,
+        status: 'pending', validationStatus: 'unknown', policy: 'allowed', policyReason: null, createdAt: '2026-07-13T20:00:00.000Z', updatedAt: '2026-07-13T20:00:00.000Z',
+      }]
+      Object.defineProperty(window, '__changeControlSession', {
+        configurable: true,
+        value: {
+          pending,
+          resolve(index: number, value: unknown) { pending[index]?.resolve(value) },
+        },
+      })
+    })
+    await page.getByRole('tab', { name: 'Atividade' }).click()
+    await page.evaluate(() => (window as unknown as { __nocturneTest: { emitStatus(value: unknown): void } }).__nocturneTest.emitStatus({ status: 'completed', executionId: 'execution-a' }))
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __changeControlSession: { pending: unknown[] } }).__changeControlSession.pending.length)).toBe(1)
+    await page.evaluate(() => (window as unknown as { __nocturneTest: { emitStatus(value: unknown): void } }).__nocturneTest.emitStatus({ status: 'completed', executionId: 'execution-b' }))
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __changeControlSession: { pending: unknown[] } }).__changeControlSession.pending.length)).toBe(2)
+
+    const changeSet = (id: string, executionId: string) => ({ id, executionId, beforeCheckpointId: `${id}-before`, afterCheckpointId: `${id}-after`, status: 'pending', createdAt: '2026-07-13T20:00:00.000Z', updatedAt: '2026-07-13T20:00:00.000Z' })
+    await page.evaluate((value) => (window as unknown as { __changeControlSession: { resolve(index: number, value: unknown): void } }).__changeControlSession.resolve(1, value), changeSet('set-b', 'execution-b'))
+    await expect(page.getByText('set-b.ts', { exact: true })).toBeVisible()
+    await page.evaluate((value) => (window as unknown as { __changeControlSession: { resolve(index: number, value: unknown): void } }).__changeControlSession.resolve(0, value), changeSet('set-a', 'execution-a'))
+    await expect(page.getByText('set-b.ts', { exact: true })).toBeVisible()
+    await expect(page.getByText('set-a.ts', { exact: true })).toHaveCount(0)
+  })
+
   test('mantém somente um painel modal e restaura o foco', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await ready(page)

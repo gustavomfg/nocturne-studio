@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Check, ChevronDown, FileCode2, LoaderCircle, Pencil, ShieldAlert, X } from 'lucide-react'
 import type { ChangeHunkRecord, ChangeRecord, ChangeSetRecord, FileDiff } from '../../../shared/changeControl'
 import { errorMessage } from '../../shared/format'
@@ -11,6 +11,20 @@ interface ChangeControlPanelProps {
   onNotify(value: string): void
 }
 
+interface ChangeControlSession {
+  conversationId: string | null
+  executionId: string | null
+  generation: number
+  mounted: boolean
+}
+
+function isCurrentSession(ref: { current: ChangeControlSession }, token: { conversationId: string | null; executionId: string | null; generation: number }) {
+  return ref.current.conversationId === token.conversationId
+    && ref.current.executionId === token.executionId
+    && ref.current.generation === token.generation
+    && ref.current.mounted
+}
+
 /** Presents durable file decisions inside the existing Agent activity inspector. */
 export function ChangeControlPanel({ conversationId, executionId, onError, onNotify }: ChangeControlPanelProps) {
   const { t } = useI18n()
@@ -21,49 +35,74 @@ export function ChangeControlPanel({ conversationId, executionId, onError, onNot
   const [hunkDrafts, setHunkDrafts] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const sessionRef = useRef<ChangeControlSession>({ conversationId, executionId, generation: 0, mounted: true })
+  if (sessionRef.current.conversationId !== conversationId || sessionRef.current.executionId !== executionId) {
+    sessionRef.current = { conversationId, executionId, generation: sessionRef.current.generation + 1, mounted: true }
+  }
 
   const reload = useCallback(async () => {
+    const token = { conversationId, executionId, generation: sessionRef.current.generation }
     if (!conversationId || !executionId) {
-      setChangeSet(null)
-      setChanges([])
+      if (isCurrentSession(sessionRef, token)) {
+        setChangeSet(null)
+        setChanges([])
+        setDiffs({})
+        setHunks({})
+        setHunkDrafts({})
+        setExpanded(null)
+        setLoading(false)
+      }
       return
     }
     setLoading(true)
     try {
       const nextSet = await window.nocturne.changeControl.get(conversationId, executionId)
+      if (!isCurrentSession(sessionRef, token)) return
+      const nextChanges = nextSet ? await window.nocturne.changeControl.changes(conversationId, nextSet.id) : []
+      if (!isCurrentSession(sessionRef, token)) return
       setChangeSet(nextSet)
-      setChanges(nextSet ? await window.nocturne.changeControl.changes(conversationId, nextSet.id) : [])
+      setChanges(nextChanges)
       setDiffs({})
       setHunks({})
       setHunkDrafts({})
+      setExpanded(null)
     } catch (error) {
-      onError(errorMessage(error))
+      if (isCurrentSession(sessionRef, token)) onError(errorMessage(error))
     } finally {
-      setLoading(false)
+      if (isCurrentSession(sessionRef, token)) setLoading(false)
     }
   }, [conversationId, executionId, onError])
 
   useEffect(() => {
-    let active = true
-    void reload().then(() => { if (!active) return }).catch(() => undefined)
-    if (!conversationId || !executionId) return () => { active = false }
+    sessionRef.current.mounted = true
+    setChangeSet(null)
+    setChanges([])
+    setDiffs({})
+    setHunks({})
+    setHunkDrafts({})
+    setExpanded(null)
+    setLoading(false)
+    void reload().catch(() => undefined)
+    if (!conversationId || !executionId) return () => { sessionRef.current.mounted = false }
     const offChanged = window.nocturne.changeControl.onChanged((event) => {
-      if (event.executionId === executionId) void reload()
+      if (event.executionId === executionId && isCurrentSession(sessionRef, { conversationId, executionId, generation: sessionRef.current.generation })) void reload()
     })
-    return () => { active = false; offChanged() }
+    return () => { sessionRef.current.mounted = false; offChanged() }
   }, [conversationId, executionId, reload])
 
   if (!changeSet || !changes.length) return null
 
   const decide = async (change: ChangeRecord, status: 'accepted' | 'rejected') => {
     if (!conversationId) return
+    const token = { conversationId, executionId, generation: sessionRef.current.generation }
     try {
       const result = await window.nocturne.changeControl.decide(conversationId, change.id, status)
+      if (!isCurrentSession(sessionRef, token)) return
       setChangeSet(result.changeSet)
       setChanges((current) => current.map((item) => item.id === result.change.id ? result.change : item))
       onNotify(status === 'accepted' ? t('changeControl.accepted') : t('changeControl.rejected'))
     } catch (error) {
-      onError(errorMessage(error))
+      if (isCurrentSession(sessionRef, token)) onError(errorMessage(error))
     }
   }
 
@@ -73,6 +112,7 @@ export function ChangeControlPanel({ conversationId, executionId, onError, onNot
       setExpanded(null)
       return
     }
+    const token = { conversationId, executionId, generation: sessionRef.current.generation }
     setExpanded(change.id)
     if (Object.prototype.hasOwnProperty.call(diffs, change.id)) return
     try {
@@ -80,33 +120,40 @@ export function ChangeControlPanel({ conversationId, executionId, onError, onNot
         window.nocturne.changeControl.diff(conversationId, change.id),
         window.nocturne.changeControl.hunks(conversationId, change.id),
       ])
+      if (!isCurrentSession(sessionRef, token)) return
       setDiffs((current) => ({ ...current, [change.id]: diff }))
       setHunks((current) => ({ ...current, [change.id]: changeHunks }))
     } catch (error) {
-      setExpanded(null)
-      onError(errorMessage(error))
+      if (isCurrentSession(sessionRef, token)) {
+        setExpanded(null)
+        onError(errorMessage(error))
+      }
     }
   }
 
   const editHunk = async (hunk: ChangeHunkRecord) => {
     if (!conversationId) return
+    const token = { conversationId, executionId, generation: sessionRef.current.generation }
     try {
       const updated = await window.nocturne.changeControl.editHunk(conversationId, hunk.id, hunkDrafts[hunk.id] ?? hunk.finalPatch)
+      if (!isCurrentSession(sessionRef, token)) return
       setHunks((current) => ({ ...current, [hunk.changeId]: (current[hunk.changeId] ?? []).map((item) => item.id === updated.id ? updated : item) }))
       onNotify(t('changeControl.edited'))
     } catch (error) {
-      onError(errorMessage(error))
+      if (isCurrentSession(sessionRef, token)) onError(errorMessage(error))
     }
   }
 
   const decideHunk = async (hunk: ChangeHunkRecord, status: 'accepted' | 'rejected') => {
     if (!conversationId) return
+    const token = { conversationId, executionId, generation: sessionRef.current.generation }
     try {
       const updated = await window.nocturne.changeControl.decideHunk(conversationId, hunk.id, status)
+      if (!isCurrentSession(sessionRef, token)) return
       setHunks((current) => ({ ...current, [hunk.changeId]: (current[hunk.changeId] ?? []).map((item) => item.id === updated.id ? updated : item) }))
       onNotify(status === 'accepted' ? t('changeControl.accepted') : t('changeControl.rejected'))
     } catch (error) {
-      onError(errorMessage(error))
+      if (isCurrentSession(sessionRef, token)) onError(errorMessage(error))
     }
   }
 
