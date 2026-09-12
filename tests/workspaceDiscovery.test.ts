@@ -47,7 +47,41 @@ describe('descoberta do workspace', () => {
     expect(result.files).toHaveLength(2)
     expect(result.files.map((file) => file.relativePath)).toEqual(['a.ts', 'm.ts'])
     expect(result.truncated).toBe(true)
+    expect(result.truncationReason).toBe('storage')
     expect(result.exclusions).toEqual(expect.arrayContaining([{ relativePath: 'z.ts', reason: expect.stringContaining('Limite') }]))
+  })
+
+  it('aplica exclusões estruturais em qualquer segmento do caminho', async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-discovery-nested-'))
+    directories.push(workspace)
+    fs.mkdirSync(path.join(workspace, 'packages', 'app', 'node_modules', 'dependency'), { recursive: true })
+    fs.mkdirSync(path.join(workspace, 'packages', 'app', 'src'), { recursive: true })
+    fs.writeFileSync(path.join(workspace, 'packages', 'app', 'node_modules', 'dependency', 'index.js'), 'ignored')
+    fs.writeFileSync(path.join(workspace, 'packages', 'app', 'src', 'main.ts'), 'export const main = true')
+
+    const result = await new WorkspaceDiscoveryService().discover(workspace)
+
+    expect(result.files.map((file) => file.relativePath)).toEqual(['packages/app/src/main.ts'])
+    expect(result.exclusions).toEqual(expect.arrayContaining([
+      { relativePath: 'packages/app/node_modules', reason: expect.any(String) },
+    ]))
+  })
+
+  it('interrompe a travessia quando o orçamento de trabalho é atingido', async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-discovery-traversal-'))
+    directories.push(workspace)
+    fs.mkdirSync(path.join(workspace, 'a', 'deep'), { recursive: true })
+    fs.writeFileSync(path.join(workspace, 'a', 'first.ts'), 'first')
+    fs.writeFileSync(path.join(workspace, 'a', 'deep', 'second.ts'), 'second')
+    fs.writeFileSync(path.join(workspace, 'z.ts'), 'last')
+
+    const result = await new WorkspaceDiscoveryService({ maxTraversalEntries: 2 }).discover(workspace)
+
+    expect(result.truncated).toBe(true)
+    expect(result.truncationReason).toBe('traversal')
+    expect(result.exclusions).toEqual(expect.arrayContaining([
+      { relativePath: expect.any(String), reason: expect.stringContaining('travess') },
+    ]))
   })
 })
 

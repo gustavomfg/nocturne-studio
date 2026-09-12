@@ -57,4 +57,26 @@ describe('CheckpointService', () => {
 
     expect(result.files[0]).toMatchObject({ relativePath: 'new.txt', exists: false, kind: 'missing' })
   })
+
+  it('não captura diretórios estruturais excluídos em subpastas', async () => {
+    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-checkpoint-db-'))
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-checkpoint-project-'))
+    directories.push(userData, workspace)
+    fs.mkdirSync(path.join(workspace, 'packages', 'app', 'node_modules'), { recursive: true })
+    fs.writeFileSync(path.join(workspace, 'packages', 'app', 'node_modules', 'ignored.js'), 'ignored')
+    fs.writeFileSync(path.join(workspace, 'packages', 'app', 'source.ts'), 'export const source = true\n')
+    const database = new LocalDatabase(userData)
+    databases.push(database)
+    const conversation = database.createConversation(workspace)
+    database.createExecution({
+      id: '00000000-0000-4000-8000-000000000012', workspace, conversationId: conversation.id,
+      prompt: 'checkpoint', mode: 'build', status: 'running', decision: 'pending', retryOf: null,
+      startedAt: new Date().toISOString(), finishedAt: null, error: null,
+    })
+    const service = new CheckpointService(database.checkpoints, new WorkspaceCheckpointStore(path.join(userData, 'snapshots')))
+
+    const result = await service.capture('00000000-0000-4000-8000-000000000012', workspace, 'before')
+
+    expect(result.files.map((file) => file.relativePath)).toEqual(['packages/app/source.ts'])
+  })
 })

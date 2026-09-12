@@ -32,6 +32,7 @@ export const WORKSPACE_READ_LIMITS = Object.freeze({
 export const CODE_INTELLIGENCE_LIMITS = Object.freeze({
   maxFiles: 50_000,
   maxExclusions: 2_000,
+  maxTraversalEntries: 250_000,
   maxIndexedFileBytes: 8_000_000,
   maxParseBytes: 2_000_000,
   maxOutputCharacters: 20_000,

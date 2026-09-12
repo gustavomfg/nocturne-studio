@@ -58,6 +58,7 @@ const ASSET_EXTENSIONS = new Set(['.json', '.yaml', '.yml', '.toml', '.xml', '.s
 export interface WorkspaceDiscoveryOptions {
   maxFiles?: number
   maxExclusions?: number
+  maxTraversalEntries?: number
 }
 
 export class WorkspaceDiscoveryService {
@@ -71,7 +72,17 @@ export class WorkspaceDiscoveryService {
     const missingPaths: string[] = []
     const maxFiles = this.options.maxFiles ?? CODE_INTELLIGENCE_LIMITS.maxFiles
     const maxExclusions = this.options.maxExclusions ?? CODE_INTELLIGENCE_LIMITS.maxExclusions
+    const maxTraversalEntries = this.options.maxTraversalEntries ?? CODE_INTELLIGENCE_LIMITS.maxTraversalEntries
     let truncated = false
+    let truncationReason: 'storage' | 'traversal' | null = null
+    let traversalEntries = 0
+    let traversalStopped = false
+    let storageLimitReached = false
+
+    const markTruncated = (reason: 'storage' | 'traversal') => {
+      truncated = true
+      truncationReason ??= reason
+    }
 
     const addExclusion = (relativePath: string, reason: string) => {
       if (exclusions.length < maxExclusions) exclusions.push({ relativePath, reason })
@@ -91,6 +102,11 @@ export class WorkspaceDiscoveryService {
         return
       }
       if (stat.isDirectory()) {
+        if (storageLimitReached) {
+          markTruncated('storage')
+          addExclusion(relativePath, 'Limite de arquivos da indexação atingido; a pasta não foi percorrida.')
+          return
+        }
         await visit(absolutePath, relativePath)
         return
       }
@@ -103,7 +119,8 @@ export class WorkspaceDiscoveryService {
         return
       }
       if (files.length >= maxFiles) {
-        truncated = true
+        markTruncated('storage')
+        storageLimitReached = true
         addExclusion(relativePath, 'Limite de arquivos da indexação atingido.')
         return
       }
@@ -123,6 +140,7 @@ export class WorkspaceDiscoveryService {
 
     const visitedDirectories = new Set<string>()
     const visit = async (directory: string, prefix: string): Promise<void> => {
+      if (traversalStopped) return
       assertNotCancelled(signal)
       if (visitedDirectories.has(directory)) return
       visitedDirectories.add(directory)
@@ -135,6 +153,19 @@ export class WorkspaceDiscoveryService {
       }
 
       for (const entry of entries) {
+        if (storageLimitReached) {
+          markTruncated('storage')
+          traversalStopped = true
+          addExclusion(prefix || '.', 'Limite de arquivos da indexação atingido; a travessia foi interrompida.')
+          break
+        }
+        if (traversalEntries >= maxTraversalEntries) {
+          markTruncated('traversal')
+          traversalStopped = true
+          addExclusion(prefix || '.', 'Limite de trabalho da travessia atingido.')
+          break
+        }
+        traversalEntries += 1
         assertNotCancelled(signal)
         const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name
         if (isIgnoredProjectDiscoveryRelativePath(relativePath)) {
@@ -142,6 +173,7 @@ export class WorkspaceDiscoveryService {
           continue
         }
         await addFile(path.join(directory, entry.name), relativePath, entry.name)
+        if (traversalStopped) break
       }
     }
 
@@ -151,6 +183,19 @@ export class WorkspaceDiscoveryService {
     if (normalizedPaths === null) await visit(root, '')
     else {
       for (const relativePath of normalizedPaths) {
+        if (storageLimitReached) {
+          markTruncated('storage')
+          traversalStopped = true
+          addExclusion(relativePath, 'Limite de arquivos da indexação atingido; a travessia foi interrompida.')
+          break
+        }
+        if (traversalEntries >= maxTraversalEntries) {
+          markTruncated('traversal')
+          traversalStopped = true
+          addExclusion(relativePath, 'Limite de trabalho da travessia atingido.')
+          break
+        }
+        traversalEntries += 1
         assertNotCancelled(signal)
         if (isIgnoredProjectDiscoveryRelativePath(relativePath)) {
           addExclusion(relativePath, 'Diretório gerado ou de controle excluído da indexação.')
@@ -163,7 +208,7 @@ export class WorkspaceDiscoveryService {
     configurationFiles.sort()
     exclusions.sort((left, right) => left.relativePath < right.relativePath ? -1 : left.relativePath > right.relativePath ? 1 : 0)
     missingPaths.sort()
-    return { workspace: root, files, configurationFiles, exclusions, missingPaths, completedAt: new Date().toISOString(), truncated }
+    return { workspace: root, files, configurationFiles, exclusions, missingPaths, completedAt: new Date().toISOString(), truncated, truncationReason }
   }
 }
 

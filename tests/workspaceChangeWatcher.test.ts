@@ -37,6 +37,7 @@ describe('monitoramento de mudanças no workspace', () => {
     captured.listener?.('rename', 'src/App.tsx')
     captured.listener?.('change', '.nocturne/memory.md')
     captured.listener?.('change', 'node_modules/package/index.js')
+    captured.listener?.('change', 'packages/app/node_modules/package/index.js')
     for (let index = 0; index < 105; index += 1) captured.listener?.('change', `src/file-${index}.ts`)
     vi.advanceTimersByTime(50)
 
@@ -48,6 +49,7 @@ describe('monitoramento de mudanças no workspace', () => {
     })
     expect(emitted.mock.calls[0][0].paths).toHaveLength(100)
     expect(emitted.mock.calls[0][0].paths).not.toContain('node_modules/package/index.js')
+    expect(emitted.mock.calls[0][0].paths).not.toContain('packages/app/node_modules/package/index.js')
     await watcher.stop()
     expect(close).toHaveBeenCalledOnce()
   })
