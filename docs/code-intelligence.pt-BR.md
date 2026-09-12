@@ -24,6 +24,17 @@ somente o arquivo ou diretório afetado. Um overflow ou uma reindexação manual
 usa reconciliação completa. Eventos recebidos durante uma execução são
 coalescidos em uma fila por workspace.
 
+As exclusões estruturais são aplicadas a todos os segmentos do caminho
+normalizado. Assim, `node_modules` aninhado, saída de build e outros diretórios
+gerados não são percorridos por engano. O watcher usa a política mais estreita
+do workspace (mantém `.nocturne` observável para memória e evidências), enquanto
+descoberta do projeto e checkpoints usam a política de descoberta. Essa
+diferença é deliberada por domínio; nenhuma das políticas interpreta
+`.gitignore` atualmente. `maxFiles` é orçamento de armazenamento e
+`maxTraversalEntries` é orçamento separado de trabalho. Uma travessia truncada
+registra qual orçamento foi atingido e nunca trata caminhos não visitados como
+exclusões comprovadas.
+
 ## Índice persistido
 
 O SQLite mantém `project_index_runs`, `project_index_files`,
@@ -32,6 +43,14 @@ O SQLite mantém `project_index_runs`, `project_index_files`,
 carrega o hash analisado do arquivo de origem; evidências do stack carregam o
 hash do arquivo que sustentou a conclusão. A versão estrutural atual é
 `CODE_INTELLIGENCE_INDEX_VERSION`.
+
+O serviço lê e calcula o hash de um arquivo descoberto antes de reutilizar suas
+linhas derivadas. A reutilização também exige a mesma identidade/versão do
+parser. Uma mudança da versão estrutural força a reconstrução completa dos
+derivados. Em um evento incremental, um importer inalterado é reprocessado
+quando criação/remoção/renomeação de um alvo pode mudar a resolução relativa; os
+hashes de alvos só são atualizados depois que as linhas correspondentes são
+persistidas. Metadados como tamanho e mtime não são prova de bytes inalterados.
 
 Falhas de leitura ou parsing são registradas no arquivo correspondente e não
 interrompem os demais arquivos. O retry seleciona somente arquivos em falha.
@@ -91,6 +110,22 @@ superficial antes de combiná-los. O `ContextAssemblyService` aplica prioridade
 de fontes, deduplicação, limites de tokens e proveniência. Resultados enviados
 à IA incluem caminho, hash analisado, hash do chunk, versão do índice e motivo
 da recuperação.
+
+O top-k vetorial é escolhido depois do scoring, e filtros globais de caminho,
+linguagem, tipo e símbolo são aplicados a todas as fontes de candidatos. A
+evidência de dependência é um reforço de suporte, não uma probabilidade; um
+candidato somente por dependência não pode ser renormalizado para score 1.
+Localizações de chunks apontam para offsets reais do arquivo original, inclusive
+após split. Proveniência de Awareness só é emitida para fontes que sobreviveram
+à montagem e foram serializadas. `estimatedTokens` continua sendo a estimativa
+documentada de quatro caracteres por token, não uma garantia rígida do Provider.
+A estratégia atual de chunks é `symbols-v2`; unidades persistidas antigas são
+reconstruídas quando encontradas.
+
+Resultados de indexação/busca no renderer e operações de Change Control carregam
+identidade de workspace, execução, geração de sessão ou request. Respostas
+atrasadas são descartadas quando a identidade deixou de ser atual, inclusive
+após unmount ou uma busca mais recente.
 
 ## IA e observabilidade
 

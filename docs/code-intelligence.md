@@ -23,6 +23,16 @@ index, a file event uses partial discovery and reprocesses only the affected
 file or directory. Overflow or manual reindex uses full reconciliation. Events
 received during a run are coalesced in a per-workspace queue.
 
+Discovery applies structural exclusions to every normalized path segment, so
+nested `node_modules`, build output and other generated directories are not
+walked accidentally. The watcher uses the narrower workspace policy (it keeps
+`.nocturne` observable for workspace memory and evidence), while project
+discovery and checkpoints use the project policy. These are deliberate domain
+boundaries; neither policy interprets `.gitignore` today. `maxFiles` is a
+storage budget and `maxTraversalEntries` is a separate work budget. A truncated
+walk records which budget was hit and never treats unvisited paths as proven
+deletions.
+
 ## Persisted index
 
 SQLite stores `project_index_runs`, `project_index_files`,
@@ -31,6 +41,14 @@ SQLite stores `project_index_runs`, `project_index_files`,
 keeps the analyzed hash of its source file; stack evidence keeps the hash of the
 file supporting the conclusion. The current structural version is
 `CODE_INTELLIGENCE_INDEX_VERSION`.
+
+The service reads and hashes a discovered file before reusing its derived rows.
+Reuse additionally requires the same parser identity/version. A structural
+version change forces a full derived rebuild. During an incremental event, an
+unchanged importer is reprocessed when a newly created/deleted/renamed target
+can change relative resolution; target hashes are refreshed only after the
+corresponding file rows are persisted. A source event therefore does not rely
+on metadata such as size and mtime as proof of unchanged bytes.
 
 Read or parse failures are recorded on the corresponding file and do not stop
 other files. Retry selects only failed files. Reindexing replaces relations and
@@ -97,6 +115,20 @@ checks the actual file bytes; results carry `validity: "current"`, `"stale"`,
 or `"unknown"`. Stale candidates are dropped, while unknown I/O is exposed as
 potentially outdated. This is a relevant-scope check, not a claim that the
 whole workspace was an atomic snapshot.
+
+Vector top-k is selected after scoring and global path/language/kind/symbol
+filters are applied to every candidate source. Dependency evidence is a
+supporting boost, not a probability, so a dependency-only candidate cannot be
+renormalized to score 1. Chunk locations refer to the original file offsets,
+including split chunks. Awareness provenance is produced only for sources that
+survived context assembly and were serialized; `estimatedTokens` remains the
+documented four-characters-per-token estimate, not a provider hard limit.
+The current chunk strategy is `symbols-v2`; older persisted units are rebuilt
+when they are next encountered.
+
+Renderer index/search and Change Control requests carry workspace, execution,
+session-generation or request identity. A late response is discarded when its
+identity is no longer current, including after unmount or a newer search.
 
 ## AI and observability
 
