@@ -17,6 +17,7 @@ describe('SemanticRetrievalService scoring', () => {
   it('renormaliza pesos quando embeddings não estão disponíveis', () => {
     expect(combineScores({ vector: 0, lexical: 1, structural: 0, dependency: 0 }, false)).toBe(1)
     expect(combineScores({ vector: 1, lexical: 0, structural: 0, dependency: 0 }, true)).toBe(1)
+    expect(combineScores({ vector: 0, lexical: 0, structural: 0, dependency: 1 }, true)).toBe(0.05)
     expect(combineScores({ vector: 0, lexical: 0, structural: 0, dependency: 0 }, false)).toBe(0)
   })
 })

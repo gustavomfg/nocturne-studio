@@ -9,6 +9,7 @@ import { aiCancelSchema, aiSendSchema, approvalSchema, idSchema, saveAssistantSc
 import { WORKSPACE_READ_LIMITS } from '../../shared/constants'
 import { buildBrainMemoryContext } from '../memory/BrainMemoryContext'
 import { ContextAssemblyService, serializeContextSources } from '../ai/ContextAssemblyService'
+import { retainSerializedAwarenessSelections } from '../ai/ContextAwareness'
 import { isWorkspaceFileTooLarge, readWorkspaceFile } from '../security/ExecutionPolicy'
 import type { LocalDatabase } from '../database/Database'
 import type { Logger } from '../logging/Logger'
@@ -112,11 +113,10 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
       },
     })))
     const assembledContext = contextAssembly.assemble({ sources: contextSources })
-    const awareness: AwarenessSnapshot = {
-      mode,
-      createdAt: new Date().toISOString(),
-      selections: [
-        ...(workspaceMemory.content ? [{
+    const awarenessCandidates = [
+      ...(workspaceMemory.content ? [{
+        sourceId: 'workspace-memory',
+        selection: {
           id: 'workspace-memory',
           title: 'Memória do workspace',
           source: 'workspace-memory' as const,
@@ -128,10 +128,13 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
           reason: 'Contexto explícito mantido pelo usuário para todas as execuções deste workspace.',
           updatedAt: workspaceMemory.updatedAt || null,
           contentPreview: workspaceMemory.content.slice(0, 500),
-        }] : []),
-        ...brainMemory.selections,
-        ...(projectContext?.selections ?? []),
-        ...semanticResults.map((result) => ({
+        },
+      }] : []),
+      ...brainMemory.selections.map((selection) => ({ sourceId: 'brain-memory', selection })),
+      ...(projectContext?.selections.map((selection) => ({ sourceId: `project-index:${projectContext.runId}`, selection })) ?? []),
+      ...semanticResults.map((result) => ({
+        sourceId: `semantic-index:${result.unit.id}`,
+        selection: {
           id: `semantic-index:${result.unit.id}`,
           title: `${result.unit.symbolName ?? result.unit.relativePath} · ${result.unit.kind}`,
           source: 'semantic-index' as const,
@@ -146,8 +149,13 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
           analyzedHash: result.unit.sourceHash,
           indexVersion: result.provenance.indexVersion,
           potentiallyOutdated: result.provenance.potentiallyOutdated,
-        })),
-      ],
+        },
+      })),
+    ]
+    const awareness: AwarenessSnapshot = {
+      mode,
+      createdAt: new Date().toISOString(),
+      selections: retainSerializedAwarenessSelections(assembledContext.sources, awarenessCandidates),
     }
     const executionId = randomUUID()
     const execution: ExecutionRecord = {

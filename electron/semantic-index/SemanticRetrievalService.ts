@@ -42,7 +42,7 @@ export class SemanticRetrievalService {
     const lexical = this.repository.searchLexical(workspace, input.query, filters, RETRIEVAL_LIMITS.lexicalCandidates)
       .filter((match) => this.isStructurallyCurrent(workspace, match.unit))
     const embedding = await this.resolveQueryEmbedding(workspace, input.query)
-    const vectors = embedding ? this.repository.listIndexedEmbeddings(workspace, embedding.space) : []
+    const vectors = embedding ? this.repository.listIndexedEmbeddings(workspace, embedding.space, filters) : []
     const vectorScores = embedding ? rankVectors(vectors, embedding.vector) : new Map<string, number>()
     const lexicalScores = rankLexical(lexical)
     const dependencyPaths = this.dependencyExpansion(workspace, lexical)
@@ -60,8 +60,16 @@ export class SemanticRetrievalService {
       })
     }
     for (const match of lexical) this.addCandidate(candidates, match.unit, input.query, lexicalScores.get(match.unit.id) ?? 0, dependencyPaths)
-    for (const stored of vectors.slice(0, RETRIEVAL_LIMITS.vectorCandidates)) {
-      if (!this.isStructurallyCurrent(workspace, stored.unit)) continue
+    // The candidate limit applies after scoring, not to storage order. The
+    // repository already applies the global query filters; the structural
+    // gate below keeps those eligible rows aligned with the Project Index.
+    const rankedVectors = vectors
+      .map((stored) => ({ stored, score: vectorScores.get(stored.unit.id) ?? 0 }))
+      .filter(({ stored }) => this.isStructurallyCurrent(workspace, stored.unit))
+      .sort((left, right) => right.score - left.score
+        || left.stored.unit.relativePath.localeCompare(right.stored.unit.relativePath)
+        || left.stored.unit.id.localeCompare(right.stored.unit.id))
+    for (const { stored } of rankedVectors.slice(0, RETRIEVAL_LIMITS.vectorCandidates)) {
       const current = candidates.get(stored.unit.id)
       if (current) {
         current.vector = vectorScores.get(stored.unit.id) ?? 0
@@ -71,7 +79,7 @@ export class SemanticRetrievalService {
       }
     }
 
-    const hasVector = vectorScores.size > 0
+    const hasVector = rankedVectors.length > 0
     const ranked = [...candidates.values()]
       .map((candidate) => {
         const final = combineScores(candidate, hasVector)
@@ -87,7 +95,9 @@ export class SemanticRetrievalService {
         }
       })
       .filter((result) => result.final > 0)
-      .sort((left, right) => right.final - left.final || left.candidate.unit.relativePath.localeCompare(right.candidate.unit.relativePath))
+      .sort((left, right) => right.final - left.final
+        || left.candidate.unit.relativePath.localeCompare(right.candidate.unit.relativePath)
+        || left.candidate.unit.id.localeCompare(right.candidate.unit.id))
 
     const requestedLimit = Math.max(1, Math.min(100, Math.trunc(input.limit ?? 20)))
     // Live verification is deliberately bounded to the best candidates. It
@@ -223,6 +233,11 @@ export function combineScores(candidate: Pick<Candidate, 'vector' | 'lexical' | 
     + (candidate.structural > 0 ? weights.structural : 0)
     + (candidate.dependency > 0 ? weights.dependency : 0)
   if (activeWeight === 0) return 0
+  // Dependency expansion is supporting evidence, not a primary relevance
+  // signal. When it is the only signal, preserve the configured boost rather
+  // than renormalizing it to a misleading score of 1.0.
+  const hasPrimarySignal = candidate.vector > 0 || candidate.lexical > 0 || candidate.structural > 0
+  if (!hasPrimarySignal) return candidate.dependency > 0 ? weights.dependency : 0
   const weighted = candidate.vector * weights.vector
     + candidate.lexical * weights.lexical
     + candidate.structural * weights.structural

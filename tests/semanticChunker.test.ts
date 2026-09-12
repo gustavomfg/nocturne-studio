@@ -36,7 +36,7 @@ describe('SemanticChunker', () => {
 
     expect(first).toEqual(second)
     expect(first).toHaveLength(1)
-    expect(first[0]).toMatchObject({ kind: 'symbol', symbolId: 'symbol-app', sourceHash, chunkStrategyVersion: 'symbols-v1' })
+    expect(first[0]).toMatchObject({ kind: 'symbol', symbolId: 'symbol-app', sourceHash, chunkStrategyVersion: 'symbols-v2' })
     expect(first[0].normalizedText).toContain('file: src/app.ts')
     expect(first[0].chunkHash).toHaveLength(64)
   })
@@ -89,5 +89,31 @@ describe('SemanticChunker', () => {
       content: 'content',
       symbols: [],
     })).toEqual([])
+  })
+
+  it('preserva offsets e linhas reais em todos os chunks divididos', () => {
+    const content = Array.from({ length: 16_000 }, (_, index) => `linha-${index.toString().padStart(5, '0')} ${'x'.repeat(8)}`).join('\n')
+    const chunks = chunkSemanticFile({
+      file: {
+        workspace: '/workspace',
+        relativePath: 'large.txt',
+        classification: 'documentation',
+        language: 'text',
+        analyzedHash: sourceHash,
+      },
+      content,
+      symbols: [],
+    })
+
+    expect(chunks.length).toBeGreaterThanOrEqual(3)
+    for (const chunk of chunks) {
+      const startOffset = chunk.location.startOffset ?? -1
+      const endOffset = chunk.location.endOffset ?? -1
+      expect(startOffset).toBeGreaterThanOrEqual(0)
+      expect(endOffset).toBeGreaterThan(startOffset)
+      expect(content.slice(startOffset, endOffset).trim()).toBe(chunk.normalizedText.split('\n\n').slice(-1)[0].trim())
+      expect(chunk.location.startLine).toBe(content.slice(0, startOffset).split('\n').length)
+      expect(chunk.location.startColumn).toBe((content.slice(0, startOffset).split('\n').pop()?.length ?? 0) + 1)
+    }
   })
 })

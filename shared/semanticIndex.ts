@@ -1,7 +1,9 @@
 import type { ModelReference } from './ai/model'
 
 export const SEMANTIC_INDEX_VERSION = 1
-export const SEMANTIC_CHUNK_STRATEGY_VERSION = 'symbols-v1'
+// Location accounting changed from slice-local to source-relative offsets.
+// A new value forces persisted derived units to be rebuilt lazily.
+export const SEMANTIC_CHUNK_STRATEGY_VERSION = 'symbols-v2'
 
 export const semanticUnitKinds = [
   'symbol',

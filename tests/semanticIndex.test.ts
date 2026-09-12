@@ -232,20 +232,22 @@ describe('Semantic Index', () => {
     fs.writeFileSync(path.join(fixture.workspace, 'stable.ts'), 'export const stable = true\n')
     fs.writeFileSync(path.join(fixture.workspace, 'changing.ts'), 'export const changing = 1\n')
     let semantic: SemanticIndexService | undefined
+    let forwardProjectEvents = false
     const projectIndex = new ProjectIndexService(fixture.database.projectIndex, {
       onStatus: (status) => {
         if (['completed', 'failed', 'cancelled'].includes(status.status)) void semantic?.ensureIndexed(fixture.workspace)
       },
+      onFileProcessed: (event) => { if (forwardProjectEvents) semantic?.enqueueFile(event) },
     })
     semantic = new SemanticIndexService(fixture.database.semanticIndex, { projectIndex })
     await projectIndex.ensureIndexed(fixture.workspace)
     await semantic.ensureIndexed(fixture.workspace)
+    forwardProjectEvents = true
     const stableBefore = fixture.database.semanticIndex.listFileUnits(fixture.workspace, 'stable.ts')[0]
     const changingBefore = fixture.database.semanticIndex.listFileUnits(fixture.workspace, 'changing.ts')[0]
 
     fs.writeFileSync(path.join(fixture.workspace, 'changing.ts'), 'export const changing = 2\n')
     projectIndex.enqueueChange({ workspace: fixture.workspace, paths: ['changing.ts'], overflow: false })
-    semantic.enqueuePaths(fixture.workspace, ['changing.ts'])
     await waitFor(() => projectIndex.getStatus(fixture.workspace)?.kind === 'incremental' && projectIndex.getStatus(fixture.workspace)?.status === 'completed')
     await waitFor(() => semantic?.getStatus(fixture.workspace)?.kind === 'incremental' && semantic?.getStatus(fixture.workspace)?.status === 'completed')
 
@@ -254,6 +256,93 @@ describe('Semantic Index', () => {
     expect(stableAfter).toEqual(stableBefore)
     expect(changingAfter?.sourceHash).not.toBe(changingBefore?.sourceHash)
     expect(semantic.getMetrics()).toMatchObject({ runs: 2, incrementalRuns: 1 })
+    await semantic.dispose()
+  })
+
+  it('não deixa filtros estruturais serem ignorados por candidatos vetoriais', async () => {
+    const fixture = createFixture()
+    const target = path.join(fixture.workspace, 'main.ts')
+    fs.writeFileSync(target, 'export const vectorOnlyTerm = true\n')
+    const projectIndex = new ProjectIndexService(fixture.database.projectIndex)
+    await projectIndex.ensureIndexed(fixture.workspace)
+    const semantic = new SemanticIndexService(fixture.database.semanticIndex, { projectIndex })
+    await semantic.ensureIndexed(fixture.workspace)
+    const unit = fixture.database.semanticIndex.listFileUnits(fixture.workspace, 'main.ts')[0]!
+    const embeddingSpace = { providerId: 'local', modelId: 'test', modelVersion: '1', dimensions: 2 }
+    fixture.database.semanticIndex.replaceFileUnits(fixture.workspace, 'main.ts', [{ ...unit, status: 'indexed', embeddingSpace, embedding: [1, 0] }])
+    const retrieval = new SemanticRetrievalService(fixture.database.semanticIndex, projectIndex, {
+      resolve: async () => ({ space: embeddingSpace, remote: false, remoteAllowed: true }),
+      embed: async () => [[1, 0]],
+    })
+
+    await expect(retrieval.search({ workspace: fixture.workspace, query: 'vectorOnlyTerm', filters: { symbols: ['not-this-symbol'] }, limit: 10 })).resolves.toEqual([])
+    await semantic.dispose()
+  })
+
+  it('retorna o melhor vetor mesmo quando ele está depois de duzentos registros', async () => {
+    const fixture = createFixture()
+    for (let index = 0; index < 201; index += 1) {
+      const name = `file-${index.toString().padStart(3, '0')}.ts`
+      fs.writeFileSync(path.join(fixture.workspace, name), `export const value${index} = ${index}\n`)
+    }
+    fs.writeFileSync(path.join(fixture.workspace, 'zz-relevant.ts'), 'export const valueRelevant = true\n')
+    const projectIndex = new ProjectIndexService(fixture.database.projectIndex)
+    await projectIndex.ensureIndexed(fixture.workspace)
+    const semantic = new SemanticIndexService(fixture.database.semanticIndex, { projectIndex })
+    await semantic.ensureIndexed(fixture.workspace)
+    const embeddingSpace = { providerId: 'local', modelId: 'test', modelVersion: '1', dimensions: 2 }
+    const relevantPath = 'zz-relevant.ts'
+    for (const file of projectIndex.listFiles(fixture.workspace)) {
+      const unit = fixture.database.semanticIndex.listFileUnits(fixture.workspace, file.relativePath)[0]
+      if (!unit) continue
+      fixture.database.semanticIndex.replaceFileUnits(fixture.workspace, file.relativePath, [{ ...unit, status: 'indexed', embeddingSpace, embedding: file.relativePath === relevantPath ? [1, 0] : [0, 1] }])
+    }
+    const retrieval = new SemanticRetrievalService(fixture.database.semanticIndex, projectIndex, {
+      resolve: async () => ({ space: embeddingSpace, remote: false, remoteAllowed: true }),
+      embed: async () => [[1, 0]],
+    })
+
+    const results = await retrieval.search({ workspace: fixture.workspace, query: 'unmatched-query', limit: 1 })
+
+    expect(results[0]?.unit.relativePath).toBe(relevantPath)
+    expect(results[0]?.scores.vector).toBe(1)
+    await semantic.dispose()
+  })
+
+  it('mantém dependência-only como reforço abaixo da evidência primária', async () => {
+    const fixture = createFixture()
+    fs.writeFileSync(path.join(fixture.workspace, 'main.ts'), "import { dependency } from './dependency'\nexport const mainTerm = dependency\n")
+    fs.writeFileSync(path.join(fixture.workspace, 'dependency.ts'), 'export const dependency = true\n')
+    const projectIndex = new ProjectIndexService(fixture.database.projectIndex)
+    await projectIndex.ensureIndexed(fixture.workspace)
+    const semantic = new SemanticIndexService(fixture.database.semanticIndex, { projectIndex })
+    await semantic.ensureIndexed(fixture.workspace)
+    const retrieval = new SemanticRetrievalService(fixture.database.semanticIndex, projectIndex)
+
+    const results = await retrieval.search({ workspace: fixture.workspace, query: 'mainTerm', limit: 10 })
+    const dependency = results.find((result) => result.unit.relativePath === 'dependency.ts')
+    const primary = results.find((result) => result.unit.relativePath === 'main.ts')
+
+    expect(primary?.scores.lexical).toBeGreaterThan(0)
+    expect(dependency?.scores.dependency).toBe(1)
+    expect(dependency?.scores.final).toBe(0.1)
+    expect(primary?.scores.final).toBeGreaterThan(dependency?.scores.final ?? 1)
+    await semantic.dispose()
+  })
+
+  it('reconstrói unidades persistidas quando a estratégia de localização muda', async () => {
+    const fixture = createFixture()
+    fs.writeFileSync(path.join(fixture.workspace, 'main.ts'), 'export const locationTerm = true\n')
+    const projectIndex = new ProjectIndexService(fixture.database.projectIndex)
+    await projectIndex.ensureIndexed(fixture.workspace)
+    const semantic = new SemanticIndexService(fixture.database.semanticIndex, { projectIndex })
+    await semantic.ensureIndexed(fixture.workspace)
+    const current = fixture.database.semanticIndex.listFileUnits(fixture.workspace, 'main.ts')[0]!
+    fixture.database.semanticIndex.replaceFileUnits(fixture.workspace, 'main.ts', [{ ...current, chunkStrategyVersion: 'symbols-v1' }])
+
+    await semantic.ensureIndexed(fixture.workspace)
+
+    expect(fixture.database.semanticIndex.listFileUnits(fixture.workspace, 'main.ts')[0]?.chunkStrategyVersion).toBe('symbols-v2')
     await semantic.dispose()
   })
 })

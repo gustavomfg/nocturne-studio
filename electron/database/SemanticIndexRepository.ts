@@ -136,17 +136,21 @@ export class SemanticIndexRepository {
     return rows.map(toSemanticUnit)
   }
 
-  listIndexedEmbeddings(workspace: string, space: SemanticEmbeddingSpace): StoredSemanticEmbedding[] {
+  listIndexedEmbeddings(workspace: string, space: SemanticEmbeddingSpace, filters: SemanticSearchFilters = {}): StoredSemanticEmbedding[] {
     const dimensionsClause = space.dimensions > 0 ? 'AND embedding_dimensions=?' : ''
+    const clauses = [
+      'workspace=?',
+      "status='indexed'",
+      'embedding_provider_id=?',
+      'embedding_model_id=?',
+      'embedding_model_version IS ?',
+      dimensionsClause.replace(/^AND\s+/, ''),
+      'embedding IS NOT NULL',
+    ].filter(Boolean)
     const parameters: unknown[] = [workspace, space.providerId, space.modelId, space.modelVersion]
     if (space.dimensions > 0) parameters.push(space.dimensions)
-    const rows = this.database.prepare(`${semanticUnitSelect}
-      WHERE workspace=? AND status='indexed'
-        AND embedding_provider_id=? AND embedding_model_id=?
-        AND embedding_model_version IS ? ${dimensionsClause}
-        AND embedding IS NOT NULL`).all(
-      ...parameters,
-    ) as SemanticUnitRow[]
+    appendFilters(clauses, parameters, filters)
+    const rows = this.database.prepare(`${semanticUnitSelect} WHERE ${clauses.join(' AND ')}`).all(...parameters) as SemanticUnitRow[]
     return rows.flatMap((row) => {
       if (!row.embedding) return []
       return [{ unit: toSemanticUnit(row), embedding: deserializeEmbedding(row.embedding, row.embeddingDimensions) }]

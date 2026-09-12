@@ -355,7 +355,11 @@ export class SemanticIndexService {
     for (const file of files) {
       const units = this.repository.listFileUnits(workspace, file.relativePath)
       const fallbackMatches = Boolean(embedding && units.length > 0 && units.every((unit) => lexicalFallbackMatches(unit, embedding)))
-      if (!units.length || units.some((unit) => unit.sourceHash !== file.analyzedHash || unit.status === 'stale' || unit.status === 'incompatible' || (embedding && !sameSpace(unit.embeddingSpace, embedding.space) && !fallbackMatches))) paths.push(file.relativePath)
+      if (!units.length || units.some((unit) => unit.sourceHash !== file.analyzedHash
+        || unit.chunkStrategyVersion !== SEMANTIC_CHUNK_STRATEGY_VERSION
+        || unit.status === 'stale'
+        || unit.status === 'incompatible'
+        || (embedding && !sameSpace(unit.embeddingSpace, embedding.space) && !fallbackMatches))) paths.push(file.relativePath)
     }
     return paths
   }

@@ -74,16 +74,21 @@ function splitText(
   content: string,
 ): SemanticChunk[] {
   const chunks: SemanticChunk[] = []
+  // `content` can be a symbol/section slice rather than the whole file. Use
+  // its source-relative start so every split chunk reports offsets and
+  // line/column coordinates in the original file.
+  const sourceStartOffset = parentLocation.startOffset
+    ?? offsetAt(input.content, parentLocation.startLine, parentLocation.startColumn)
   for (let offset = 0, ordinal = 0; offset < content.length; ordinal += 1) {
     const end = Math.min(content.length, offset + SEMANTIC_CHUNK_LIMITS.maxCharacters)
     const slice = content.slice(offset, end)
-    const location = locationForRange(slice, 0, slice.length)
+    const location = locationForRange(input.content, sourceStartOffset + offset, sourceStartOffset + end)
     chunks.push(createChunk(
       input,
       kind,
       symbolName ? `${symbolName}#${ordinal + 1}` : null,
       symbolId ? `${symbolId}:${ordinal + 1}` : null,
-      mergeLocations(parentLocation, location),
+      location,
       slice,
     ))
     offset = end
@@ -160,17 +165,6 @@ function locationForRange(content: string, start: number, end: number): Semantic
     endColumn: endPosition.column,
     startOffset: start,
     endOffset: Math.max(start, end),
-  }
-}
-
-function mergeLocations(parent: SemanticUnitLocation, child: SemanticUnitLocation): SemanticUnitLocation {
-  return {
-    startLine: parent.startLine + child.startLine - 1,
-    startColumn: child.startLine === 1 ? parent.startColumn + child.startColumn - 1 : child.startColumn,
-    endLine: parent.startLine + child.endLine - 1,
-    endColumn: child.endLine === 1 ? parent.startColumn + child.endColumn - 1 : child.endColumn,
-    startOffset: (parent.startOffset ?? 0) + (child.startOffset ?? 0),
-    endOffset: (parent.startOffset ?? 0) + (child.endOffset ?? 0),
   }
 }
 
