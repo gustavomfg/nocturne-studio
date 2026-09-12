@@ -71,6 +71,17 @@ function resolveLocalTarget(sourcePath: string, specifier: string, files: Readon
   return null
 }
 
+/** Returns whether a newly observed path could change this unresolved import. */
+export function relationMayResolveToPath(sourcePath: string, specifier: string, relativePath: string) {
+  if (!isRelativeSpecifier(specifier)) return false
+  const base = path.posix.normalize(path.posix.join(path.posix.dirname(sourcePath), specifier)).replace(/^\.\//, '')
+  if (base === '..' || base.startsWith('../')) return false
+  return [
+    ...RESOLUTION_EXTENSIONS.map((suffix) => `${base}${suffix}`),
+    ...RESOLUTION_EXTENSIONS.slice(1).map((suffix) => `${base}/index${suffix}`),
+  ].includes(relativePath)
+}
+
 function isRelativeSpecifier(specifier: string) {
   return specifier === '.' || specifier === '..' || specifier.startsWith('./') || specifier.startsWith('../')
 }

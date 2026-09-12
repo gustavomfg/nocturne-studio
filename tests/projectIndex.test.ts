@@ -7,6 +7,8 @@ import { LocalDatabase } from '../electron/database/Database'
 import { migrateDatabase, migrations } from '../electron/database/migrations'
 import { WorkspaceDiscoveryService } from '../electron/project-index/WorkspaceDiscoveryService'
 import { ProjectIndexService } from '../electron/project-index/ProjectIndexService'
+import { ParserRegistry } from '../electron/project-index/ParserAdapter'
+import { TypeScriptParserAdapter } from '../electron/project-index/TypeScriptParserAdapter'
 import type { ValidationRun } from '../shared/codeIntelligence'
 
 const directories: string[] = []
@@ -197,6 +199,152 @@ describe('Project Index', () => {
     expect(partialDiscoveries).toBe(1)
     expect(stableAfter?.analyzedHash).toBe(stableBefore?.analyzedHash)
     expect(changing?.analyzedHash).not.toBe(stableBefore?.analyzedHash)
+  })
+
+  it('recalcula o importador quando um alvo antes ausente é criado', async () => {
+    const fixture = createFixture()
+    fs.writeFileSync(path.join(fixture.workspace, 'main.ts'), "import { missing } from './missing'\nexport const main = missing\n")
+    const processed: string[] = []
+    const service = new ProjectIndexService(fixture.database.projectIndex, { onFileProcessed: (event) => processed.push(event.relativePath) })
+    await service.ensureIndexed(fixture.workspace)
+    expect(service.listImports(fixture.workspace, 'main.ts')).toEqual([
+      expect.objectContaining({ resolution: 'unresolved', targetPath: null }),
+    ])
+
+    fs.writeFileSync(path.join(fixture.workspace, 'missing.ts'), 'export const missing = true\n')
+    processed.length = 0
+    service.enqueueChange({ workspace: fixture.workspace, paths: ['missing.ts'], overflow: false })
+    await waitFor(() => service.getStatus(fixture.workspace)?.kind === 'incremental' && service.getStatus(fixture.workspace)?.status === 'completed')
+
+    expect(processed).toEqual(expect.arrayContaining(['missing.ts', 'main.ts']))
+    expect(service.listImports(fixture.workspace, 'main.ts')).toEqual([
+      expect.objectContaining({ resolution: 'local', targetPath: 'missing.ts', targetHash: expect.stringMatching(/^[a-f0-9]{64}$/) }),
+    ])
+  })
+
+  it('recalcula o importador quando um alvo resolvido é removido', async () => {
+    const fixture = createFixture()
+    fs.writeFileSync(path.join(fixture.workspace, 'dependency.ts'), 'export const dependency = true\n')
+    fs.writeFileSync(path.join(fixture.workspace, 'main.ts'), "import { dependency } from './dependency'\nexport const main = dependency\n")
+    const service = new ProjectIndexService(fixture.database.projectIndex)
+    await service.ensureIndexed(fixture.workspace)
+    expect(service.listImports(fixture.workspace, 'main.ts')).toEqual([
+      expect.objectContaining({ resolution: 'local', targetPath: 'dependency.ts' }),
+    ])
+
+    fs.rmSync(path.join(fixture.workspace, 'dependency.ts'))
+    service.enqueueChange({ workspace: fixture.workspace, paths: ['dependency.ts'], overflow: false })
+    await waitFor(() => service.getStatus(fixture.workspace)?.kind === 'incremental' && service.getStatus(fixture.workspace)?.status === 'completed')
+
+    expect(service.listImports(fixture.workspace, 'main.ts')).toEqual([
+      expect.objectContaining({ resolution: 'unresolved', targetPath: null, targetHash: null }),
+    ])
+  })
+
+  it('recalcula a relação quando o alvo é renomeado', async () => {
+    const fixture = createFixture()
+    fs.writeFileSync(path.join(fixture.workspace, 'old.ts'), 'export const value = true\n')
+    fs.writeFileSync(path.join(fixture.workspace, 'main.ts'), "import { value } from './old'\nexport const main = value\n")
+    const service = new ProjectIndexService(fixture.database.projectIndex)
+    await service.ensureIndexed(fixture.workspace)
+    fs.renameSync(path.join(fixture.workspace, 'old.ts'), path.join(fixture.workspace, 'new.ts'))
+    service.enqueueChange({ workspace: fixture.workspace, paths: ['old.ts', 'new.ts'], overflow: false })
+    await waitFor(() => service.getStatus(fixture.workspace)?.kind === 'incremental' && service.getStatus(fixture.workspace)?.status === 'completed')
+
+    expect(service.listImports(fixture.workspace, 'main.ts')).toEqual([
+      expect.objectContaining({ resolution: 'unresolved', targetPath: null, targetHash: null }),
+    ])
+
+    fs.writeFileSync(path.join(fixture.workspace, 'main.ts'), "import { value } from './new'\nexport const main = value\n")
+    service.enqueueChange({ workspace: fixture.workspace, paths: ['main.ts'], overflow: false })
+    await waitFor(() => service.getStatus(fixture.workspace)?.kind === 'incremental' && service.getStatus(fixture.workspace)?.status === 'completed')
+    expect(service.listImports(fixture.workspace, 'main.ts')).toEqual([
+      expect.objectContaining({ resolution: 'local', targetPath: 'new.ts' }),
+    ])
+  })
+
+  it('atualiza o hash do alvo sem reprocessar um importer inalterado', async () => {
+    const fixture = createFixture()
+    fs.writeFileSync(path.join(fixture.workspace, 'dependency.ts'), 'export const dependency = 1\n')
+    fs.writeFileSync(path.join(fixture.workspace, 'main.ts'), "import { dependency } from './dependency'\nexport const main = dependency\n")
+    const processed: string[] = []
+    const service = new ProjectIndexService(fixture.database.projectIndex, { onFileProcessed: (event) => processed.push(event.relativePath) })
+    await service.ensureIndexed(fixture.workspace)
+    const before = service.listImports(fixture.workspace, 'main.ts')[0]!
+    fs.writeFileSync(path.join(fixture.workspace, 'dependency.ts'), 'export const dependency = 2\n')
+    processed.length = 0
+    service.enqueueChange({ workspace: fixture.workspace, paths: ['dependency.ts'], overflow: false })
+    await waitFor(() => service.getStatus(fixture.workspace)?.kind === 'incremental' && service.getStatus(fixture.workspace)?.status === 'completed')
+
+    const after = service.listImports(fixture.workspace, 'main.ts')[0]!
+    expect(after.targetPath).toBe('dependency.ts')
+    expect(after.targetHash).not.toBe(before.targetHash)
+    expect(processed).toEqual(expect.arrayContaining(['dependency.ts']))
+    expect(processed.filter((path) => path === 'main.ts')).toHaveLength(0)
+  })
+
+  it('não reutiliza análise quando bytes mudam mantendo metadados aparentes', async () => {
+    const fixture = createFixture()
+    const target = path.join(fixture.workspace, 'main.ts')
+    fs.writeFileSync(target, 'export const oldName = 1\n')
+    const service = new ProjectIndexService(fixture.database.projectIndex)
+    await service.ensureIndexed(fixture.workspace)
+    const original = fs.statSync(target)
+
+    fs.writeFileSync(target, 'export const newName = 1\n')
+    fs.utimesSync(target, original.atime, original.mtime)
+    await service.startManual(fixture.workspace)
+
+    expect(service.listSymbols(fixture.workspace).map((symbol) => symbol.name)).toContain('newName')
+    expect(service.listSymbols(fixture.workspace).map((symbol) => symbol.name)).not.toContain('oldName')
+  })
+
+  it('reprocessa arquivos quando a versão do parser muda sem alteração nos bytes', async () => {
+    const fixture = createFixture()
+    const target = path.join(fixture.workspace, 'main.ts')
+    fs.writeFileSync(target, 'export const main = true\n')
+    const first = new TypeScriptParserAdapter()
+    const service = new ProjectIndexService(fixture.database.projectIndex, { parserRegistry: new ParserRegistry([first]) })
+    await service.ensureIndexed(fixture.workspace)
+    expect(service.getFile(fixture.workspace, 'main.ts')?.parserVersion).toBe(first.version)
+
+    const second = new TypeScriptParserAdapter()
+    Object.defineProperty(second, 'version', { value: `${second.version}-revision-2` })
+    const restarted = new ProjectIndexService(fixture.database.projectIndex, { parserRegistry: new ParserRegistry([second]) })
+    await restarted.startManual(fixture.workspace)
+
+    expect(restarted.getFile(fixture.workspace, 'main.ts')?.parserVersion).toBe(`${second.version}`)
+  })
+
+  it('não transforma uma reconciliação truncada em prova de exclusão', async () => {
+    const fixture = createFixture()
+    fs.writeFileSync(path.join(fixture.workspace, 'first.ts'), 'export const first = true\n')
+    fs.writeFileSync(path.join(fixture.workspace, 'second.ts'), 'export const second = true\n')
+    const initial = new ProjectIndexService(fixture.database.projectIndex)
+    await initial.ensureIndexed(fixture.workspace)
+
+    const truncated = new ProjectIndexService(fixture.database.projectIndex, {
+      discovery: new WorkspaceDiscoveryService({ maxTraversalEntries: 1 }),
+    })
+    await truncated.startManual(fixture.workspace)
+
+    expect(truncated.getStatus(fixture.workspace)).toMatchObject({ error: expect.stringContaining('trabalho da travessia') })
+    expect(truncated.getFile(fixture.workspace, 'first.ts')).toBeTruthy()
+    expect(truncated.getFile(fixture.workspace, 'second.ts')).toBeTruthy()
+  })
+
+  it('encontra símbolos relevantes depois dos primeiros cem registros', async () => {
+    const fixture = createFixture()
+    const source = Array.from({ length: 120 }, (_, index) => `export const symbol${index.toString().padStart(3, '0')} = ${index}`).join('\n')
+    fs.writeFileSync(path.join(fixture.workspace, 'symbols.ts'), `${source}\nexport const targetAfterLimit = true\n`)
+    const service = new ProjectIndexService(fixture.database.projectIndex)
+    await service.ensureIndexed(fixture.workspace)
+
+    const context = service.buildAiContext(fixture.workspace, 'targetAfterLimit')
+
+    expect(context?.selections).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: expect.stringContaining('targetAfterLimit') }),
+    ]))
   })
 
   it('atualiza evidências de configuração sem uma nova travessia completa', async () => {

@@ -19,7 +19,7 @@ import { ParserRegistry } from './ParserAdapter'
 import type { ParsedFile } from './ParserAdapter'
 import { TypeScriptParserAdapter } from './TypeScriptParserAdapter'
 import { StackDetector } from './StackDetector'
-import { resolveRelations } from './ProjectRelationResolver'
+import { relationMayResolveToPath, resolveRelations } from './ProjectRelationResolver'
 
 interface PendingChange {
   paths: Set<string>
@@ -208,7 +208,15 @@ export class ProjectIndexService {
     const potentiallyOutdated = run.status !== 'completed' || Boolean(run.error) || this.pending.has(normalizedWorkspace) || Boolean(this.isChangeControlPending?.(normalizedWorkspace))
     const tokens = new Set(prompt.toLocaleLowerCase().split(/[^\p{L}\p{N}_$]+/u).filter((token) => token.length >= 3))
     const indexedFiles = this.repository.listFiles(normalizedWorkspace).filter((file) => file.analyzedHash && ['indexed', 'unsupported'].includes(file.state)).slice(0, 16)
-    const allSymbols = this.repository.listSymbols(normalizedWorkspace, '', 100)
+    // An empty query is intentionally bounded for the fallback context, but
+    // relevance must not be decided by whichever symbols happen to occupy
+    // the first page. Query each prompt term through SQLite's indexed path
+    // and merge the bounded result sets before applying the final context
+    // limit. This keeps the scan bounded while allowing a relevant symbol
+    // beyond the first 100 stored rows to participate.
+    const allSymbols = tokens.size
+      ? [...new Map([...tokens].flatMap((token) => this.repository.listSymbols(normalizedWorkspace, token, 32)).map((symbol) => [symbol.id, symbol])).values()]
+      : this.repository.listSymbols(normalizedWorkspace, '', 100)
     const symbols = allSymbols.filter((symbol) => {
       const haystack = `${symbol.name} ${symbol.qualifiedName ?? ''} ${symbol.relativePath}`.toLocaleLowerCase()
       return [...tokens].some((token) => haystack.includes(token))
@@ -255,7 +263,7 @@ export class ProjectIndexService {
       relevance: 65,
       reason: `${item.reason} (execução ${run.id}).`,
       updatedAt: item.detectedAt,
-      contentPreview: `${item.category}=${item.value} · ${item.sourcePath}`,
+      contentPreview: `Evidência ${item.category}=${item.value} em ${item.sourcePath}`,
       analyzedHash: item.sourceHash,
       indexVersion: summary.indexVersion,
       potentiallyOutdated,
@@ -309,6 +317,7 @@ export class ProjectIndexService {
   }
 
   private async run(workspace: string, kind: ProjectIndexRunKind, requestedPaths: string[], overflow: boolean) {
+    const previousIndexVersion = this.repository.latestRun(workspace)?.indexVersion
     const runId = crypto.randomUUID()
     const startedAt = new Date().toISOString()
     const run: ProjectIndexRun = {
@@ -338,18 +347,40 @@ export class ProjectIndexService {
       run.status = 'running'
       this.updateRun(run, null)
       const fullDiscovery = overflow || kind === 'initial' || kind === 'reconcile' || kind === 'manual'
-      const discovery = await this.discover(workspace, fullDiscovery ? undefined : requestedPaths, controller.signal)
+      const forceVersionRebuild = fullDiscovery && previousIndexVersion !== CODE_INTELLIGENCE_INDEX_VERSION
+      let effectiveRequestedPaths = [...requestedPaths]
+      let discovery = await this.discover(workspace, fullDiscovery ? undefined : effectiveRequestedPaths, controller.signal)
       this.assertNotCancelled(controller.signal)
+      const forcedPaths = new Set(fullDiscovery
+        ? this.findAffectedImporters(workspace, [], discovery)
+        : this.findAffectedImporters(workspace, effectiveRequestedPaths, discovery))
+      if (!fullDiscovery && forcedPaths.size) {
+        effectiveRequestedPaths = [...new Set([...effectiveRequestedPaths, ...forcedPaths])]
+        discovery = await this.discover(workspace, effectiveRequestedPaths, controller.signal)
+        this.assertNotCancelled(controller.signal)
+      }
       run.phase = 'hashing'
       run.totalFiles = discovery.files.length
       run.pendingFiles = discovery.files.length
       this.updateRun(run, null)
+      const previousFiles = this.repository.listFiles(workspace)
       if (fullDiscovery) {
-        this.repository.removeMissingFiles(workspace, discovery.files.map((file) => file.relativePath))
+        if (discovery.truncated) this.repository.removeMissingForChange(workspace, discovery.missingPaths, discovery.files.map((file) => file.relativePath))
+        else this.repository.removeMissingFiles(workspace, discovery.files.map((file) => file.relativePath))
         this.repository.replaceExclusions(workspace, discovery.exclusions, discovery.completedAt)
       } else {
-        this.repository.removeMissingForChange(workspace, requestedPaths, discovery.files.map((file) => file.relativePath))
+        const pathsWithMissingProof = discovery.truncated ? discovery.missingPaths : effectiveRequestedPaths
+        this.repository.removeMissingForChange(workspace, pathsWithMissingProof, discovery.files.map((file) => file.relativePath))
         if (discovery.exclusions.length) this.repository.upsertExclusions(workspace, discovery.exclusions, discovery.completedAt)
+      }
+      const presentPaths = new Set(discovery.files.map((file) => file.relativePath))
+      const missingPaths = new Set(discovery.missingPaths)
+      const requestedPrefixes = effectiveRequestedPaths.filter(Boolean).map(normalizeRelativePath)
+      for (const previous of previousFiles) {
+        if (presentPaths.has(previous.relativePath)) continue
+        if (discovery.truncated && !missingPaths.has(previous.relativePath)) continue
+        if (!fullDiscovery && !missingPaths.has(previous.relativePath) && !requestedPrefixes.some((prefix) => pathMatches(prefix, previous.relativePath))) continue
+        this.onFileProcessed?.({ workspace, relativePath: previous.relativePath, state: 'deleted', analyzedHash: null, runId })
       }
       const known = new Map(this.repository.listFiles(workspace).map((file) => [file.relativePath, file]))
       for (const file of discovery.files) {
@@ -360,7 +391,15 @@ export class ProjectIndexService {
         this.assertNotCancelled(controller.signal)
         this.currentPaths.set(workspace, file.relativePath)
         run.phase = 'hashing'
-        const result = await this.processFile(workspace, file, known, controller.signal, parserDurationsMs, kind === 'incremental', runId)
+        const result = await this.processFile(
+          workspace,
+          file,
+          known,
+          controller.signal,
+          parserDurationsMs,
+          kind === 'incremental' || forceVersionRebuild || forcedPaths.has(file.relativePath),
+          runId,
+        )
         run.processedFiles += 1
         run.pendingFiles = Math.max(0, run.totalFiles - run.processedFiles)
         if (result === 'failed') {
@@ -372,11 +411,11 @@ export class ProjectIndexService {
         this.updateRun(run, file.relativePath)
       }
       this.currentPaths.set(workspace, null)
-      const shouldDetectStack = fullDiscovery || requestedPaths.some(isConfigurationFile)
+      const shouldDetectStack = fullDiscovery || effectiveRequestedPaths.some(isConfigurationFile)
       if (shouldDetectStack) {
         run.phase = 'parsing'
         this.updateRun(run, null)
-        const stackDiscovery = fullDiscovery ? discovery : await this.discoverStackInputs(workspace, requestedPaths, controller.signal)
+        const stackDiscovery = fullDiscovery ? discovery : await this.discoverStackInputs(workspace, effectiveRequestedPaths, controller.signal)
         const stack = await this.stackDetector.detect(workspace, stackDiscovery, controller.signal)
         this.repository.replaceStackEvidence(workspace, stack.evidence)
       }
@@ -385,7 +424,11 @@ export class ProjectIndexService {
       run.phase = 'completed'
       run.pendingFiles = 0
       run.completedAt = new Date().toISOString()
-      run.error = discovery.truncated ? 'Indexação parcial: o limite de arquivos foi atingido.' : failures.length ? `Indexação parcial: ${failures.length} arquivo(s) falharam.` : null
+      run.error = discovery.truncated
+        ? discovery.truncationReason === 'traversal'
+          ? 'Indexação parcial: o limite de trabalho da travessia foi atingido.'
+          : 'Indexação parcial: o limite de arquivos foi atingido.'
+        : failures.length ? `Indexação parcial: ${failures.length} arquivo(s) falharam.` : null
       this.updateRun(run, null)
     } catch (error) {
       this.currentPaths.set(workspace, null)
@@ -428,6 +471,27 @@ export class ProjectIndexService {
     return result
   }
 
+  private findAffectedImporters(workspace: string, requestedPaths: readonly string[], discovery: WorkspaceDiscoveryResult) {
+    const present = new Set(discovery.files.map((file) => file.relativePath))
+    const missing = new Set(discovery.missingPaths)
+    const requested = requestedPaths.filter(Boolean).map(normalizeRelativePath)
+    const affected = new Set<string>()
+    for (const relation of this.repository.listImports(workspace)) {
+      if (requested.includes(relation.sourcePath)) continue
+      if (relation.targetPath && (
+        missing.has(relation.targetPath)
+        || (!discovery.truncated && !present.has(relation.targetPath) && (!requested.length || requested.some((prefix) => pathMatches(prefix, relation.targetPath!))))
+      )) {
+        affected.add(relation.sourcePath)
+        continue
+      }
+      if (relation.resolution === 'unresolved' && [...present].some((relativePath) => relationMayResolveToPath(relation.sourcePath, relation.specifier, relativePath))) {
+        affected.add(relation.sourcePath)
+      }
+    }
+    return [...affected]
+  }
+
   private async discoverStackInputs(workspace: string, requestedPaths: string[], signal: AbortSignal): Promise<WorkspaceDiscoveryResult> {
     const indexedPaths = this.repository.listFiles(workspace)
       .filter((file) => file.classification === 'source' || file.classification === 'configuration' || file.classification === 'lockfile')
@@ -437,15 +501,6 @@ export class ProjectIndexService {
 
   private async processFile(workspace: string, discovered: DiscoveredFile, known: Map<string, ProjectIndexFile>, signal: AbortSignal, parserDurationsMs: Record<string, number>, forceProcess = false, runId = ''): Promise<FileProcessingResult> {
     const previous = known.get(discovered.relativePath)
-    const unchanged = !forceProcess && previous && previous.size === discovered.size && previous.mtimeMs === discovered.mtimeMs && previous.mode === discovered.mode
-      && previous.analyzedHash && ['indexed', 'unsupported'].includes(previous.state)
-    if (unchanged) {
-      const refreshed = { ...previous, ctimeMs: discovered.ctimeMs, discoveredAt: new Date().toISOString(), error: null }
-      this.repository.markFileState(refreshed)
-      known.set(discovered.relativePath, refreshed)
-      return 'skipped'
-    }
-
     let content: Buffer
     let observedHash: string
     try {
@@ -460,18 +515,23 @@ export class ProjectIndexService {
       return 'failed'
     }
     this.assertNotCancelled(signal)
+    const adapter = this.parserRegistry.find(discovered.relativePath)
+    const language = languageForPath(discovered.relativePath)
     if (previous?.analyzedHash === observedHash && previous.state === 'failed') {
       // A retry gets a fresh parse attempt even when the bytes did not change.
-    } else if (previous?.analyzedHash === observedHash && previous.state === 'indexed') {
+    } else if (!forceProcess && previous?.analyzedHash === observedHash && previous.state === 'indexed'
+      && previous.parserId === adapter?.id && previous.parserVersion === adapter?.version) {
       const refreshed = fileState(discovered, workspace, previous, observedHash, previous.language, 'indexed', null, previous.parserId, previous.parserVersion, previous.analyzedAt)
       this.repository.markFileState(refreshed)
       known.set(discovered.relativePath, refreshed)
-      this.onFileProcessed?.({ workspace, relativePath: discovered.relativePath, state: refreshed.state, analyzedHash: refreshed.analyzedHash, runId })
       return 'skipped'
+    } else if (!forceProcess && previous?.analyzedHash === observedHash && previous.state === 'unsupported' && !adapter) {
+      const refreshed = fileState(discovered, workspace, previous, observedHash, previous.language, 'unsupported', null, null, null, previous.analyzedAt)
+      this.repository.markFileState(refreshed)
+      known.set(discovered.relativePath, refreshed)
+      return 'unsupported'
     }
 
-    const adapter = this.parserRegistry.find(discovered.relativePath)
-    const language = languageForPath(discovered.relativePath)
     if (!adapter) {
       const unsupported = fileState(discovered, workspace, previous, observedHash, language, 'unsupported', null, null, null, new Date().toISOString())
       this.repository.saveFileAnalysis({ file: unsupported, symbols: [], imports: [], exports: [] })
@@ -612,6 +672,14 @@ function languageForPath(relativePath: string) {
 
 function hashBuffer(content: Buffer) {
   return crypto.createHash('sha256').update(content).digest('hex')
+}
+
+function normalizeRelativePath(value: string) {
+  return value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, '')
+}
+
+function pathMatches(prefix: string, value: string) {
+  return value === prefix || value.startsWith(`${prefix}/`)
 }
 
 function stableId(kind: string, workspace: string, relativePath: string, hash: string, value: string, line: number, index: number) {

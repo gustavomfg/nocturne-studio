@@ -84,6 +84,7 @@ export function registerIpc(
         void engineeringSignals?.evaluate(status.workspace).catch((error) => logger.warn('engineering-intelligence', 'A análise de sinais não pôde acompanhar o Project Index.', { reason: error instanceof Error ? error.message : String(error) }))
       }
     },
+    onFileProcessed: (event) => semanticIndex?.enqueueFile(event),
     onMetric: (metric) => logger.info('index', 'Métrica de indexação concluída.', {
       runId: metric.runId,
       runKind: metric.runKind,

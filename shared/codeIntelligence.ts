@@ -1,4 +1,6 @@
-export const CODE_INTELLIGENCE_INDEX_VERSION = 1
+// Bumped when parser/resolution semantics change and previously persisted
+// derived relations must be recomputed.
+export const CODE_INTELLIGENCE_INDEX_VERSION = 2
 
 export type DiscoveryFileClassification = 'source' | 'configuration' | 'documentation' | 'lockfile' | 'asset' | 'unknown'
 export type ProjectIndexFileState = 'discovered' | 'pending' | 'processing' | 'indexed' | 'unsupported' | 'failed' | 'deleted' | 'excluded'
@@ -29,6 +31,7 @@ export interface WorkspaceDiscoveryResult {
   missingPaths: string[]
   completedAt: string
   truncated: boolean
+  truncationReason: 'storage' | 'traversal' | null
 }
 
 export interface ProjectIndexFile {
