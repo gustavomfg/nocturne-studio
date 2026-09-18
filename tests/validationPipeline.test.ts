@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { LocalDatabase } from '../electron/database/Database'
 import { ValidationPipeline, planValidation } from '../electron/validation/ValidationPipeline'
 import type { ProcessRunner, ProcessRunResult } from '../electron/validation/CancellableProcessRunner'
@@ -30,10 +30,12 @@ describe('Validation Pipeline', () => {
 
     const testRun = pipeline.run(fixture.workspace, 'test')
     const buildRun = pipeline.run(fixture.workspace, 'build')
-    release?.()
+    const rejected = expect(buildRun).rejects.toThrow(/validação.*andamento|conflito/i)
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    release!()
 
     await expect(testRun).resolves.toMatchObject({ kind: 'test', status: 'passed' })
-    await expect(buildRun).rejects.toThrow(/validação.*andamento|conflito/i)
+    await rejected
   })
 
   it('deduplica somente solicitações semanticamente idênticas', async () => {
@@ -48,7 +50,8 @@ describe('Validation Pipeline', () => {
     const first = pipeline.run(fixture.workspace, 'test')
     const duplicate = pipeline.run(fixture.workspace, 'test')
     expect(duplicate).toBe(first)
-    release?.()
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    release!()
     await expect(first).resolves.toMatchObject({ kind: 'test', status: 'passed' })
   })
 
@@ -69,7 +72,8 @@ describe('Validation Pipeline', () => {
     const first = pipeline.run(fixture.workspace, 'test', executionA)
     const second = pipeline.run(fixture.workspace, 'test', executionB)
     await expect(second).rejects.toThrow(/validação diferente/i)
-    release?.()
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    release!()
     await expect(first).resolves.toMatchObject({ executionId: executionA, status: 'passed' })
   })
 
@@ -138,6 +142,33 @@ describe('Validation Pipeline', () => {
     expect(pipeline.cancel(fixture.workspace)).toBe(false)
   })
 
+  it('revalida autorização e script atual imediatamente antes do spawn', async () => {
+    const fixture = createFixture()
+    fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [evidence(fixture.workspace, 'script', 'test=vitest')])
+    const runner = { run: vi.fn(async () => successfulResult('', '')) }
+    let authorized = true
+    const pipeline = new ValidationPipeline(
+      fixture.database.validation,
+      (workspace) => fixture.database.projectIndex.listStackEvidence(workspace),
+      {
+        runner,
+        authorizeExecution: (workspace) => {
+          if (!authorized) throw new Error('Workspace não autorizado.')
+          return workspace
+        },
+      },
+    )
+
+    authorized = false
+    await expect(pipeline.run(fixture.workspace, 'test')).resolves.toMatchObject({ status: 'blocked' })
+    expect(runner.run).not.toHaveBeenCalled()
+
+    authorized = true
+    fs.writeFileSync(path.join(fixture.workspace, 'package.json'), JSON.stringify({ scripts: { test: 'node changed.js' } }))
+    await expect(pipeline.run(fixture.workspace, 'test')).resolves.toMatchObject({ status: 'blocked' })
+    expect(runner.run).not.toHaveBeenCalled()
+  })
+
   it('faz fallback para TypeScript sem transformar texto em comando shell', () => {
     const stack = [evidence('/workspace', 'language', 'TypeScript'), evidence('/workspace', 'package-manager', 'pnpm')]
     expect(planValidation(stack, 'typecheck')).toEqual(expect.objectContaining({ command: 'pnpm', args: ['exec', 'tsc', '--noEmit'] }))
@@ -149,6 +180,7 @@ function createFixture() {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-validation-db-'))
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-validation-project-'))
   directories.push(userData, workspace)
+  fs.writeFileSync(path.join(workspace, 'package.json'), JSON.stringify({ scripts: { test: 'vitest' } }))
   const database = new LocalDatabase(userData)
   databases.push(database)
   database.touchWorkspace(workspace)
@@ -160,7 +192,7 @@ function evidence(workspace: string, category: StackEvidence['category'], value:
 }
 
 function successfulResult(stdout: string, stderr: string): ProcessRunResult {
-  return { exitCode: 0, stdout, stderr, durationMs: 5, cancelled: false, timedOut: false, truncated: false, error: null }
+  return { exitCode: 0, stdout, stderr, durationMs: 5, cancelled: false, timedOut: false, truncated: false, error: null, terminationUncertain: false, terminationScope: null }
 }
 
 function throwingRunner(): ProcessRunner {

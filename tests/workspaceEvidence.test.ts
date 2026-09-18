@@ -52,7 +52,7 @@ it('links real indexes, checkpoints, validation, decision and engineering withou
   let db = new LocalDatabase(root)
   const project = new ProjectIndexService(db.projectIndex)
   const semantic = new SemanticIndexService(db.semanticIndex, { projectIndex: project })
-  const validation = new ValidationPipeline(db.validation, (value) => project.listStackEvidence(value), { runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '', durationMs: 1, cancelled: false, timedOut: false, truncated: false, error: null }) } })
+  const validation = new ValidationPipeline(db.validation, (value) => project.listStackEvidence(value), { runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '', durationMs: 1, cancelled: false, timedOut: false, truncated: false, error: null, terminationUncertain: false, terminationScope: null }) } })
   const engineering = new EngineeringSignalEngine(db.engineeringIntelligence, project, validation, { semanticIndex: semantic, executionIds: () => ['execution'] })
   try {
     const conversation = db.createConversation(workspace)

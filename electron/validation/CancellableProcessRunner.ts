@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { performance } from 'node:perf_hooks'
 import { buildCodexEnvironment } from '../codex/CodexProcess'
 import { CODE_INTELLIGENCE_LIMITS } from '../../shared/constants'
+import { terminateProcess, type ProcessTerminationScope, usesDedicatedProcessGroup } from '../runtime/ProcessTermination'
 
 export interface ProcessRunOptions {
   cwd: string
@@ -19,6 +20,8 @@ export interface ProcessRunResult {
   timedOut: boolean
   truncated: boolean
   error: string | null
+  terminationUncertain: boolean
+  terminationScope: ProcessTerminationScope | null
 }
 
 export interface ProcessRunner {
@@ -41,8 +44,11 @@ export class CancellableProcessRunner implements ProcessRunner {
       let processError: string | null = null
       let killTimer: NodeJS.Timeout | undefined
       let timeoutTimer: NodeJS.Timeout | undefined
+      let uncertainTimer: NodeJS.Timeout | undefined
       let settled = false
       let child: ChildProcess | null = null
+      let terminationUncertain = false
+      let terminationScope: ProcessTerminationScope | null = null
 
       const append = (current: string, chunk: string) => {
         if (current.length >= maxOutputCharacters) {
@@ -59,13 +65,20 @@ export class CancellableProcessRunner implements ProcessRunner {
         else timedOut = true
         if (!child) return
         if (child.exitCode === null && child.signalCode === null) {
-          try { child.kill('SIGTERM') } catch { /* the close event still settles the run */ }
+          terminationScope = terminateProcess(child, 'SIGTERM')
           killTimer = setTimeout(() => {
             if (!settled && child && child.exitCode === null && child.signalCode === null) {
-              try { child.kill('SIGKILL') } catch { /* process may have exited */ }
+              terminationScope = terminateProcess(child, 'SIGKILL')
             }
           }, 3_000)
           killTimer.unref()
+          uncertainTimer = setTimeout(() => {
+            if (settled) return
+            terminationUncertain = true
+            processError = 'O encerramento do processo de validação não pôde ser confirmado.'
+            finish(null)
+          }, 4_000)
+          uncertainTimer.unref()
         }
       }
 
@@ -74,8 +87,9 @@ export class CancellableProcessRunner implements ProcessRunner {
         settled = true
         if (killTimer) clearTimeout(killTimer)
         if (timeoutTimer) clearTimeout(timeoutTimer)
+        if (uncertainTimer) clearTimeout(uncertainTimer)
         options.signal.removeEventListener('abort', onAbort)
-        resolve(result(exitCode, stdout, stderr, started, cancelled, timedOut, truncated, processError))
+        resolve(result(exitCode, stdout, stderr, started, cancelled, timedOut, truncated, processError, terminationUncertain, terminationScope))
       }
 
       const onAbort = () => terminate('cancelled')
@@ -92,6 +106,7 @@ export class CancellableProcessRunner implements ProcessRunner {
           env: buildCodexEnvironment(),
           shell: false,
           windowsHide: true,
+          detached: usesDedicatedProcessGroup(),
           stdio: ['ignore', 'pipe', 'pipe'],
         })
       } catch (error) {
@@ -124,6 +139,8 @@ function result(
   timedOut: boolean,
   truncated: boolean,
   error: string | null,
+  terminationUncertain = false,
+  terminationScope: ProcessTerminationScope | null = null,
 ): ProcessRunResult {
   return {
     exitCode,
@@ -134,5 +151,7 @@ function result(
     timedOut,
     truncated,
     error,
+    terminationUncertain,
+    terminationScope,
   }
 }

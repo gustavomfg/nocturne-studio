@@ -160,6 +160,13 @@ export function registerIpc(
         durationMs: metric.durationMs,
         status: metric.status,
       }),
+      authorizeExecution: (workspace, executionId) => {
+        const authorizedWorkspace = getAuthorizedWorkspace(database, workspace)
+        if (executionId && !database.getExecution(executionId, authorizedWorkspace)) {
+          throw new Error('A validação não pode ser associada a uma execução desconhecida.')
+        }
+        return authorizedWorkspace
+      },
     },
   )
   engineeringSignals = new EngineeringSignalEngine(database.engineeringIntelligence, projectIndex, validation, {

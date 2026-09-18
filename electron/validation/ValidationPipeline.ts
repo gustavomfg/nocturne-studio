@@ -2,8 +2,8 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { validationKinds, type StackEvidence, type ValidationArtifact, type ValidationKind, type ValidationRun } from '../../shared/codeIntelligence'
-import { CODE_INTELLIGENCE_LIMITS } from '../../shared/constants'
-import { assessCommand, resolveInsideWorkspace } from '../security/ExecutionPolicy'
+import { CODE_INTELLIGENCE_LIMITS, WORKSPACE_READ_LIMITS } from '../../shared/constants'
+import { assessCommand, readWorkspaceFile, resolveInsideWorkspace } from '../security/ExecutionPolicy'
 import { redactLogText } from '../logging/Logger'
 import type { ValidationRepository } from '../database/ValidationRepository'
 import { CancellableProcessRunner, type ProcessRunner } from './CancellableProcessRunner'
@@ -11,6 +11,7 @@ import { CancellableProcessRunner, type ProcessRunner } from './CancellableProce
 export interface ValidationPlan {
   command: string
   args: string[]
+  scriptName?: string
   scriptCommand?: string
   reason: string
 }
@@ -39,6 +40,8 @@ export interface ValidationPipelineOptions {
   timeoutMs?: number
   onStatus?(run: ValidationRun): void
   onMetric?(metric: ValidationMetric): void
+  /** Rechecks the currently trusted workspace immediately before process spawn. */
+  authorizeExecution?(workspace: string, executionId?: string): string
 }
 
 /** Plans and runs only stack-backed validation commands, preserving bounded diagnostics. */
@@ -47,6 +50,7 @@ export class ValidationPipeline {
   private readonly timeoutMs: number
   private readonly onStatus: ((run: ValidationRun) => void) | undefined
   private readonly onMetric: ((metric: ValidationMetric) => void) | undefined
+  private readonly authorizeExecution: ((workspace: string, executionId?: string) => string) | undefined
   private readonly active = new Map<string, { identity: string; controller: AbortController; promise: Promise<ValidationRun> }>()
   private readonly metrics: ValidationMetricsSnapshot = {
     runs: 0,
@@ -69,6 +73,7 @@ export class ValidationPipeline {
     this.timeoutMs = options.timeoutMs ?? 120_000
     this.onStatus = options.onStatus
     this.onMetric = options.onMetric
+    this.authorizeExecution = options.authorizeExecution
   }
 
   run(workspace: string, kind: ValidationKind, executionId?: string) {
@@ -167,13 +172,28 @@ export class ValidationPipeline {
       return run
     }
 
+    let executionWorkspace: string
+    try {
+      executionWorkspace = await this.revalidateExecution(workspace, plan, executionId)
+    } catch (error) {
+      run.status = 'blocked'
+      run.error = `Validação bloqueada antes da execução: ${sanitizeError(error instanceof Error ? error.message : String(error))}`
+      run.completedAt = new Date().toISOString()
+      run.durationMs = Math.max(0, Date.now() - started)
+      this.repository.update(run)
+      this.publish(run)
+      this.metric(run)
+      return run
+    }
+
+    run.workspace = executionWorkspace
     run.status = 'running'
     this.repository.update(run)
     this.publish(run)
     let result: Awaited<ReturnType<ProcessRunner['run']>>
     try {
       result = await this.runner.run(plan.command, plan.args, {
-        cwd: workspace,
+        cwd: executionWorkspace,
         signal,
         timeoutMs: this.timeoutMs,
         maxOutputCharacters: CODE_INTELLIGENCE_LIMITS.maxOutputCharacters,
@@ -191,9 +211,12 @@ export class ValidationPipeline {
     run.exitCode = result.exitCode
     run.durationMs = result.durationMs
     run.outputSummary = summarizeOutput(result.stdout, result.stderr, result.truncated)
-    run.artifacts = await discoverArtifacts(workspace, result.stdout, result.stderr)
+    run.artifacts = await discoverArtifacts(executionWorkspace, result.stdout, result.stderr)
     run.completedAt = new Date().toISOString()
-    if (result.cancelled || signal.aborted) {
+    if (result.terminationUncertain) {
+      run.status = 'failed'
+      run.error = 'O cancelamento ou timeout foi solicitado, mas o encerramento do processo não pôde ser confirmado.'
+    } else if (result.cancelled || signal.aborted) {
       run.status = 'cancelled'
       run.error = 'Validação cancelada pelo usuário.'
     } else if (result.timedOut) {
@@ -237,6 +260,22 @@ export class ValidationPipeline {
       durationMs,
     })
   }
+
+  private async revalidateExecution(workspace: string, plan: ValidationPlan, executionId?: string) {
+    const authorizedWorkspace = this.authorizeExecution?.(workspace, executionId) ?? workspace
+    if (!plan.scriptName) return authorizedWorkspace
+    const packageJson = await readWorkspaceFile('package.json', authorizedWorkspace, WORKSPACE_READ_LIMITS.packageMetadataBytes)
+    const parsed = JSON.parse(packageJson.content.toString('utf8')) as { scripts?: Record<string, unknown> }
+    const scriptCommand = parsed.scripts?.[plan.scriptName]
+    if (typeof scriptCommand !== 'string' || scriptCommand !== plan.scriptCommand) {
+      throw new Error(`O script ${plan.scriptName} mudou desde o planejamento. Atualize as evidências e solicite a validação novamente.`)
+    }
+    const currentAssessment = assessCommand(scriptCommand)
+    if (currentAssessment.blockedAutomatic) {
+      throw new Error(`O script ${plan.scriptName} agora é bloqueado por segurança: ${currentAssessment.reasons.join('; ')}.`)
+    }
+    return authorizedWorkspace
+  }
 }
 
 function validationRequestIdentity(workspace: string, kind: ValidationKind, executionId: string | undefined, plan: ValidationPlan | null) {
@@ -273,7 +312,7 @@ export function planValidation(evidence: readonly StackEvidence[], kind: Validat
   if (scriptEntry?.[1]) {
     const [scriptName, script] = scriptEntry
     const invocation = packageManagerInvocation(packageManager, scriptName)
-    return { ...invocation, scriptCommand: script.raw, reason: `Script ${scriptName} encontrado no projeto.` }
+    return { ...invocation, scriptName, scriptCommand: script.raw, reason: `Script ${scriptName} encontrado no projeto.` }
   }
 
   const languages = new Set(evidence.filter((item) => item.category === 'language').map((item) => item.value.toLowerCase()))

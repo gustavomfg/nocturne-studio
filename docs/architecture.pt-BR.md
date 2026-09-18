@@ -47,8 +47,11 @@ O Code Intelligence reutiliza esse watcher em três pipelines separadas:
 `WorkspaceDiscoveryService` descobre o escopo agnóstico de linguagem,
 `ProjectIndexService` processa somente arquivos necessários com adapters de
 parser e o `ValidationPipeline` executa checks escolhidos pelas evidências do
-stack. O índice é persistido localmente com hashes por arquivo, relações
-estruturais e falhas parciais; ele não depende do provedor de IA.
+stack. Antes do spawn, ele revalida a autorização do workspace e o script atual
+correspondente; comando/argumentos continuam derivados pelo processo principal,
+não fornecidos pelo renderer. O índice é persistido localmente com hashes por
+arquivo, relações estruturais e falhas parciais; ele não depende do provedor de
+IA.
 
 A extensão semântica da Fase 4 consome o Project Index sem criar outro watcher
 ou scanner. O `SemanticIndexService` divide arquivos aprovados em unidades,
