@@ -17,6 +17,7 @@ API names, warnings and security claims are kept identical across the pair.
 - [Second Brain](second-brain.md) and [Awareness](awareness.md)
 - [Code Intelligence — Phase 2](code-intelligence.md)
 - [Backup, restore and recovery](backup-and-recovery.md)
+- [Data retention and recovery boundaries](data-retention.md)
 - [Updates](updates.md)
 - [Security boundaries](security.md) and [privacy](privacy.md)
 - [Troubleshooting](troubleshooting.md)

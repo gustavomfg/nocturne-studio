@@ -15,7 +15,7 @@ export function registerDataIpc(win: BrowserWindow, database: LocalDatabase, log
   const ipcMain = registrar ?? safeIpcMain(win)
   const ownsRegistrar = !registrar
   ipcMain.handle(IPC_CHANNELS.data.export, async () => {
-    const warning = await dialog.showMessageBox(win, { type: 'info', buttons: ['Continuar', 'Cancelar'], defaultId: 0, cancelId: 1, title: 'Exportar dados do Nocturne', message: 'O backup inclui todas as conversas, memórias e artefatos do workspace.', detail: 'Credenciais de API não são exportadas. Mantenha o arquivo em local seguro — ele contém o histórico completo de conversas e dados do projeto.' })
+    const warning = await dialog.showMessageBox(win, { type: 'info', buttons: ['Continuar', 'Cancelar'], defaultId: 0, cancelId: 1, title: 'Exportar dados do Nocturne', message: 'Este é um backup de conteúdo: inclui conversas, memórias, sugestões, decisões e artefatos.', detail: 'Credenciais e arquivos do projeto não são exportados. O backup não é um arquivo forense nem uma recuperação operacional: não inclui execuções, checkpoints, validações, aprovações ou evidências. Mantenha-o em local seguro.' })
     if (warning.response !== 0) return null
     const result = await dialog.showSaveDialog(win, { title: 'Exportar dados do Nocturne', defaultPath: 'nocturne-backup.json', filters: [{ name: 'JSON', extensions: ['json'] }] })
     if (result.canceled || !result.filePath) return null
@@ -46,7 +46,7 @@ export function registerDataIpc(win: BrowserWindow, database: LocalDatabase, log
       cancelId: 0,
       title: 'Restaurar backup',
       message: 'Como deseja restaurar este backup?',
-      detail: '“Restaurar tudo” substitui também Providers, modelos e preferências. A opção parcial substitui workspaces, conversas, artefatos, sugestões e memórias, preservando a configuração de IA e do aplicativo. Um ponto de recuperação local será criado antes.',
+      detail: '“Restaurar tudo” substitui também Providers, modelos e preferências. A opção parcial substitui workspaces, conversas, artefatos, sugestões, decisões e memórias, preservando a configuração de IA e do aplicativo. Este backup não restaura execuções, checkpoints, validações, aprovações ou evidências. Um ponto de recuperação local será criado antes.',
     })
     if (confirmation.response !== 1 && confirmation.response !== 2) return false
     const scope = confirmation.response === 2 ? 'project-data' : 'full'

@@ -359,6 +359,34 @@ describe('persistência SQLite', () => {
     expect(target.workspaceModelBindings.list()).toEqual([])
     target.close()
   })
+  it('restaura conteúdo sem representar operações locais como histórico recuperado', () => {
+    const source = create()
+    const restored = source.createConversation('/tmp/content-only')
+    source.addMessage(restored.id, 'assistant', 'Conteúdo portátil')
+    const backup = source.exportData()
+    source.close()
+
+    const target = create()
+    const local = target.createConversation('/tmp/content-only')
+    const executionId = '00000000-0000-4000-8000-000000000071'
+    target.createExecution({
+      id: executionId, workspace: '/tmp/content-only', conversationId: local.id,
+      prompt: 'operação local', mode: 'build', status: 'running', decision: 'pending', retryOf: null,
+      startedAt: new Date().toISOString(), finishedAt: null, error: null,
+    })
+    target.validation.create({
+      id: '00000000-0000-4000-8000-000000000072', workspace: '/tmp/content-only', executionId,
+      kind: 'test', command: 'npm', args: ['run', 'test'], status: 'running', exitCode: null,
+      durationMs: null, outputSummary: '', artifacts: [], startedAt: new Date().toISOString(), completedAt: null, error: null,
+    })
+
+    target.importData(backup)
+
+    expect(target.listConversations().map((item) => item.id)).toEqual([restored.id])
+    expect(target.getExecution(executionId)).toBeNull()
+    expect(target.validation.list('/tmp/content-only')).toEqual([])
+    target.close()
+  })
   it('estima o tamanho do backup antes de materializar todas as coleções', () => {
     const db = create(); const conversation = db.createConversation('/tmp/export-metrics')
     db.addMessage(conversation.id, 'assistant', 'x'.repeat(2_000))

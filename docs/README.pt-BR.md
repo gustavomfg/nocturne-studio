@@ -17,6 +17,7 @@ API, avisos e afirmações de segurança são mantidos iguais nos dois arquivos.
 - [Segundo Cérebro](second-brain.pt-BR.md) e [Awareness](awareness.pt-BR.md)
 - [Code Intelligence — Fase 2](code-intelligence.pt-BR.md)
 - [Backup, restauração e recuperação](backup-and-recovery.pt-BR.md)
+- [Retenção de dados e limites de recuperação](data-retention.pt-BR.md)
 - [Atualizações](updates.pt-BR.md)
 - [Fronteiras de segurança](security.pt-BR.md) e [privacidade](privacy.pt-BR.md)
 - [Solução de problemas](troubleshooting.pt-BR.md)

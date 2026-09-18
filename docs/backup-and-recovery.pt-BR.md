@@ -8,6 +8,17 @@ Use **Configurações > Dados e diagnóstico > Exportar backup**. A exportação
 envelope versionado, checksum SHA-256 e não inclui credenciais de Providers nem
 arquivos do projeto.
 
+Este é um **backup de conteúdo**, não uma recuperação operacional nem um
+arquivo forense. Ele contém workspaces, conversas e mensagens, artefatos, o
+espelho de memória do workspace no banco, memórias do Segundo Cérebro e seu
+histórico, sugestões e suas decisões, além de configurações não secretas de
+Providers/modelos/bindings e preferências. Ele não contém execuções, auditoria
+de aprovações, validações, ChangeSets, checkpoints ou seus bytes privados de
+rollback, comandos/erros/links de validação da execução, operações
+interrompidas ou manifests de evidência. Project Index, Semantic Index e
+Engineering Intelligence são derivados e também ficam fora deste contrato
+portável.
+
 Antes de alterar o banco, o Nocturne valida tamanho, estrutura, checksum,
 compatibilidade de schema, identificadores duplicados e relacionamentos. Um
 snapshot local é criado primeiro; a importação é transacional e rejeita payload
@@ -17,6 +28,12 @@ Providers, catálogo de modelos e preferências desta instalação.
 
 Workspaces restaurados ficam deliberadamente desautorizados. Selecione a pasta
 correspondente novamente antes de Git, memória ou IA acessarem o projeto.
+
+A restauração não representa registros operacionais omitidos como restaurados
+ou recuperáveis. Cascades de chaves estrangeiras removem os registros locais
+ligados ao conteúdo substituído; dados operacionais locais não relacionados não
+são mesclados ao backup como se tivessem sido exportados. O snapshot local
+criado antes da restauração é o ponto de recuperação da instalação substituída.
 
 ## Recuperação do banco
 
@@ -34,6 +51,8 @@ não é tratado como banco válido.
 ## O que manter separado
 
 Backups não contêm arquivos-fonte, histórico Git ou o cofre de credenciais do
-sistema operacional. Mantenha backups do projeto ou um repositório Git remoto
-conforme sua política. Não copie secrets de Providers para tornar um backup
-portável.
+sistema operacional. Isso inclui `.nocturne/memory.md` e `.nocturne/rules.md`:
+eles são arquivos do projeto, fora do backup portável, embora `workspace_memory`
+tenha um espelho separado nos dados do aplicativo. Mantenha backups do projeto
+ou um repositório Git remoto conforme sua política. Não copie secrets de
+Providers para tornar um backup portável.
