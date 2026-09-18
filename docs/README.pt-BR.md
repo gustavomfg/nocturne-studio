@@ -44,10 +44,11 @@ A [estratégia de modelos](model-strategy.pt-BR.md) é uma orientação de desig
 Ela não descreve roteamento automático de modelos nem um controle de nível de
 raciocínio disponível na release atual.
 
-O [checklist de prontidão](release-readiness-1.0.md) é a fonte atual dos gates
-abertos. Não trate plano ou nota histórica como evidência de que uma
-funcionalidade existe no build atual.
+O [documento de prontidão da 1.0.2](release-readiness-1.0.2.md) é a fonte atual
+dos gates locais do candidato não publicado. Não trate plano ou nota histórica
+como evidência de que uma funcionalidade existe no build atual.
 
-As [notas da versão 1.0.1](releases/v1.0.1.pt-BR.md) e o
-[checklist do candidato](release-rc-checklist.pt-BR.md) descrevem o candidato
-sem afirmar que a tag estável foi publicada.
+As [notas do candidato 1.0.2](releases/v1.0.2.pt-BR.md) registram o corpo
+futuro da release; as [notas históricas da versão 1.0.1](releases/v1.0.1.pt-BR.md)
+e o [checklist do candidato](release-rc-checklist.pt-BR.md) permanecem como
+registros da linha estável publicada.

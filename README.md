@@ -102,10 +102,12 @@ The full command list is in [development](docs/development.md).
 
 ## Current status
 
-The `v1.0.1` stable line is pinned to the exact approved tag commit and uses
-`gustavomfg/nocturne-studio` as its canonical publication and updater
-repository. The protected release workflow validates all platform inventories;
-the current Windows/macOS signing policy is explicitly unsigned/not notarized.
+The repository contains local preparation for the unreleased `v1.0.2` candidate.
+The published `v1.0.1` stable line remains pinned to its exact approved tag
+commit and uses `gustavomfg/nocturne-studio` as its canonical publication and
+updater repository. The protected release workflow validates all platform
+inventories; the current Windows/macOS signing policy is explicitly
+unsigned/not notarized.
 The Codex App Server contract is experimental; the minimum supported CLI is
 `0.145.0` and the recommended version is `0.146.0`. Newer versions must pass
 the runtime compatibility handshake.
@@ -134,9 +136,11 @@ contract.
 - [Troubleshooting](docs/troubleshooting.md) · [Português](docs/troubleshooting.pt-BR.md)
 - [Development](docs/development.md) · [Português](docs/development.pt-BR.md)
 - [Architecture](docs/architecture.md) · [Português](docs/architecture.pt-BR.md)
-- [1.0.1 release notes](docs/releases/v1.0.1.md) · [Português](docs/releases/v1.0.1.pt-BR.md)
+- [1.0.2 candidate release notes](docs/releases/v1.0.2.md) · [Português](docs/releases/v1.0.2.pt-BR.md)
+- [1.0.2 release readiness](docs/release-readiness-1.0.2.md)
+- [1.0.1 historical release notes](docs/releases/v1.0.1.md) · [Português](docs/releases/v1.0.1.pt-BR.md)
 - [Release-candidate checklist](docs/release-rc-checklist.md) · [Português](docs/release-rc-checklist.pt-BR.md)
-- [Release readiness (maintainer document)](docs/release-readiness-1.0.md)
+- [1.0.1 historical release readiness](docs/release-readiness-1.0.md)
 
 English is the canonical public source. Portuguese translations use the
 `.pt-BR.md` suffix and preserve headings, commands, paths and technical names.

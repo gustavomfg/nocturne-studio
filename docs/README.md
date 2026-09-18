@@ -43,11 +43,12 @@ The [model strategy](model-strategy.md) is a design guideline. It does not
 describe automatic model routing or a reasoning-effort control available in
 the current release.
 
-The [release-readiness checklist](release-readiness-1.0.md) is the current
-source for release gates and publication evidence. Do not treat a plan or
-historical release note as evidence that a feature is present in the current
+The [1.0.2 release-readiness document](release-readiness-1.0.2.md) is the
+current source for the unreleased candidate's local gates. Do not treat a plan
+or historical release note as evidence that a feature is present in the current
 build.
 
-The [1.0.1 release notes](releases/v1.0.1.md) and the
-[release-candidate checklist](release-rc-checklist.md) describe the published
-stable line and its remaining manual checks.
+The [1.0.2 candidate notes](releases/v1.0.2.md) record the future release body;
+the [1.0.1 release notes](releases/v1.0.1.md) and the
+[release-candidate checklist](release-rc-checklist.md) remain historical
+records for the published stable line.

@@ -18,6 +18,7 @@ on:
       - tests/**
       - scripts/benchmark-sqlite-sync.mjs
       - docs/release-readiness-1.0.md
+      - docs/release-readiness-1.0.2.md
       - .github/actionlint.yaml
       - .github/workflows/**
   push:
