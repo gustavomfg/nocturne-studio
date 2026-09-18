@@ -29,7 +29,7 @@ the full suite.
 - Codex CLI minimum: `0.145.0`;
 - recommended: `0.146.0`;
 - verified: `0.145.0` and `0.146.0`;
-- newer versions require a successful App Server handshake;
+- newer versions require the successful live App Server execution contract;
 - remote OpenAI-compatible endpoints require HTTPS;
 - local Ollama and LM Studio endpoints use loopback.
 

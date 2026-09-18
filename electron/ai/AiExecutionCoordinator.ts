@@ -80,6 +80,7 @@ export class AiExecutionCoordinator {
     const runId = active.runId
     try {
       const settings = input.settings as unknown as Record<string, string>
+      await this.codex.checkExecutionContract()
       let resumed = false
       let threadId = input.threadId ?? ''
       if (threadId) {
@@ -146,7 +147,7 @@ export class AiExecutionCoordinator {
   }
 
   checkCodexProtocol() {
-    return this.codex.checkProtocol()
+    return this.codex.checkExecutionContract()
   }
 
   async startProvider(

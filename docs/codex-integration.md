@@ -12,13 +12,17 @@ Nocturne Studio integrates with the Codex CLI through its App Server.
 
 Authenticate with the Codex CLI using the account flow appropriate for your
 installation. Nocturne checks the executable version, authentication state and
-the live App Server contract. Startup includes a protocol handshake and safe
-`config/read` probe; model discovery uses `model/list`. A version below the
-minimum, missing authentication or an incompatible response is reported as a
-recoverable diagnostic rather than treated as a usable provider.
+the live App Server contract. Before Nocturne starts an execution it requires a
+typed `initialize` response, a safe `config/read` response and a non-empty,
+validated `model/list`; only then can the live `thread/start` and `turn/start`
+responses establish the thread and turn identities. A version below the
+minimum, missing authentication, missing capability or incompatible response is
+reported as a recoverable diagnostic rather than treated as a usable provider.
 
-Newer versions do not require a dependency edit, but they must pass the runtime
-handshake. The App Server interface is experimental.
+Newer versions do not require a dependency edit, but they must pass that runtime
+execution contract. This local gate does not certify an authenticated Codex
+session unless the protected authenticated contract smoke ran for the candidate.
+The App Server interface is experimental.
 
 ## Conversations and modes
 

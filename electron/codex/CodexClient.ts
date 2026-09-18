@@ -190,6 +190,18 @@ export class CodexClient extends EventEmitter {
     return { compatible: true as const, serverVersion: this.serverVersion }
   }
 
+  /**
+   * The execution gate is intentionally capability-based. A CLI version above
+   * the minimum is not enough: Nocturne needs a valid initialize response,
+   * config/read, and a selectable model before it starts a thread or turn.
+   */
+  async checkExecutionContract() {
+    const protocol = await this.checkProtocol()
+    const models = await this.listModels()
+    if (!models.length) throw new Error('O App Server não expôs nenhum modelo selecionável para a sessão atual.')
+    return protocol
+  }
+
   async sendTurn(
     threadId: string,
     workspace: string,

@@ -152,6 +152,10 @@ describe('CodexClient', () => {
     )
     try {
       const started = coordinator.startCodex({ conversationId: conversation.id, executionId: id, workspace: root, prompt: 'test', initialPrompt: 'test', attachments: [], memory: '', mode: 'review', settings: {} as never })
+      await waitForRequest(process, 'config/read')
+      process.respond('config/read', {})
+      await waitForRequest(process, 'model/list')
+      process.respond('model/list', { data: [{ model: 'gpt-5.6-sol', displayName: 'GPT-5.6 Sol' }] })
       await waitForRequest(process, 'thread/start')
       process.respond('thread/start', { thread: { id: 'thread-1' } })
       await waitForRequest(process, 'turn/start')
@@ -233,6 +237,17 @@ describe('CodexClient', () => {
     })
 
     await expect(checked).rejects.toThrow('Método não encontrado')
+  })
+
+  it('não inicia thread quando o contrato de execução não confirma modelos selecionáveis', async () => {
+    const { client, process } = await readyClient()
+    const checked = client.checkExecutionContract()
+    await waitForRequest(process, 'config/read')
+    process.respond('config/read', {})
+    await waitForRequest(process, 'model/list')
+    process.respond('model/list', { data: [] })
+    await expect(checked).rejects.toThrow(/nenhum modelo selecionável/i)
+    expect(process.request('thread/start')).toBeUndefined()
   })
 
   it('reinicia o transporte antes de reconectar após uma falha interna', async () => {

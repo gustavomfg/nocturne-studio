@@ -12,13 +12,17 @@ O Nocturne Studio integra-se ao Codex CLI pelo App Server.
 
 Autentique pelo Codex CLI usando o fluxo de conta adequado à sua instalação. O
 Nocturne verifica versão do executável, estado de autenticação e contrato real
-do App Server. A inicialização inclui handshake de protocolo e uma sondagem
-segura de `config/read`; a descoberta usa `model/list`. CLI ausente, não
-autenticado ou resposta incompatível gera diagnóstico recuperável, não um
-Provider utilizável desconhecido.
+do App Server. Antes de iniciar uma execução, ele exige resposta tipada de
+`initialize`, resposta segura de `config/read` e `model/list` validado e não
+vazio; só então as respostas reais de `thread/start` e `turn/start` estabelecem
+as identidades de thread e turno. CLI ausente, não autenticado, capability
+ausente ou resposta incompatível gera diagnóstico recuperável, não um Provider
+utilizável desconhecido.
 
-Versões novas não exigem editar dependência, mas precisam passar pelo handshake
-em tempo de execução. A interface do App Server é experimental.
+Versões novas não exigem editar dependência, mas precisam passar por esse
+contrato de execução em tempo de execução. Esse gate local não certifica sessão
+Codex autenticada sem o contract smoke autenticado e protegido no candidato. A
+interface do App Server é experimental.
 
 ## Conversas e modos
 
