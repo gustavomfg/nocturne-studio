@@ -35,6 +35,9 @@ detalhado é opt-in.
 ## Distribuição
 
 Builds empacotadas usam ASAR, validação de integridade embutida e fuses de
-produção do Electron. Releases estáveis exigem assinatura por plataforma,
-verificação de checksum e smoke do contrato Codex no commit exato da tag. Isso
-reduz riscos, mas não constitui certificação de segurança.
+produção do Electron. Releases estáveis exigem verificação de checksum e
+assinatura de plataforma somente onde a política de release afirma isso:
+atualmente o Linux tem manifesto de checksum assinado por GPG no ambiente
+protegido, enquanto Windows e macOS não têm assinatura nem notarização. Também
+é executado o smoke do contrato Codex no commit exato da tag. Isso reduz riscos,
+mas não constitui certificação de segurança.

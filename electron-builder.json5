@@ -33,7 +33,7 @@
   "mac": {
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
-    "notarize": true,
+    // Current release policy: macOS artifacts are unsigned and not notarized.
     "target": ["dmg", "zip"],
     "artifactName": "Nocturne-Studio-Mac-${version}-Installer.${ext}"
   },

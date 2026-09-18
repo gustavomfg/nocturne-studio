@@ -34,6 +34,8 @@ platform supports them. Logs are sanitized and verbose diagnostics are opt-in.
 ## Distribution
 
 Packaged builds use ASAR, embedded integrity validation and Electron production
-fuses. Stable releases require platform signing, checksum verification and a
-Codex contract smoke on the exact tag commit. These controls reduce risk but do
-not constitute a security certification.
+fuses. Stable releases require checksum verification and platform signing only
+where the release policy claims it: currently Linux has a protected GPG-signed
+checksum manifest, while Windows and macOS are unsigned and not notarized. A
+Codex contract smoke also runs on the exact tag commit. These controls reduce
+risk but do not constitute a security certification.

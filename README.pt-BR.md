@@ -47,10 +47,11 @@ A validação oficial de release cobre atualmente:
 | Linux desktop | AppImage e `tar.gz` (vale a arquitetura do build publicado) |
 | macOS | DMG e ZIP do atualizador (vale a arquitetura do build publicado) |
 
-A validação de pacotes sem assinatura roda em Linux, Windows e macOS. Uma
-release estável também precisa passar pelos gates protegidos de assinatura,
-notarização e checksums; consulte [instalação](docs/installation.pt-BR.md) e
-[compatibilidade](docs/compatibility.pt-BR.md).
+A validação de pacotes sem assinatura roda em Linux, Windows e macOS. Releases
+estáveis publicam os alvos configurados: Linux tem manifesto de checksum
+assinado por GPG no ambiente protegido, enquanto Windows e macOS atualmente
+publicam checksums sem assinatura de plataforma nem notarização; consulte
+[instalação](docs/installation.pt-BR.md) e [compatibilidade](docs/compatibility.pt-BR.md).
 
 ## Conexões de IA
 
@@ -102,9 +103,10 @@ A lista completa está em [desenvolvimento](docs/development.pt-BR.md).
 
 ## Estado atual
 
-O repositório está preparado como candidato `v1.0.1`. Ele ainda não foi
-tagueado nem publicado; artefatos assinados, validação do SHA final e aprovação
-da release estável protegida ainda são necessários.
+O repositório contém a preparação local do candidato não publicado `v1.0.2`.
+A linha estável publicada `v1.0.1` continua presa ao SHA aprovado; validação do
+SHA final, gates multiplataforma e aprovação da release estável protegida ainda
+são necessários.
 O contrato do Codex App
 Server é experimental; o CLI mínimo suportado é `0.145.0` e o recomendado é
 `0.146.0`. Versões mais novas precisam passar pelo handshake de compatibilidade
@@ -133,9 +135,11 @@ colaboração em nuvem e orquestração multiagente não fazem parte deste contr
 - [Solução de problemas](docs/troubleshooting.pt-BR.md) · [English](docs/troubleshooting.md)
 - [Desenvolvimento](docs/development.pt-BR.md) · [English](docs/development.md)
 - [Arquitetura](docs/architecture.pt-BR.md) · [English](docs/architecture.md)
-- [Notas da versão 1.0.1](docs/releases/v1.0.1.pt-BR.md) · [English](docs/releases/v1.0.1.md)
+- [Notas do candidato 1.0.2](docs/releases/v1.0.2.pt-BR.md) · [English](docs/releases/v1.0.2.md)
+- [Prontidão da release 1.0.2](docs/release-readiness-1.0.2.md)
+- [Notas históricas da versão 1.0.1](docs/releases/v1.0.1.pt-BR.md) · [English](docs/releases/v1.0.1.md)
 - [Checklist do candidato de release](docs/release-rc-checklist.pt-BR.md) · [English](docs/release-rc-checklist.md)
-- [Prontidão da release (mantenedores)](docs/release-readiness-1.0.md)
+- [Prontidão histórica da 1.0.1](docs/release-readiness-1.0.md)
 
 English é a fonte pública canônica. As traduções em português usam o sufixo
 `.pt-BR.md` e preservam títulos, comandos, caminhos e nomes técnicos.
