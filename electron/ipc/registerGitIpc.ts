@@ -9,6 +9,7 @@ import { safeIpcMain, type SafeIpcMain } from './safeIpc'
 import { getAuthorizedConversation } from './conversationAccess'
 import { redactLogText } from '../logging/Logger'
 import { IPC_CHANNELS } from '../../shared/ipc/channels'
+import { terminateProcess, usesDedicatedProcessGroup } from '../runtime/ProcessTermination'
 
 const run = promisify(execFile)
 const MAX_DIFF_CHARACTERS = 1_500_000
@@ -74,7 +75,7 @@ function readDiff(workspace: string, args: string[]) {
 
 function readGitOutput(workspace: string, args: string[], limit: number) {
   return new Promise<{ stdout: string; truncated: boolean }>((resolve, reject) => {
-    const child = spawn('git', args, { cwd: workspace, stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn('git', args, { cwd: workspace, detached: usesDedicatedProcessGroup(), stdio: ['ignore', 'pipe', 'pipe'] })
     let stdout = ''; let stderr = ''; let truncated = false
     let settled = false
     let timedOut = false
@@ -90,7 +91,7 @@ function readGitOutput(workspace: string, args: string[], limit: number) {
     }
     const timeout = setTimeout(() => {
       timedOut = true
-      child.kill('SIGKILL')
+      terminateProcess(child, 'SIGKILL')
       killTimer = setTimeout(() => finish(timeoutError), 5_000)
     }, 30_000)
     child.stdout.on('data', (chunk: Buffer) => {

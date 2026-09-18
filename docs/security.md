@@ -19,6 +19,22 @@ the relevant file boundary. Restored workspaces are unauthorized until the user
 selects the folder again. Review is read-only. Build uses a workspace-scoped
 Codex sandbox, disabled network access and explicit approvals.
 
+Validation is an explicit request to run a stack-selected command in an
+authorized workspace. The renderer cannot supply an executable or arguments:
+Nocturne records the planned command and arguments, rechecks workspace
+authorization immediately before spawn, rereads the selected `package.json`
+script, and blocks the run if that script changed. Validation runs without a
+shell and with a restricted inherited environment, but it deliberately executes
+project-controlled code with the developer's OS privileges. It is not an OS
+sandbox.
+
+On POSIX, supervised validation, Git, document-export and Codex processes use a
+dedicated process group and cancellation asks the group to terminate before an
+escalation. On Windows the Node primitive can target only the direct child; a
+validation timeout whose final termination cannot be confirmed is recorded as
+an uncertain failure rather than a successful cancellation. A detached terminal
+launched for the user is deliberately outside Nocturne's lifecycle ownership.
+
 Remote OpenAI-compatible providers require HTTPS, reject redirects and validate
 all resolved addresses before a connection is pinned. HTTP without TLS is
 allowed only for local loopback services.

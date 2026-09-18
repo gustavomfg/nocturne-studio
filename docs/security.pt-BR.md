@@ -19,6 +19,23 @@ symlink na fronteira de arquivo relevante. Workspaces restaurados ficam sem
 autorização até nova seleção. Review é somente leitura. Build usa sandbox Codex
 limitado ao workspace, rede desabilitada e aprovações explícitas.
 
+Validação é uma solicitação explícita para rodar um comando escolhido pelas
+evidências do stack em um workspace autorizado. O renderer não pode fornecer
+executável ou argumentos: o Nocturne registra o comando e argumentos planejados,
+revalida a autorização imediatamente antes do spawn, relê o script selecionado
+em `package.json` e bloqueia se ele mudou. A validação roda sem shell e com
+ambiente herdado restrito, mas executa deliberadamente código controlado pelo
+projeto com os privilégios do sistema operacional do desenvolvedor. Ela não é
+um sandbox do sistema operacional.
+
+No POSIX, processos supervisionados de validação, Git, exportação de documentos
+e Codex usam grupo de processo dedicado; o cancelamento pede o encerramento do
+grupo antes de escalar. No Windows, a primitiva Node só alcança o filho direto;
+um timeout de validação cujo encerramento final não puder ser confirmado é
+registrado como falha incerta, não como cancelamento bem-sucedido. Um terminal
+destacado aberto para o usuário fica intencionalmente fora da propriedade de
+ciclo de vida do Nocturne.
+
 Providers OpenAI-compatible remotos exigem HTTPS, recusam redirects e validam
 todos os endereços resolvidos antes de fixar a conexão. HTTP sem TLS só é aceito
 para serviços locais em loopback.

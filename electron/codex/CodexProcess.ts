@@ -3,6 +3,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import readline from 'node:readline'
 import type { RpcMessage } from './protocol'
 import { parseRpcLine } from './RpcTransport'
+import { terminateProcess, usesDedicatedProcessGroup } from '../runtime/ProcessTermination'
 
 const CODEX_ENVIRONMENT_ALLOWLIST = new Set([
   'PATH',
@@ -79,6 +80,7 @@ export class CodexProcess extends EventEmitter {
     this.child = spawn(executable, ['app-server', '--stdio'], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: buildCodexEnvironment(),
+      detached: usesDedicatedProcessGroup(),
     })
 
     const child = this.child
@@ -108,10 +110,10 @@ export class CodexProcess extends EventEmitter {
   stop() {
     if (!this.child) return
     this.stopping = true
-    this.child.kill('SIGTERM')
+    terminateProcess(this.child, 'SIGTERM')
     const child = this.child
     setTimeout(() => {
-      if (this.child === child) child.kill('SIGKILL')
+      if (this.child === child) terminateProcess(child, 'SIGKILL')
     }, 3_000).unref()
   }
 

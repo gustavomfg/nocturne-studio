@@ -13,6 +13,7 @@ import { IPC_CHANNELS } from '../../shared/ipc/channels'
 import { applyMarkdownSchema, exportDocumentSchema, prepareMarkdownSchema } from '../../shared/ipc/schemas'
 import { WORKSPACE_READ_LIMITS } from '../../shared/constants'
 import { readWorkspaceFile } from '../security/ExecutionPolicy'
+import { terminateProcess, usesDedicatedProcessGroup } from '../runtime/ProcessTermination'
 
 export function registerDocumentsIpc(win: BrowserWindow, database: LocalDatabase, documentUpdates: DocumentUpdateService, registrar?: SafeIpcMain) {
   const ipcMain = registrar ?? safeIpcMain(win)
@@ -81,7 +82,7 @@ function safeName(name: string, extension: string) {
 
 function pipeCommand(command: string, args: string[], input: string, cwd: string) {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: ['pipe', 'ignore', 'pipe'] })
+    const child = spawn(command, args, { cwd, detached: usesDedicatedProcessGroup(), stdio: ['pipe', 'ignore', 'pipe'] })
     let error = ''
     let settled = false
     let timedOut = false
@@ -97,8 +98,11 @@ function pipeCommand(command: string, args: string[], input: string, cwd: string
     const timeoutError = new Error('A exportação excedeu o limite de 60 segundos.')
     const timer = setTimeout(() => {
       timedOut = true
-      child.kill()
-      killTimer = setTimeout(() => finish(timeoutError), 5_000)
+      terminateProcess(child, 'SIGTERM')
+      killTimer = setTimeout(() => {
+        terminateProcess(child, 'SIGKILL')
+        finish(timeoutError)
+      }, 5_000)
     }, 60_000)
     child.stderr.on('data', (chunk) => { error = `${error}${chunk.toString()}`.slice(-64_000) })
     child.stdin.on('error', (failure) => finish(timedOut ? timeoutError : failure))
