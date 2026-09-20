@@ -14,14 +14,15 @@ import { SnapshotRollbackService } from '../electron/change-control/SnapshotRoll
 import { registerChangeControlIpc } from '../electron/ipc/registerChangeControlIpc'
 import type { SafeIpcMain } from '../electron/ipc/safeIpc'
 import { IPC_CHANNELS } from '../shared/ipc/channels'
+import { canonicalTestPath, removeTestDirectory } from './helpers/platform'
 
 vi.mock('electron', () => ({ ipcMain: {} }))
 const cleanup: Array<() => void> = []
 afterEach(() => { vi.restoreAllMocks(); cleanup.splice(0).reverse().forEach((fn) => fn()) })
 
 async function fixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-decision-boundary-'))
-  cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }))
+  const root = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-decision-boundary-')))
+  cleanup.push(() => removeTestDirectory(root))
   const workspace = path.join(root, 'project')
   fs.mkdirSync(workspace)
   const database = new LocalDatabase(root)

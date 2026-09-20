@@ -13,11 +13,12 @@ import { ExecutionChangeControlService } from '../electron/change-control/Execut
 import { registerAiIpc } from '../electron/ipc/registerAiIpc'
 import type { SafeIpcMain } from '../electron/ipc/safeIpc'
 import { IPC_CHANNELS } from '../shared/ipc/channels'
+import { canonicalTestPath, removeTestDirectory } from './helpers/platform'
 
 vi.mock('electron', () => ({ ipcMain: {}, dialog: { showMessageBox: async () => ({ response: 1 }) } }))
 
 it('whole Build rollback crosses IPC, resolves the decision gate and publishes the persisted result', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-rollback-boundary-'))
+  const root = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-rollback-boundary-')))
   const workspace = path.join(root, 'project'); fs.mkdirSync(workspace)
   const db = new LocalDatabase(root)
   try {
@@ -47,5 +48,5 @@ it('whole Build rollback crosses IPC, resolves the decision gate and publishes t
     expect(changeControl.hasPending(workspace)).toBe(false)
     expect(gate.isHeld(workspace)).toBe(false)
     expect(send).toHaveBeenCalledWith(IPC_CHANNELS.changeControl.changed, expect.objectContaining({ executionId }))
-  } finally { db.close(); fs.rmSync(root, { recursive: true, force: true }) }
+  } finally { db.close(); removeTestDirectory(root) }
 })

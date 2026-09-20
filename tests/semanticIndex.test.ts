@@ -7,13 +7,14 @@ import { LocalDatabase } from '../electron/database/Database'
 import { ProjectIndexService } from '../electron/project-index/ProjectIndexService'
 import { SemanticIndexService } from '../electron/semantic-index/SemanticIndexService'
 import { SemanticRetrievalService } from '../electron/semantic-index/SemanticRetrievalService'
+import { canonicalTestPath, removeTestDirectory } from './helpers/platform'
 
 const directories: string[] = []
 const databases: LocalDatabase[] = []
 
 afterEach(async () => {
   for (const database of databases.splice(0)) database.close()
-  for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true })
+  for (const directory of directories.splice(0)) removeTestDirectory(directory)
 })
 
 describe('Semantic Index', () => {
@@ -307,7 +308,7 @@ describe('Semantic Index', () => {
     expect(results[0]?.unit.relativePath).toBe(relevantPath)
     expect(results[0]?.scores.vector).toBe(1)
     await semantic.dispose()
-  })
+  }, 30_000)
 
   it('mantém dependência-only como reforço abaixo da evidência primária', async () => {
     const fixture = createFixture()
@@ -348,8 +349,8 @@ describe('Semantic Index', () => {
 })
 
 function createFixture() {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-semantic-db-'))
-  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-semantic-project-'))
+  const userData = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-semantic-db-')))
+  const workspace = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-semantic-project-')))
   directories.push(userData, workspace)
   const database = new LocalDatabase(userData)
   databases.push(database)

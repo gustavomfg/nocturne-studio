@@ -6,6 +6,7 @@ import { CheckpointService } from '../electron/change-control/CheckpointService'
 import { SnapshotRollbackService } from '../electron/change-control/SnapshotRollbackService'
 import { WorkspaceCheckpointStore } from '../electron/change-control/WorkspaceCheckpointStore'
 import { LocalDatabase } from '../electron/database/Database'
+import { canonicalTestPath, removeTestDirectory } from './helpers/platform'
 
 const directories: string[] = []
 const databases: LocalDatabase[] = []
@@ -13,12 +14,12 @@ const databases: LocalDatabase[] = []
 afterEach(() => {
   vi.restoreAllMocks()
   for (const database of databases.splice(0)) database.close()
-  for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true })
+  for (const directory of directories.splice(0)) removeTestDirectory(directory)
 })
 
 async function fixture() {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-rollback-db-'))
-  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-rollback-project-'))
+  const userData = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-rollback-db-')))
+  const workspace = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-rollback-project-')))
   directories.push(userData, workspace)
   const database = new LocalDatabase(userData)
   databases.push(database)
