@@ -9,14 +9,16 @@ import { CheckpointService } from '../electron/change-control/CheckpointService'
 import { WorkspaceCheckpointStore } from '../electron/change-control/WorkspaceCheckpointStore'
 import { ChangeCaptureService } from '../electron/change-control/ChangeCaptureService'
 import { SnapshotRollbackService } from '../electron/change-control/SnapshotRollbackService'
-import { canonicalTestPath, removeTestDirectory } from './helpers/platform'
+import { canonicalTestPath, removeTestDirectoryAsync } from './helpers/platform'
 
-const cleanup: Array<() => void> = []
-afterEach(() => cleanup.splice(0).reverse().forEach((fn) => fn()))
+const cleanup: Array<() => void | Promise<void>> = []
+afterEach(async () => {
+  for (const fn of cleanup.splice(0).reverse()) await fn()
+})
 
 it('usa BEFORE imutável com HEAD alterado e recusa edição posterior ao AFTER', async () => {
   const root = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-build-invariant-')))
-  cleanup.push(() => removeTestDirectory(root))
+  cleanup.push(() => removeTestDirectoryAsync(root))
   const workspace = path.join(root, 'project')
   fs.mkdirSync(workspace)
   const database = new LocalDatabase(root)
