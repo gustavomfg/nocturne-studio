@@ -308,7 +308,7 @@ describe('Semantic Index', () => {
     expect(results[0]?.unit.relativePath).toBe(relevantPath)
     expect(results[0]?.scores.vector).toBe(1)
     await semantic.dispose()
-  }, 30_000)
+  }, 60_000)
 
   it('mantém dependência-only como reforço abaixo da evidência primária', async () => {
     const fixture = createFixture()

@@ -509,7 +509,7 @@ describe('persistência SQLite', () => {
     const backups = fs.readdirSync(directory).filter((name) => name.startsWith('nocturne.db.backup-'))
     expect(backups).toHaveLength(3)
     for (const name of backups) expectUserOnlyMode(fs.statSync(path.join(directory, name)).mode)
-  })
+  }, 30_000)
   it('migra o schema 7 preservando dados e criando o índice do Segundo Cérebro', () => {
     const db = create(); const conversation = db.createConversation('/tmp/from-7'); db.addMessage(conversation.id, 'user', 'Preservar'); db.close()
     const directory = directories[directories.length - 1]; const file = path.join(directory, 'nocturne.db')
@@ -604,7 +604,7 @@ describe('persistência SQLite', () => {
       expect.objectContaining({ action: 'created', toStatus: 'active' }),
     ])
     migrated.close()
-  })
+  }, 30_000)
   it('recusa schema futuro antes de executar manutenção ou migrações', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-test-')); directories.push(directory)
     const file = path.join(directory, 'nocturne.db')

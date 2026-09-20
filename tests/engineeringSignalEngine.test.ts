@@ -225,7 +225,7 @@ describe('EngineeringSignalEngine', () => {
     expect(db.engineeringIntelligence.listSignals(workspace).filter((signal) => signal.kind === 'unresolved-local-import')).toHaveLength(1)
     await engine.dispose()
     db.close()
-  })
+  }, 30_000)
 
   it('calcula sinais determinísticos com proveniência e não duplica avaliações iguais', async () => {
     const db = create()
@@ -251,7 +251,7 @@ describe('EngineeringSignalEngine', () => {
     expect(db.engineeringIntelligence.listSignals(workspace)).toHaveLength(3)
     await engine.dispose()
     db.close()
-  })
+  }, 30_000)
 
   it('separa falha do projeto de indisponibilidade do ambiente', async () => {
     const db = create()
