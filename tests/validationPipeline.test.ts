@@ -102,6 +102,44 @@ describe('Validation Pipeline', () => {
     expect(pipeline.latest(fixture.workspace)?.id).toBe(run.id)
   })
 
+  it('persiste o resultado mesmo se o workspace desaparecer antes da coleta de artefatos', async () => {
+    const fixture = createFixture()
+    fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [evidence(fixture.workspace, 'script', 'test=vitest')])
+    const runner: ProcessRunner = { run: async () => {
+      fs.rmSync(fixture.workspace, { recursive: true, force: true })
+      return successfulResult('reports/test.html', '')
+    } }
+    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
+
+    const run = await pipeline.run(fixture.workspace, 'test')
+
+    expect(run).toMatchObject({ status: 'passed', exitCode: 0, artifacts: [] })
+    expect(pipeline.latest(fixture.workspace)).toMatchObject({ id: run.id, status: 'passed' })
+  })
+
+  it('registra falhas inesperadas de filesystem sem alterar o resultado do processo', async () => {
+    const fixture = createFixture()
+    fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [evidence(fixture.workspace, 'script', 'test=vitest')])
+    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), {
+      runner: { run: async () => successfulResult('reports/test.html', '') },
+    })
+    const originalStat = fs.promises.stat.bind(fs.promises)
+    const stat = vi.spyOn(fs.promises, 'stat').mockImplementation(async (filePath, options) => {
+      if (path.basename(filePath.toString()) === 'test.html') throw Object.assign(new Error('permission denied'), { code: 'EACCES' })
+      return originalStat(filePath, options)
+    })
+
+    try {
+      const run = await pipeline.run(fixture.workspace, 'test')
+
+      expect(run).toMatchObject({ status: 'passed', exitCode: 0, artifacts: [] })
+      expect(run.error).toEqual(expect.stringMatching(/EACCES|permission denied/i))
+      expect(pipeline.latest(fixture.workspace)).toMatchObject({ id: run.id, status: 'passed', error: run.error })
+    } finally {
+      stat.mockRestore()
+    }
+  })
+
   it('preserva a execução de origem para ligar a validação à evidência do turno', async () => {
     const fixture = createFixture()
     const conversation = fixture.database.createConversation(fixture.workspace)

@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { validationKinds, type StackEvidence, type ValidationArtifact, type ValidationKind, type ValidationRun } from '../../shared/codeIntelligence'
-import { CODE_INTELLIGENCE_LIMITS, WORKSPACE_READ_LIMITS } from '../../shared/constants'
+import { CODE_INTELLIGENCE_LIMITS, COLLECTION_PAGE_LIMITS, WORKSPACE_READ_LIMITS } from '../../shared/constants'
 import { assessCommand, readWorkspaceFile, resolveInsideWorkspace } from '../security/ExecutionPolicy'
 import { redactLogText } from '../logging/Logger'
 import type { ValidationRepository } from '../database/ValidationRepository'
@@ -115,6 +115,10 @@ export class ValidationPipeline {
     return this.repository.list(path.resolve(workspace), limit)
   }
 
+  page(workspace: string, offset = 0, limit: number = COLLECTION_PAGE_LIMITS.validation) {
+    return this.repository.page(path.resolve(workspace), offset, limit)
+  }
+
   getMetrics(): ValidationMetricsSnapshot {
     return { ...this.metrics, byKind: Object.fromEntries(validationKinds.map((kind) => [kind, { ...this.metrics.byKind[kind] }])) as ValidationMetricsSnapshot['byKind'] }
   }
@@ -211,7 +215,15 @@ export class ValidationPipeline {
     run.exitCode = result.exitCode
     run.durationMs = result.durationMs
     run.outputSummary = summarizeOutput(result.stdout, result.stderr, result.truncated)
-    run.artifacts = await discoverArtifacts(executionWorkspace, result.stdout, result.stderr)
+    let artifactCollectionError: string | null = null
+    try {
+      run.artifacts = await discoverArtifacts(executionWorkspace, result.stdout, result.stderr)
+    } catch (error) {
+      run.artifacts = []
+      const code = (error as NodeJS.ErrnoException | undefined)?.code
+      const message = error instanceof Error ? error.message : String(error)
+      artifactCollectionError = `Falha na coleta de artefatos${code ? ` (${code})` : ''}: ${sanitizeError(message)}`
+    }
     run.completedAt = new Date().toISOString()
     if (result.terminationUncertain) {
       run.status = 'failed'
@@ -230,6 +242,9 @@ export class ValidationPipeline {
     } else {
       run.status = 'failed'
       run.error = result.exitCode === null ? 'O processo terminou sem código de saída.' : `O comando terminou com exit code ${result.exitCode}.`
+    }
+    if (artifactCollectionError) {
+      run.error = combineValidationErrors(run.error, artifactCollectionError)
     }
     this.repository.update(run)
     this.publish(run)
@@ -366,7 +381,15 @@ function summarizeOutput(stdout: string, stderr: string, truncated: boolean) {
 }
 
 async function discoverArtifacts(workspace: string, stdout: string, stderr: string): Promise<ValidationArtifact[]> {
-  const canonicalWorkspace = fs.realpathSync.native(workspace)
+  let canonicalWorkspace: string
+  try {
+    canonicalWorkspace = fs.realpathSync.native(workspace)
+  } catch (error) {
+    // Artifact collection is optional; a moved or removed workspace must not
+    // prevent the already-completed validation result from being persisted.
+    if (isMissingArtifactPath(error)) return []
+    throw error
+  }
   const candidates = new Set<string>()
   for (const line of `${stdout}\n${stderr}`.split(/\r?\n/)) {
     for (const token of line.split(/\s+/)) {
@@ -387,12 +410,33 @@ async function discoverArtifacts(workspace: string, stdout: string, stderr: stri
       const relativePath = path.relative(canonicalWorkspace, fs.realpathSync.native(resolved)).replace(/\\/g, '/')
       if (relativePath === '..' || relativePath.startsWith('../') || path.isAbsolute(relativePath)) continue
       artifacts.push({ path: relativePath, kind: path.extname(resolved).slice(1).toLowerCase(), size: stat.size })
-    } catch {
+    } catch (error) {
       // Output often contains labels or paths that were not materialized; those
       // are intentionally not persisted as artifacts.
+      if (isMissingArtifactPath(error) || isBlockedArtifactPath(error)) continue
+      throw error
     }
   }
   return artifacts
+}
+
+function isMissingArtifactPath(error: unknown) {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code
+  return code === 'ENOENT' || code === 'ENOTDIR'
+}
+
+function isBlockedArtifactPath(error: unknown) {
+  return error instanceof Error && error.message.startsWith('Acesso bloqueado:')
+}
+
+function combineValidationErrors(primary: string | null, diagnostic: string) {
+  const limit = CODE_INTELLIGENCE_LIMITS.maxErrorCharacters
+  const normalizedDiagnostic = sanitizeError(diagnostic)
+  if (!primary) return normalizedDiagnostic.slice(0, limit)
+
+  const boundedDiagnostic = normalizedDiagnostic.slice(0, Math.floor(limit / 2))
+  const boundedPrimary = sanitizeError(primary).slice(0, limit - boundedDiagnostic.length - 2)
+  return `${boundedPrimary}; ${boundedDiagnostic}`
 }
 
 function sanitizeError(value: string) {
