@@ -71,6 +71,10 @@ não renderiza um grafo.
 
 ## Stack e validação
 
+O histórico de validações é carregado em páginas de 20 registros. Use
+“Carregar validações anteriores” para consultar resultados mais antigos; a
+listagem continua limitada ao workspace autorizado.
+
 O detector registra cada conclusão como evidência com categoria, confiança,
 arquivo, hash, linha quando disponível e justificativa. Package managers,
 scripts, runtimes, linguagens, frameworks, bundlers, ferramentas de lint,

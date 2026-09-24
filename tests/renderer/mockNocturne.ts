@@ -110,6 +110,7 @@ export async function installNocturneMock(page: Page, options: { empty?: boolean
         run: async (_workspace: string, kind: ValidationKind) => ({ id: `validation-${kind}`, workspace: selectedWorkspace, kind, command: '', args: [], status: 'blocked' as const, exitCode: null, durationMs: 0, outputSummary: '', artifacts: [], startedAt: now, completedAt: now, error: 'Nenhum comando identificado.' }),
         cancel: async () => false,
         list: async () => [],
+        page: async () => ({ items: [], hasMore: false }),
         latest: async () => null,
         onStatus: (listener: (payload: unknown) => void) => { validationStatusListeners.push(listener); return () => { const index = validationStatusListeners.indexOf(listener); if (index >= 0) validationStatusListeners.splice(index, 1) } },
       },

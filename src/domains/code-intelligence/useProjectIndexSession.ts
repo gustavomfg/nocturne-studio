@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DetectedStack, ProjectIndexStatus, ProjectIndexSummary, ProjectSymbol, StackEvidence, ValidationKind, ValidationRun } from '../../../shared/codeIntelligence'
 import type { SemanticIndexStatus, SemanticIndexSummary, SemanticSearchResult } from '../../../shared/semanticIndex'
 import type { EngineeringHealthReport } from '../../../shared/engineeringIntelligence'
+import { COLLECTION_PAGE_LIMITS } from '../../../shared/constants'
 import { errorMessage } from '../../shared/format'
 
 interface ProjectIndexSessionOptions {
@@ -33,6 +34,8 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
   const [loading, setLoading] = useState(false)
   const [validationRuns, setValidationRuns] = useState<ValidationRun[]>([])
   const [validationLoading, setValidationLoading] = useState(false)
+  const [validationHasMore, setValidationHasMore] = useState(false)
+  const [validationPageLoading, setValidationPageLoading] = useState(false)
   const [semanticStatus, setSemanticStatus] = useState<SemanticIndexStatus | null>(null)
   const [semanticSummary, setSemanticSummary] = useState<SemanticIndexSummary | null>(null)
   const [semanticResults, setSemanticResults] = useState<SemanticSearchResult[]>([])
@@ -52,15 +55,31 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
   }
   const symbolsRequestRef = useRef(0)
   const semanticRequestRef = useRef(0)
+  const validationRunsRef = useRef<ValidationRun[]>([])
+  const validationOffsetRef = useRef(0)
+  const validationHasMoreRef = useRef(false)
+  const validationPageLoadingRef = useRef(false)
+  const validationPageRequestRef = useRef(0)
+
+  const applyValidationRuns = useCallback((incoming: ValidationRun[], prependNew: boolean, preferIncoming = false) => {
+    const next = mergeValidationRuns(validationRunsRef.current, incoming, prependNew, preferIncoming)
+    validationRunsRef.current = next
+    validationOffsetRef.current = next.length
+    setValidationRuns(next)
+    return next
+  }, [])
 
   const refresh = useCallback(async () => {
     if (!workspace || !authorized) return
     const token = { workspace, generation: sessionRef.current.generation }
+    const validationRequest = ++validationPageRequestRef.current
+    validationPageLoadingRef.current = false
+    setValidationPageLoading(false)
     const [nextStatus, nextSummary, nextStack, nextValidation, nextSemanticStatus, nextSemanticSummary, nextEngineeringReport] = await Promise.all([
       window.nocturne.projectIndex.status(workspace),
       window.nocturne.projectIndex.summary(workspace),
       window.nocturne.projectIndex.stack(workspace),
-      window.nocturne.validation.list(workspace, 20),
+      window.nocturne.validation.page(workspace, 0, COLLECTION_PAGE_LIMITS.validation),
       window.nocturne.semanticIndex.status(workspace),
       window.nocturne.semanticIndex.summary(workspace),
       window.nocturne.engineeringIntelligence.report(workspace),
@@ -69,11 +88,19 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
     setStatus(nextStatus)
     setSummary(nextSummary)
     setStack(nextStack)
-    setValidationRuns(nextValidation)
+    if (validationPageRequestRef.current === validationRequest) {
+      const validationWasPaged = validationOffsetRef.current > nextValidation.items.length
+      const previousHasMore = validationHasMoreRef.current
+      applyValidationRuns(nextValidation.items, true)
+      validationHasMoreRef.current = validationWasPaged ? previousHasMore : nextValidation.hasMore
+      setValidationHasMore(validationHasMoreRef.current)
+      validationPageLoadingRef.current = false
+      setValidationPageLoading(false)
+    }
     setSemanticStatus(nextSemanticStatus)
     setSemanticSummary(nextSemanticSummary)
     setEngineeringReport(nextEngineeringReport)
-  }, [authorized, workspace])
+  }, [applyValidationRuns, authorized, workspace])
 
   useEffect(() => {
     let mounted = true
@@ -82,8 +109,15 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
     setSummary(null)
     setStack([])
     setSymbols([])
+    validationRunsRef.current = []
+    validationOffsetRef.current = 0
+    validationHasMoreRef.current = false
+    validationPageLoadingRef.current = false
+    validationPageRequestRef.current += 1
     setValidationRuns([])
     setValidationLoading(false)
+    setValidationHasMore(false)
+    setValidationPageLoading(false)
     setSemanticStatus(null)
     setSemanticSummary(null)
     setSemanticResults([])
@@ -98,7 +132,7 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
     })
     const offValidation = window.nocturne.validation.onStatus((run) => {
       if (!mounted || run.workspace !== workspace) return
-      setValidationRuns((current) => [run, ...current.filter((item) => item.id !== run.id)].slice(0, 20))
+      applyValidationRuns([run], true, true)
       if (['passed', 'failed', 'cancelled', 'blocked'].includes(run.status)) setValidationLoading(false)
     })
     const offSemanticStatus = window.nocturne.semanticIndex.onStatus((nextStatus) => {
@@ -112,7 +146,31 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
     })
     void refresh().catch((error) => { if (mounted) callbacksRef.current.onError(errorMessage(error)) })
     return () => { mounted = false; sessionRef.current.mounted = false; offStatus(); offValidation(); offSemanticStatus(); offEngineering() }
-  }, [authorized, refresh, workspace])
+  }, [applyValidationRuns, authorized, refresh, workspace])
+
+  const loadMoreValidations = useCallback(async () => {
+    if (!workspace || !authorized || !validationHasMoreRef.current || validationPageLoadingRef.current) return
+    const token = { workspace, generation: sessionRef.current.generation }
+    const requestId = ++validationPageRequestRef.current
+    const offset = validationOffsetRef.current
+    validationPageLoadingRef.current = true
+    setValidationPageLoading(true)
+    try {
+      const page = await window.nocturne.validation.page(workspace, offset, COLLECTION_PAGE_LIMITS.validation)
+      if (!isCurrentSession(sessionRef, token) || validationPageRequestRef.current !== requestId) return
+      const runs = applyValidationRuns(page.items, false)
+      validationHasMoreRef.current = page.hasMore
+      setValidationHasMore(page.hasMore)
+      validationOffsetRef.current = runs.length
+    } catch (error) {
+      if (isCurrentSession(sessionRef, token) && validationPageRequestRef.current === requestId) callbacksRef.current.onError(errorMessage(error))
+    } finally {
+      if (isCurrentSession(sessionRef, token) && validationPageRequestRef.current === requestId) {
+        validationPageLoadingRef.current = false
+        setValidationPageLoading(false)
+      }
+    }
+  }, [applyValidationRuns, authorized, workspace])
 
   const searchSymbols = useCallback(async () => {
     if (!workspace || !authorized) return
@@ -160,14 +218,14 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
     setValidationLoading(true)
     try {
       const run = await window.nocturne.validation.run(workspace, kind)
-      if (isCurrentSession(sessionRef, token)) setValidationRuns((current) => [run, ...current.filter((item) => item.id !== run.id)].slice(0, 20))
+      if (isCurrentSession(sessionRef, token)) applyValidationRuns([run], true, true)
     } catch (error) {
       if (isCurrentSession(sessionRef, token)) {
         callbacksRef.current.onError(errorMessage(error))
         setValidationLoading(false)
       }
     }
-  }, [authorized, workspace])
+  }, [applyValidationRuns, authorized, workspace])
 
   const cancelValidation = useCallback(async () => {
     if (!workspace || !authorized) return
@@ -210,5 +268,13 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
   }, [authorized, workspace])
 
   const detectedStack: DetectedStack | null = summary?.stack ?? null
-  return { status, summary, stack, detectedStack, symbols, query, setQuery, loading, refresh, searchSymbols, start, cancel, retry, validationRuns, validationLoading, runValidation, cancelValidation, semanticStatus, semanticSummary, semanticResults, semanticQuery, setSemanticQuery, semanticLoading, searchSemantic, startSemantic, cancelSemantic, engineeringReport }
+  return { status, summary, stack, detectedStack, symbols, query, setQuery, loading, refresh, searchSymbols, start, cancel, retry, validationRuns, validationLoading, validationHasMore, validationPageLoading, loadMoreValidations, runValidation, cancelValidation, semanticStatus, semanticSummary, semanticResults, semanticQuery, setSemanticQuery, semanticLoading, searchSemantic, startSemantic, cancelSemantic, engineeringReport }
+}
+
+function mergeValidationRuns(current: ValidationRun[], incoming: ValidationRun[], prependNew: boolean, preferIncoming: boolean) {
+  const incomingById = new Map(incoming.map((run) => [run.id, run]))
+  const currentIds = new Set(current.map((run) => run.id))
+  const newRuns = incoming.filter((run) => !currentIds.has(run.id))
+  const existing = preferIncoming ? current.map((run) => incomingById.get(run.id) ?? run) : current
+  return prependNew ? [...newRuns, ...existing] : [...existing, ...newRuns]
 }

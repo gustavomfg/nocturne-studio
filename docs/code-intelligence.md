@@ -70,6 +70,10 @@ the AI and does not render a graph.
 
 ## Stack and validation
 
+Validation history is loaded in pages of 20 runs. Use “Load earlier
+validations” to browse older results; each query remains scoped to the
+authorized workspace.
+
 The detector records every conclusion as evidence with category, confidence,
 file, hash, line when available and a reason. Package managers, scripts,
 runtimes, languages, frameworks, bundlers, lint/typecheck tools, test tools and

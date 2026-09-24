@@ -233,6 +233,45 @@ test.describe('renderer do produto', () => {
     }
   })
 
+  test('pagina o histórico de validações e deduplica eventos durante o carregamento', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await ready(page)
+    await page.getByRole('button', { name: 'Inteligência do projeto' }).click()
+    await page.evaluate(() => {
+      const workspace = '/workspace/sample-project'
+      const run = (index: number, status: 'passed' | 'failed' = 'passed') => ({
+        id: `validation-${index}`, workspace, kind: 'test' as const, command: `command-${index}`, args: [], status,
+        exitCode: status === 'passed' ? 0 : 1, durationMs: 1, outputSummary: '', artifacts: [],
+        startedAt: new Date(Date.parse('2026-07-13T20:00:00.000Z') - index * 1_000).toISOString(),
+        completedAt: '2026-07-13T20:00:00.000Z', error: null,
+      })
+      let resolveOlder: ((value: unknown) => void) | undefined
+      window.nocturne.validation.page = async (_workspace, offset = 0) => offset === 0
+        ? { items: Array.from({ length: 20 }, (_, index) => run(index)), hasMore: true }
+        : new Promise((resolve) => { resolveOlder = (value) => resolve(value as never) })
+      Object.defineProperty(window, '__validationPagination', { configurable: true, value: {
+        run,
+        resolveOlder: (value: unknown) => resolveOlder?.(value),
+      } })
+      ;(window as unknown as { __nocturneTest: { emitProjectIndexStatus(payload: unknown): void } }).__nocturneTest.emitProjectIndexStatus({ workspace, status: 'completed' })
+    })
+    await expect(page.locator('.project-index-validation-runs article')).toHaveCount(20)
+    const loadMore = page.getByRole('button', { name: 'Carregar validações anteriores' })
+    await loadMore.click()
+    await expect(loadMore).toBeDisabled()
+    await page.evaluate(() => {
+      const run = (window as unknown as { __validationPagination: { run(index: number, status?: 'passed' | 'failed'): unknown } }).__validationPagination.run
+      ;(window as unknown as { __nocturneTest: { emitValidationStatus(payload: unknown): void } }).__nocturneTest.emitValidationStatus(run(19, 'failed'))
+    })
+    await page.evaluate(() => {
+      const run = (window as unknown as { __validationPagination: { run(index: number): unknown; resolveOlder(value: unknown): void } }).__validationPagination
+      run.resolveOlder({ items: [run.run(19), run.run(20)], hasMore: false })
+    })
+    await expect(page.locator('.project-index-validation-runs article')).toHaveCount(21)
+    await expect(page.getByText('Falhou', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Carregar validações anteriores' })).toHaveCount(0)
+  })
+
   test('não aplica resultado semântico atrasado de uma busca anterior', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await ready(page)
@@ -284,7 +323,7 @@ test.describe('renderer do produto', () => {
       window.nocturne.projectIndex.status = async (workspace) => defer<Awaited<ReturnType<typeof window.nocturne.projectIndex.status>>>('status', workspace)
       window.nocturne.projectIndex.summary = async (workspace) => defer<Awaited<ReturnType<typeof window.nocturne.projectIndex.summary>>>('summary', workspace)
       window.nocturne.projectIndex.stack = async (workspace) => defer<Awaited<ReturnType<typeof window.nocturne.projectIndex.stack>>>('stack', workspace)
-      window.nocturne.validation.list = async (workspace) => defer<Awaited<ReturnType<typeof window.nocturne.validation.list>>>('validation', workspace)
+      window.nocturne.validation.page = async (workspace) => defer<Awaited<ReturnType<typeof window.nocturne.validation.page>>>('validation', workspace)
       window.nocturne.semanticIndex.status = async (workspace) => defer<Awaited<ReturnType<typeof window.nocturne.semanticIndex.status>>>('semantic-status', workspace)
       window.nocturne.semanticIndex.summary = async (workspace) => defer<Awaited<ReturnType<typeof window.nocturne.semanticIndex.summary>>>('semantic-summary', workspace)
       window.nocturne.engineeringIntelligence.report = async (workspace) => defer<Awaited<ReturnType<typeof window.nocturne.engineeringIntelligence.report>>>('engineering', workspace)
@@ -301,9 +340,10 @@ test.describe('renderer do produto', () => {
         }
         const summary = { workspace, indexVersion: 1, latestRun: run, files: 1, indexedFiles: 1, failedFiles: 0, unsupportedFiles: 0, symbols: 0, imports: 0, exports: 0, stack: { name: marker, stack: [marker], primaryLanguage: 'TypeScript', commands: {}, evidence: [], detectedAt: run.completedAt } }
         const stack = [{ id: `${marker}-evidence`, workspace, category: 'language', value: marker, confidence: 100, sourcePath: 'package.json', sourceHash: 'a'.repeat(64), sourceLine: null, reason: 'test', detectedAt: run.completedAt }]
+        const validation = { id: `${marker}-validation`, workspace, kind: 'test', command: `command-${marker}`, args: [], status: 'passed', exitCode: 0, durationMs: 1, outputSummary: '', artifacts: [], startedAt: run.completedAt, completedAt: run.completedAt, error: null }
         const engineering = { snapshot: { id: `${marker}-engineering`, workspace, policyVersion: 1, evaluatedAt: run.completedAt, previousSnapshotId: null, sources: { projectIndexRunId: run.id, semanticIndexRunId: null, validationRunIds: [], executionIds: [], changeSetIds: [] }, categories: [], signalFingerprints: [], signalStates: [], stateFingerprint: 'a'.repeat(64) }, signals: [], insights: [], trends: [] }
         for (const call of pending.filter((item) => item.workspace === workspace)) {
-          call.resolve(call.kind === 'status' ? run : call.kind === 'summary' ? summary : call.kind === 'stack' ? stack : call.kind === 'engineering' ? engineering : call.kind === 'semantic-status' ? null : call.kind === 'semantic-summary' ? { workspace, indexVersion: 1, latestRun: null, files: 0, units: 0, indexedUnits: 0, lexicalOnlyUnits: 0, staleUnits: 0, failedUnits: 0, excludedUnits: 0 } : [])
+          call.resolve(call.kind === 'status' ? run : call.kind === 'summary' ? summary : call.kind === 'stack' ? stack : call.kind === 'engineering' ? engineering : call.kind === 'semantic-status' ? null : call.kind === 'semantic-summary' ? { workspace, indexVersion: 1, latestRun: null, files: 0, units: 0, indexedUnits: 0, lexicalOnlyUnits: 0, staleUnits: 0, failedUnits: 0, excludedUnits: 0 } : call.kind === 'validation' ? { items: [validation], hasMore: false } : [])
         }
       }
       Object.defineProperty(window, '__sessionSwitch', { configurable: true, value: { pending, resolveWorkspace } })
@@ -315,8 +355,10 @@ test.describe('renderer do produto', () => {
     await expect(page.locator('.workspace-card')).toContainText('second-project')
     await page.evaluate(() => (window as unknown as { __sessionSwitch: { resolveWorkspace(workspace: string, marker: string): void } }).__sessionSwitch.resolveWorkspace('/workspace/second-project', 'SECOND'))
     await expect(page.getByText('SECOND', { exact: true })).toBeVisible()
+    await expect(page.getByText('command-SECOND', { exact: true })).toBeVisible()
     await page.evaluate(() => (window as unknown as { __sessionSwitch: { resolveWorkspace(workspace: string, marker: string): void } }).__sessionSwitch.resolveWorkspace('/workspace/sample-project', 'FIRST'))
     await expect(page.getByText('SECOND', { exact: true })).toBeVisible()
+    await expect(page.getByText('command-FIRST', { exact: true })).toHaveCount(0)
     await expect(page.getByText('FIRST', { exact: true })).toHaveCount(0)
   })
 
