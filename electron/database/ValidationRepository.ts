@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 import type { ValidationArtifact, ValidationRun } from '../../shared/codeIntelligence'
-import { CODE_INTELLIGENCE_LIMITS } from '../../shared/constants'
+import { CODE_INTELLIGENCE_LIMITS, COLLECTION_PAGE_LIMITS } from '../../shared/constants'
 import type { DatabaseTransactionRunner } from './DatabaseTransaction'
 import { WorkspaceEvidenceRepository } from './WorkspaceEvidenceRepository'
 
@@ -48,14 +48,22 @@ export class ValidationRepository {
   }
 
   latest(workspace: string) {
-    const row = this.database.prepare(selectSql(`WHERE workspace=? ORDER BY started_at DESC LIMIT 1`)).get(workspace) as ValidationRunRow | undefined
+    const row = this.database.prepare(selectSql(`WHERE workspace=? ORDER BY started_at DESC,id DESC LIMIT 1`)).get(workspace) as ValidationRunRow | undefined
     return row ? fromRow(row) : null
   }
 
   list(workspace: string, limit?: number) {
     const boundedLimit = Math.max(1, Math.min(CODE_INTELLIGENCE_LIMITS.maxQueryResults, Math.trunc(limit ?? CODE_INTELLIGENCE_LIMITS.maxQueryResults)))
-    const rows = this.database.prepare(selectSql('WHERE workspace=? ORDER BY started_at DESC LIMIT ?')).all(workspace, boundedLimit) as ValidationRunRow[]
+    const rows = this.database.prepare(selectSql('WHERE workspace=? ORDER BY started_at DESC,id DESC LIMIT ?')).all(workspace, boundedLimit) as ValidationRunRow[]
     return rows.map(fromRow)
+  }
+
+  page(workspace: string, offset = 0, limit: number = COLLECTION_PAGE_LIMITS.validation) {
+    const boundedOffset = Math.max(0, Math.trunc(offset))
+    const boundedLimit = Math.max(1, Math.min(CODE_INTELLIGENCE_LIMITS.maxQueryResults, Math.trunc(limit)))
+    const rows = this.database.prepare(selectSql('WHERE workspace=? ORDER BY started_at DESC,id DESC LIMIT ? OFFSET ?'))
+      .all(workspace, boundedLimit + 1, boundedOffset) as ValidationRunRow[]
+    return { items: rows.slice(0, boundedLimit).map(fromRow), hasMore: rows.length > boundedLimit }
   }
 
   save(run: ValidationRun) {

@@ -72,6 +72,7 @@ export interface NocturneApi {
     run(workspace: string, kind: ValidationKind, executionId?: string): Promise<ValidationRun>
     cancel(workspace: string): Promise<boolean>
     list(workspace: string, limit?: number): Promise<ValidationRun[]>
+    page(workspace: string, offset?: number, limit?: number): Promise<CollectionPage<ValidationRun>>
     latest(workspace: string): Promise<ValidationRun | null>
     onStatus(listener: (run: ValidationRun) => void): () => void
   }

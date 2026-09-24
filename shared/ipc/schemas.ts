@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { agentModes, suggestionStatuses } from '../suggestions'
-import { PERSISTENCE_LIMITS } from '../constants'
+import { CODE_INTELLIGENCE_LIMITS, PERSISTENCE_LIMITS } from '../constants'
 import { brainMemoryKinds, brainMemoryScopes, brainMemoryStatuses, isSafeBrainMemoryContent } from '../brainMemory'
 import { PROVIDER_CONFIGURATION_LIMITS } from '../ai/providerConfiguration'
 import { providerConfigurationInputSchema } from '../ai/providerConfigurationSchemas'
@@ -24,6 +24,7 @@ export const projectIndexFileQuerySchema = projectIndexWorkspaceSchema.extend({ 
 export const semanticIndexSearchSchema = semanticSearchQuerySchema
 export const validationRunSchema = projectIndexWorkspaceSchema.extend({ kind: z.enum(validationKinds), executionId: idSchema.optional() }).strict()
 export const validationListSchema = projectIndexWorkspaceSchema.extend({ limit: z.number().int().min(1).max(100).default(20) }).strict()
+export const validationPageSchema = projectIndexWorkspaceSchema.extend({ offset: z.number().int().min(0).max(1_000_000).default(0), limit: z.number().int().min(1).max(CODE_INTELLIGENCE_LIMITS.maxQueryResults).default(20) }).strict()
 export const changeControlExecutionSchema = z.object({ conversationId: idSchema, executionId: idSchema }).strict()
 export const changeControlSetSchema = z.object({ conversationId: idSchema, changeSetId: idSchema }).strict()
 export const changeControlChangeSchema = z.object({ conversationId: idSchema, changeId: idSchema }).strict()

@@ -1,5 +1,5 @@
 import type { BrowserWindow } from 'electron'
-import { validationListSchema, validationRunSchema, projectIndexWorkspaceSchema } from '../../shared/ipc/schemas'
+import { validationListSchema, validationPageSchema, validationRunSchema, projectIndexWorkspaceSchema } from '../../shared/ipc/schemas'
 import { IPC_CHANNELS } from '../../shared/ipc/channels'
 import type { ValidationPipeline } from '../validation/ValidationPipeline'
 import { safeIpcMain, type SafeIpcMain } from './safeIpc'
@@ -25,6 +25,10 @@ export function registerValidationIpc(win: BrowserWindow, pipeline: ValidationPi
   ipcMain.handle(IPC_CHANNELS.validation.list, (_event, value: unknown) => {
     const data = validationListSchema.parse(value)
     return pipeline.list(dependencies.assertAuthorized(data.workspace), data.limit)
+  })
+  ipcMain.handle(IPC_CHANNELS.validation.page, (_event, value: unknown) => {
+    const data = validationPageSchema.parse(value)
+    return pipeline.page(dependencies.assertAuthorized(data.workspace), data.offset, data.limit)
   })
 
   return () => { if (ownsRegistrar) ipcMain.dispose() }

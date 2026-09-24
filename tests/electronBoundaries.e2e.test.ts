@@ -524,6 +524,30 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     expect(paginated.hasMore).toBe(true)
   })
 
+  it('pagina validações pela API nomeada e mantém list e latest compatíveis', async () => {
+    electron.dialogs.open.push({ canceled: false, filePaths: [workspace] })
+    await api.workspace.select()
+    const startedAt = '2026-09-24T12:00:00.000Z'
+    for (const id of ['ipc-validation-a', 'ipc-validation-b', 'ipc-validation-c']) {
+      database!.validation.create({ id, workspace, kind: 'test', command: 'npm', args: ['test'], status: 'passed', exitCode: 0, durationMs: 1, outputSummary: id, artifacts: [], startedAt, completedAt: startedAt, error: null })
+    }
+
+    await expect(api.validation.page(workspace, 0, 2)).resolves.toMatchObject({
+      items: [{ id: 'ipc-validation-c' }, { id: 'ipc-validation-b' }],
+      hasMore: true,
+    })
+    await expect(api.validation.page(workspace, 2, 2)).resolves.toMatchObject({
+      items: [{ id: 'ipc-validation-a' }],
+      hasMore: false,
+    })
+    await expect(api.validation.list(workspace, 2)).resolves.toMatchObject([{ id: 'ipc-validation-c' }, { id: 'ipc-validation-b' }])
+    await expect(api.validation.latest(workspace)).resolves.toMatchObject({ id: 'ipc-validation-c' })
+    await expect(api.validation.page(workspace, -1, 2)).rejects.toThrow()
+    const unapprovedWorkspace = path.join(root, 'unapproved-workspace')
+    fs.mkdirSync(unapprovedWorkspace)
+    await expect(api.validation.page(unapprovedWorkspace)).rejects.toThrow()
+  })
+
   it('propaga mudanças externas pelo canal nomeado do preload', async () => {
     const changed = new Promise<Parameters<Parameters<typeof api.workspace.onChanged>[0]>[0]>((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Mudança externa não detectada.')), 10_000)

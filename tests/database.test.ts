@@ -292,6 +292,25 @@ describe('persistência SQLite', () => {
     expect(oldest.items.map((message) => message.content)).toEqual(Array.from({ length: 5 }, (_, index) => `Mensagem ${index}`))
     expect(oldest.hasMore).toBe(false); db.close()
   })
+  it('pagina histórico de validações por workspace com ordenação estável', () => {
+    const db = create(); const workspace = '/tmp/validation-pages'; db.createConversation(workspace)
+    const startedAt = '2026-01-01T00:00:00.000Z'
+    for (const id of ['validation-a', 'validation-c', 'validation-b', 'validation-d', 'validation-e']) {
+      db.validation.create({ id, workspace, kind: 'test', command: 'npm', args: ['test'], status: 'passed', exitCode: 0, durationMs: 1, outputSummary: id, artifacts: [], startedAt, completedAt: startedAt, error: null })
+    }
+
+    const first = db.validation.page(workspace, 0, 2)
+    const second = db.validation.page(workspace, 2, 2)
+    const last = db.validation.page(workspace, 4, 2)
+
+    expect(first).toMatchObject({ items: [{ id: 'validation-e' }, { id: 'validation-d' }], hasMore: true })
+    expect(second).toMatchObject({ items: [{ id: 'validation-c' }, { id: 'validation-b' }], hasMore: true })
+    expect(last).toMatchObject({ items: [{ id: 'validation-a' }], hasMore: false })
+    expect(db.validation.list(workspace, 2).map((run) => run.id)).toEqual(['validation-e', 'validation-d'])
+    expect(db.validation.latest(workspace)?.id).toBe('validation-e')
+    expect(db.validation.page('/tmp/other-validation-pages', 0, 2)).toEqual({ items: [], hasMore: false })
+    db.close()
+  })
   it('limita o histórico materializado para contexto da IA', () => {
     const db = create(); const conversationId = seedMessageHistory(db, '/tmp/recent-context', 250)
     const recent = db.listRecentMessages(conversationId, 40)

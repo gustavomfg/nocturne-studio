@@ -62,4 +62,4 @@ export const RENDERER_PERFORMANCE_BUDGETS = {
   longTaskMs: 50,
 } as const
 
-export const COLLECTION_PAGE_LIMITS = { conversations: 100, artifacts: 50, suggestions: 50, brainMemories: 50 } as const
+export const COLLECTION_PAGE_LIMITS = { conversations: 100, artifacts: 50, suggestions: 50, brainMemories: 50, validation: 20 } as const
