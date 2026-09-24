@@ -256,7 +256,7 @@ test.describe('renderer do produto', () => {
       ;(window as unknown as { __nocturneTest: { emitProjectIndexStatus(payload: unknown): void } }).__nocturneTest.emitProjectIndexStatus({ workspace, status: 'completed' })
     })
     await expect(page.locator('.project-index-validation-runs article')).toHaveCount(20)
-    const loadMore = page.getByRole('button', { name: 'Carregar validações anteriores' })
+    const loadMore = page.locator('.project-index-load-more')
     await loadMore.click()
     await expect(loadMore).toBeDisabled()
     await page.evaluate(() => {
