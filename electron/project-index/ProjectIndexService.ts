@@ -473,6 +473,8 @@ export class ProjectIndexService {
 
   private findAffectedImporters(workspace: string, requestedPaths: readonly string[], discovery: WorkspaceDiscoveryResult) {
     const present = new Set(discovery.files.map((file) => file.relativePath))
+    const indexed = new Set(this.repository.listFiles(workspace).map((file) => file.relativePath))
+    const newlyPresent = [...present].filter((relativePath) => !indexed.has(relativePath))
     const missing = new Set(discovery.missingPaths)
     const requested = requestedPaths.filter(Boolean).map(normalizeRelativePath)
     const affected = new Set<string>()
@@ -485,7 +487,7 @@ export class ProjectIndexService {
         affected.add(relation.sourcePath)
         continue
       }
-      if (relation.resolution === 'unresolved' && [...present].some((relativePath) => relationMayResolveToPath(relation.sourcePath, relation.specifier, relativePath))) {
+      if (newlyPresent.some((relativePath) => relationMayResolveToPath(relation.sourcePath, relation.specifier, relativePath))) {
         affected.add(relation.sourcePath)
       }
     }

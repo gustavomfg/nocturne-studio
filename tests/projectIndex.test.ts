@@ -222,6 +222,26 @@ describe('Project Index', () => {
     ])
   })
 
+  it('substitui a relação resolvida quando nasce um alvo de maior prioridade', async () => {
+    const fixture = createFixture()
+    fs.mkdirSync(path.join(fixture.workspace, 'dep'))
+    fs.writeFileSync(path.join(fixture.workspace, 'dep', 'index.ts'), 'export const value = 1\n')
+    fs.writeFileSync(path.join(fixture.workspace, 'main.ts'), "import { value } from './dep'\nexport const main = value\n")
+    const processed: string[] = []
+    const service = new ProjectIndexService(fixture.database.projectIndex, { onFileProcessed: (event) => processed.push(event.relativePath) })
+    await service.ensureIndexed(fixture.workspace)
+    expect(service.listImports(fixture.workspace, 'main.ts')[0]?.targetPath).toBe('dep/index.ts')
+
+    fs.writeFileSync(path.join(fixture.workspace, 'dep.ts'), 'export const value = 2\n')
+    processed.length = 0
+    service.enqueueChange({ workspace: fixture.workspace, paths: ['dep.ts'], overflow: false })
+    await waitFor(() => service.getStatus(fixture.workspace)?.kind === 'incremental' && service.getStatus(fixture.workspace)?.status === 'completed')
+    expect(processed).toContain('main.ts')
+    expect(service.listImports(fixture.workspace, 'main.ts')).toEqual([
+      expect.objectContaining({ targetPath: 'dep.ts', resolution: 'local', targetHash: expect.stringMatching(/^[a-f0-9]{64}$/) }),
+    ])
+  })
+
   it('recalcula o importador quando um alvo resolvido é removido', async () => {
     const fixture = createFixture()
     fs.writeFileSync(path.join(fixture.workspace, 'dependency.ts'), 'export const dependency = true\n')
