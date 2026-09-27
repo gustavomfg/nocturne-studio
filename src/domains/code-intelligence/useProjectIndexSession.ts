@@ -60,6 +60,7 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
   const validationHasMoreRef = useRef(false)
   const validationPageLoadingRef = useRef(false)
   const validationPageRequestRef = useRef(0)
+  const refreshRequestRef = useRef(0)
 
   const applyValidationRuns = useCallback((incoming: ValidationRun[], prependNew: boolean, preferIncoming = false) => {
     const next = mergeValidationRuns(validationRunsRef.current, incoming, prependNew, preferIncoming)
@@ -72,34 +73,39 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
   const refresh = useCallback(async () => {
     if (!workspace || !authorized) return
     const token = { workspace, generation: sessionRef.current.generation }
+    const refreshRequest = ++refreshRequestRef.current
     const validationRequest = ++validationPageRequestRef.current
     validationPageLoadingRef.current = false
     setValidationPageLoading(false)
-    const [nextStatus, nextSummary, nextStack, nextValidation, nextSemanticStatus, nextSemanticSummary, nextEngineeringReport] = await Promise.all([
-      window.nocturne.projectIndex.status(workspace),
-      window.nocturne.projectIndex.summary(workspace),
-      window.nocturne.projectIndex.stack(workspace),
-      window.nocturne.validation.page(workspace, 0, COLLECTION_PAGE_LIMITS.validation),
-      window.nocturne.semanticIndex.status(workspace),
-      window.nocturne.semanticIndex.summary(workspace),
-      window.nocturne.engineeringIntelligence.report(workspace),
-    ])
-    if (!isCurrentSession(sessionRef, token)) return
-    setStatus(nextStatus)
-    setSummary(nextSummary)
-    setStack(nextStack)
-    if (validationPageRequestRef.current === validationRequest) {
-      const validationWasPaged = validationOffsetRef.current > nextValidation.items.length
-      const previousHasMore = validationHasMoreRef.current
-      applyValidationRuns(nextValidation.items, true)
-      validationHasMoreRef.current = validationWasPaged ? previousHasMore : nextValidation.hasMore
-      setValidationHasMore(validationHasMoreRef.current)
-      validationPageLoadingRef.current = false
-      setValidationPageLoading(false)
+    try {
+      const [nextStatus, nextSummary, nextStack, nextValidation, nextSemanticStatus, nextSemanticSummary, nextEngineeringReport] = await Promise.all([
+        window.nocturne.projectIndex.status(workspace),
+        window.nocturne.projectIndex.summary(workspace),
+        window.nocturne.projectIndex.stack(workspace),
+        window.nocturne.validation.page(workspace, 0, COLLECTION_PAGE_LIMITS.validation),
+        window.nocturne.semanticIndex.status(workspace),
+        window.nocturne.semanticIndex.summary(workspace),
+        window.nocturne.engineeringIntelligence.report(workspace),
+      ])
+      if (!isCurrentSession(sessionRef, token) || refreshRequestRef.current !== refreshRequest) return
+      setStatus(nextStatus)
+      setSummary(nextSummary)
+      setStack(nextStack)
+      if (validationPageRequestRef.current === validationRequest) {
+        const validationWasPaged = validationOffsetRef.current > nextValidation.items.length
+        const previousHasMore = validationHasMoreRef.current
+        applyValidationRuns(nextValidation.items, true)
+        validationHasMoreRef.current = validationWasPaged ? previousHasMore : nextValidation.hasMore
+        setValidationHasMore(validationHasMoreRef.current)
+        validationPageLoadingRef.current = false
+        setValidationPageLoading(false)
+      }
+      setSemanticStatus(nextSemanticStatus)
+      setSemanticSummary(nextSemanticSummary)
+      setEngineeringReport(nextEngineeringReport)
+    } catch (error) {
+      if (isCurrentSession(sessionRef, token) && refreshRequestRef.current === refreshRequest) callbacksRef.current.onError(errorMessage(error))
     }
-    setSemanticStatus(nextSemanticStatus)
-    setSemanticSummary(nextSemanticSummary)
-    setEngineeringReport(nextEngineeringReport)
   }, [applyValidationRuns, authorized, workspace])
 
   useEffect(() => {
@@ -114,6 +120,7 @@ export function useProjectIndexSession({ workspace, authorized, onError }: Proje
     validationHasMoreRef.current = false
     validationPageLoadingRef.current = false
     validationPageRequestRef.current += 1
+    refreshRequestRef.current += 1
     setValidationRuns([])
     setValidationLoading(false)
     setValidationHasMore(false)

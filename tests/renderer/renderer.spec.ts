@@ -362,6 +362,43 @@ test.describe('renderer do produto', () => {
     await expect(page.getByText('FIRST', { exact: true })).toHaveCount(0)
   })
 
+  test('refresh mais recente prevalece na mesma sessão, inclusive sobre erro tardio', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await ready(page)
+    await page.getByRole('button', { name: 'Inteligência do projeto' }).click()
+    await page.evaluate(() => {
+      const pending: Array<{ resolve(value: unknown): void; reject(error: Error): void }> = []
+      window.nocturne.projectIndex.stack = async () => new Promise((resolve, reject) => {
+        pending.push({ resolve: (value) => resolve(value as never), reject })
+      })
+      Object.defineProperty(window, '__refreshOrder', { configurable: true, value: { pending } })
+    })
+    const emit = () => page.evaluate(() => (window as unknown as { __nocturneTest: { emitProjectIndexStatus(payload: unknown): void } }).__nocturneTest.emitProjectIndexStatus({ workspace: '/workspace/sample-project', status: 'completed' }))
+    const evidence = (marker: string) => [{
+      id: `${marker}-evidence`, workspace: '/workspace/sample-project', category: 'language', value: marker,
+      confidence: 100, sourcePath: 'package.json', sourceHash: 'a'.repeat(64), sourceLine: null,
+      reason: 'test', detectedAt: '2026-07-13T20:00:00.000Z',
+    }]
+    await emit()
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __refreshOrder: { pending: unknown[] } }).__refreshOrder.pending.length)).toBe(1)
+    await emit()
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __refreshOrder: { pending: unknown[] } }).__refreshOrder.pending.length)).toBe(2)
+    await page.evaluate((value) => (window as unknown as { __refreshOrder: { pending: Array<{ resolve(value: unknown): void }> } }).__refreshOrder.pending[1]?.resolve(value), evidence('SECOND'))
+    await expect(page.getByText('SECOND', { exact: true })).toBeVisible()
+    await page.evaluate((value) => (window as unknown as { __refreshOrder: { pending: Array<{ resolve(value: unknown): void }> } }).__refreshOrder.pending[0]?.resolve(value), evidence('FIRST'))
+    await expect(page.getByText('SECOND', { exact: true })).toBeVisible()
+    await expect(page.getByText('FIRST', { exact: true })).toHaveCount(0)
+    await emit()
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __refreshOrder: { pending: unknown[] } }).__refreshOrder.pending.length)).toBe(3)
+    await emit()
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __refreshOrder: { pending: unknown[] } }).__refreshOrder.pending.length)).toBe(4)
+    await page.evaluate((value) => (window as unknown as { __refreshOrder: { pending: Array<{ resolve(value: unknown): void }> } }).__refreshOrder.pending[3]?.resolve(value), evidence('LATEST'))
+    await expect(page.getByText('LATEST', { exact: true })).toBeVisible()
+    await page.evaluate(() => (window as unknown as { __refreshOrder: { pending: Array<{ reject(error: Error): void }> } }).__refreshOrder.pending[2]?.reject(new Error('OLD-REFRESH-ERROR')))
+    await expect(page.getByText('LATEST', { exact: true })).toBeVisible()
+    await expect(page.getByText('OLD-REFRESH-ERROR')).toHaveCount(0)
+  })
+
   test('não aplica reload de ChangeSet de uma execução anterior após trocar de execução', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await ready(page)
