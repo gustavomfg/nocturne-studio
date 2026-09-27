@@ -30,9 +30,13 @@ sandbox.
 
 On POSIX, supervised validation, Git, document-export and Codex processes use a
 dedicated process group and cancellation asks the group to terminate before an
-escalation. On Windows the Node primitive can target only the direct child; a
-validation timeout whose final termination cannot be confirmed is recorded as
-an uncertain failure rather than a successful cancellation. A detached terminal
+escalation. Validation checks the group independently of the parent exit,
+escalates after three seconds, and stops waiting after four seconds; if the
+group or inherited pipes remain unconfirmed, it records termination as
+uncertain. Descendants that leave the dedicated group cannot be certified as
+terminated. Normal application shutdown also has a finite deadline. On Windows
+the Node primitive can target only the direct child, so cancellation cannot
+certify the entire tree. A detached terminal
 launched for the user is deliberately outside Nocturne's lifecycle ownership.
 
 Remote OpenAI-compatible providers require HTTPS, reject redirects and validate

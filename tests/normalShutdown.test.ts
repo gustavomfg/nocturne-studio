@@ -44,4 +44,15 @@ describe('encerramento normal assíncrono', () => {
     expect(onFailure).toHaveBeenCalledWith(failure)
     expect(exit).toHaveBeenCalledWith(1)
   })
+
+  it('não aguarda indefinidamente cleanup ou relato de falha que nunca terminam', async () => {
+    const exit = vi.fn()
+    const onFailure = vi.fn(() => new Promise<void>(() => undefined))
+    const handler = createNormalShutdownHandler({ shutdown: () => new Promise<void>(() => undefined), quit: vi.fn(), exit, onFailure }, 20)
+    const started = Date.now()
+    await handler(event())
+    expect(Date.now() - started).toBeLessThan(500)
+    expect(onFailure).toHaveBeenCalledWith(expect.objectContaining({ message: 'O cleanup excedeu o prazo de encerramento.' }))
+    expect(exit).toHaveBeenCalledWith(1)
+  })
 })

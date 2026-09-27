@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { performance } from 'node:perf_hooks'
 import { buildCodexEnvironment } from '../codex/CodexProcess'
 import { CODE_INTELLIGENCE_LIMITS } from '../../shared/constants'
-import { terminateProcess, type ProcessTerminationScope, usesDedicatedProcessGroup } from '../runtime/ProcessTermination'
+import { isProcessGroupAlive, terminateProcess, type ProcessTerminationScope, usesDedicatedProcessGroup } from '../runtime/ProcessTermination'
 
 export interface ProcessRunOptions {
   cwd: string
@@ -49,6 +49,9 @@ export class CancellableProcessRunner implements ProcessRunner {
       let child: ChildProcess | null = null
       let terminationUncertain = false
       let terminationScope: ProcessTerminationScope | null = null
+      let closed = false
+      let closeCode: number | null = null
+      let terminationStarted = false
 
       const append = (current: string, chunk: string) => {
         if (current.length >= maxOutputCharacters) {
@@ -60,26 +63,32 @@ export class CancellableProcessRunner implements ProcessRunner {
         return next.slice(0, maxOutputCharacters)
       }
 
-      const terminate = (reason: 'cancelled' | 'timeout') => {
+      const groupAlive = () => isProcessGroupAlive(child?.pid)
+      const terminate = (reason: 'cancelled' | 'timeout' | 'orphan') => {
         if (reason === 'cancelled') cancelled = true
-        else timedOut = true
-        if (!child) return
-        if (child.exitCode === null && child.signalCode === null) {
+        if (reason === 'timeout') timedOut = true
+        if (reason === 'orphan') processError = 'O processo principal terminou com descendentes ainda ativos.'
+        if (!child || terminationStarted) return
+        terminationStarted = true
+        if (groupAlive() || (child.exitCode === null && child.signalCode === null)) {
           terminationScope = terminateProcess(child, 'SIGTERM')
-          killTimer = setTimeout(() => {
-            if (!settled && child && child.exitCode === null && child.signalCode === null) {
-              terminationScope = terminateProcess(child, 'SIGKILL')
-            }
-          }, 3_000)
-          killTimer.unref()
-          uncertainTimer = setTimeout(() => {
-            if (settled) return
-            terminationUncertain = true
-            processError = 'O encerramento do processo de validação não pôde ser confirmado.'
-            finish(null)
-          }, 4_000)
-          uncertainTimer.unref()
         }
+        killTimer = setTimeout(() => {
+          if (settled || !child) return
+          if (groupAlive() || (child.exitCode === null && child.signalCode === null)) {
+              terminationScope = terminateProcess(child, 'SIGKILL')
+          }
+          if (closed && !groupAlive()) finish(closeCode)
+        }, 3_000)
+        killTimer.unref()
+        uncertainTimer = setTimeout(() => {
+          if (settled) return
+          terminationUncertain = true
+          processError = 'O encerramento da árvore do processo de validação não pôde ser confirmado.'
+          finish(closed ? closeCode : null)
+        }, 4_000)
+        uncertainTimer.unref()
+        if (closed && !groupAlive()) finish(closeCode)
       }
 
       const finish = (exitCode: number | null) => {
@@ -120,7 +129,15 @@ export class CancellableProcessRunner implements ProcessRunner {
       child.stdout?.on('data', (chunk: Buffer | string) => { stdout = append(stdout, chunk.toString()) })
       child.stderr?.on('data', (chunk: Buffer | string) => { stderr = append(stderr, chunk.toString()) })
       child.once('error', (error) => { processError = error.message })
-      child.once('close', (exitCode) => finish(exitCode))
+      child.once('close', (exitCode) => {
+        closed = true
+        closeCode = exitCode
+        if (!terminationStarted && groupAlive()) terminate('orphan')
+        else if (terminationStarted && process.platform === 'win32') {
+          terminationUncertain = true
+          finish(exitCode)
+        } else if (!groupAlive()) finish(exitCode)
+      })
       const timeoutMs = options.timeoutMs ?? 120_000
       if (!settled) {
         timeoutTimer = setTimeout(() => terminate('timeout'), timeoutMs)

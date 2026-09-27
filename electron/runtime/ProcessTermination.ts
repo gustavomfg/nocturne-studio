@@ -23,3 +23,14 @@ export function terminateProcess(child: Pick<ChildProcess, 'pid' | 'kill'>, sign
 export function usesDedicatedProcessGroup() {
   return process.platform !== 'win32'
 }
+
+/** ESRCH is the only proof that a dedicated POSIX process group is gone. */
+export function isProcessGroupAlive(pid: number | undefined): boolean {
+  if (!usesDedicatedProcessGroup() || !pid || pid <= 0) return false
+  try {
+    process.kill(-pid, 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== 'ESRCH'
+  }
+}
