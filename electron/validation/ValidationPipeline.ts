@@ -195,7 +195,16 @@ export class ValidationPipeline {
     this.repository.update(run)
     this.publish(run)
     let result: Awaited<ReturnType<ProcessRunner['run']>>
+    let runnerStarted = false
     try {
+      if (signal.aborted) throw new Error('Validação cancelada antes da execução.')
+      // The package manifest was read asynchronously above. Trust may have
+      // changed during that read (or while the running status was published).
+      // Keep this synchronous check adjacent to the runner invocation.
+      const currentWorkspace = this.authorizeExecution?.(executionWorkspace, executionId) ?? executionWorkspace
+      if (currentWorkspace !== executionWorkspace) throw new Error('O workspace autorizado mudou antes da execução.')
+      if (signal.aborted) throw new Error('Validação cancelada antes da execução.')
+      runnerStarted = true
       result = await this.runner.run(plan.command, plan.args, {
         cwd: executionWorkspace,
         signal,
@@ -203,7 +212,7 @@ export class ValidationPipeline {
         maxOutputCharacters: CODE_INTELLIGENCE_LIMITS.maxOutputCharacters,
       })
     } catch (error) {
-      run.status = signal.aborted ? 'cancelled' : 'failed'
+      run.status = signal.aborted ? 'cancelled' : runnerStarted ? 'failed' : 'blocked'
       run.durationMs = Math.max(0, Date.now() - started)
       run.completedAt = new Date().toISOString()
       run.error = signal.aborted ? 'Validação cancelada pelo usuário.' : sanitizeError(error instanceof Error ? error.message : String(error))

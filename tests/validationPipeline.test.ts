@@ -207,6 +207,46 @@ describe('Validation Pipeline', () => {
     expect(runner.run).not.toHaveBeenCalled()
   })
 
+  it('não entrega o comando ao runner quando a autorização é revogada durante a leitura do script', async () => {
+    const fixture = createFixture()
+    fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [evidence(fixture.workspace, 'script', 'test=vitest')])
+    const runner = { run: vi.fn(async () => successfulResult('', '')) }
+    let authorized = true
+    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), {
+      runner,
+      authorizeExecution: (workspace) => {
+        if (!authorized) throw new Error('Workspace não autorizado.')
+        return workspace
+      },
+    })
+    const open = fs.promises.open.bind(fs.promises)
+    const spy = vi.spyOn(fs.promises, 'open').mockImplementation(async (filePath, flags, mode) => {
+      const handle = await open(filePath, flags, mode)
+      if (filePath.toString() === path.join(fixture.workspace, 'package.json')) authorized = false
+      return handle
+    })
+    try {
+      const run = await pipeline.run(fixture.workspace, 'test')
+      expect(run.status).toBe('blocked')
+      expect(run.error).toMatch(/não autorizado/i)
+      expect(runner.run).not.toHaveBeenCalled()
+      expect(fixture.database.validation.latest(fixture.workspace)?.status).toBe('blocked')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('não chama o runner quando a validação é cancelada durante a preparação', async () => {
+    const fixture = createFixture()
+    fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [evidence(fixture.workspace, 'script', 'test=vitest')])
+    const runner = { run: vi.fn(async () => successfulResult('', '')) }
+    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
+    const pending = pipeline.run(fixture.workspace, 'test')
+    expect(pipeline.cancel(fixture.workspace)).toBe(true)
+    await expect(pending).resolves.toMatchObject({ status: 'cancelled' })
+    expect(runner.run).not.toHaveBeenCalled()
+  })
+
   it('faz fallback para TypeScript sem transformar texto em comando shell', () => {
     const stack = [evidence('/workspace', 'language', 'TypeScript'), evidence('/workspace', 'package-manager', 'pnpm')]
     expect(planValidation(stack, 'typecheck')).toEqual(expect.objectContaining({ command: 'pnpm', args: ['exec', 'tsc', '--noEmit'] }))
