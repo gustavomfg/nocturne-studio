@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { LocalDatabase } from '../electron/database/Database'
 import { AiExecutionCoordinator } from '../electron/ai/AiExecutionCoordinator'
+import { persistCompletedTurn } from '../electron/ai/TurnPersistence'
 import { ModelRegistry } from '../electron/ai/ModelRegistry'
 import { ProviderRegistry } from '../electron/ai/ProviderRegistry'
 import { parseTurnCompletion } from '../src/domains/agent/turnCompletion'
@@ -184,6 +185,41 @@ describe('CodexClient', () => {
     process.emit('message', { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status: 'failed', error: { message: 'real failure' } } } })
     expect(states).not.toContain('completed')
     client.stop()
+  })
+
+  it.each(['failed', 'interrupted', 'unrecognized'])('não resolve sugestões anteriores quando uma Review estruturada termina %s', async (status) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-failed-review-'))
+    const database = new LocalDatabase(root)
+    const { client, process } = await readyClient()
+    const conversation = database.createConversation(root)
+    const prior = database.addSuggestion(conversation.id, root, {
+      title: 'Finding anterior', description: 'Ainda presente.', reasoning: 'A Review falha não pode refutá-lo.',
+      category: 'bug', severity: 'high', affectedFiles: [], proposedChanges: '', expectedBenefits: [], complexity: 'low', risk: 'low',
+    })
+    const coordinator = new AiExecutionCoordinator(
+      { isDestroyed: () => false, webContents: { send() {} } } as never,
+      new ModelRegistry(), new ProviderRegistry(), { warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as never,
+      new Map(), (snapshot) => persistCompletedTurn(database, snapshot), undefined, undefined, undefined, undefined, client,
+    )
+    try {
+      const started = coordinator.startCodex({ conversationId: conversation.id, workspace: root, prompt: 'review', initialPrompt: 'review', attachments: [], memory: '', mode: 'review', settings: {} as never })
+      await waitForRequest(process, 'config/read')
+      process.respond('config/read', {})
+      await waitForRequest(process, 'model/list')
+      process.respond('model/list', { data: [{ model: 'test-model', displayName: 'Test' }] })
+      await waitForRequest(process, 'thread/start')
+      process.respond('thread/start', { thread: { id: 'thread-1' } })
+      await waitForRequest(process, 'turn/start')
+      process.respond('turn/start', { turn: { id: 'turn-1' } })
+      await started
+      process.emit('message', { method: 'item/agentMessage/delta', params: { threadId: 'thread-1', turnId: 'turn-1', delta: 'Review parcial.\n```nocturne-suggestions\n[]\n```' } })
+      process.emit('message', { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status, ...(status === 'failed' ? { error: { message: 'Falha de análise.' } } : {}) } } })
+      await vi.waitFor(() => expect(database.listMessages(conversation.id).some((message) => message.role === 'assistant')).toBe(true))
+      expect(database.getSuggestion(prior.id)?.status).toBe('new')
+      expect(database.getSuggestion(prior.id)?.history.map((item) => item.status)).toEqual(['new'])
+    } finally {
+      coordinator.dispose(); database.close(); fs.rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('passa ao App Server apenas o ambiente permitido e preserva a autenticação persistida', () => {

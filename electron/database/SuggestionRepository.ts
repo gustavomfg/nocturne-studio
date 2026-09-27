@@ -85,6 +85,7 @@ export class SuggestionRepository {
     conversationId: string,
     workspaceId: string,
     values: SuggestionInput[],
+    resolveMissing = true,
   ): SuggestionReconciliation {
     return this.transactions.run('suggestions.reconcile', () => {
       const history = this.listHistory(conversationId)
@@ -156,6 +157,7 @@ export class SuggestionRepository {
 
       const resolvedSuggestions: ReviewComparisonItem[] = []
       for (const [identity, suggestion] of activeBefore) {
+        if (!resolveMissing) break
         if (seen.has(identity) || !['new', 'in-analysis'].includes(suggestion.status)) continue
         const resolved = this.setStatus(
           suggestion.id,

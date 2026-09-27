@@ -10,6 +10,38 @@ const directories: string[] = []
 afterEach(() => { for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }) })
 
 describe('persistCompletedTurn', () => {
+  it.each([
+    { label: 'JSON inválido', content: '```nocturne-suggestions\n{ invalid JSON\n```', outcome: 'completed', resolves: false },
+    { label: 'schema inválido', content: '```nocturne-suggestions\n[{"title":"Sem campos obrigatórios"}]\n```', outcome: 'completed', resolves: false },
+    { label: 'bloco incompleto', content: '```nocturne-suggestions\n[]', outcome: 'completed', resolves: false },
+    { label: 'sem snapshot', content: 'Review parcial.', outcome: 'completed', resolves: false },
+    { label: 'falha', content: '```nocturne-suggestions\n[]\n```', outcome: 'failed', resolves: false },
+    { label: 'cancelamento', content: '```nocturne-suggestions\n[]\n```', outcome: 'cancelled', resolves: false },
+    { label: 'Review completa sem findings', content: '```nocturne-suggestions\n[]\n```', outcome: 'completed', resolves: true },
+  ] as const)('só resolve uma sugestão anterior com snapshot válido e concluído: $label', ({ content, outcome, resolves }) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-review-reconcile-')); directories.push(directory)
+    const database = new LocalDatabase(directory)
+    try {
+      const conversation = database.createConversation('/tmp/review-reconcile-workspace')
+      const previous = database.addSuggestion(conversation.id, conversation.workspace, {
+        title: 'Finding anterior', description: 'Ainda não reavaliado.', reasoning: 'A evidência deve sobreviver.',
+        category: 'bug', severity: 'high', affectedFiles: ['src/old.ts'], proposedChanges: '', expectedBenefits: [], complexity: 'low', risk: 'low',
+      })
+      const persisted = persistCompletedTurn(database, {
+        conversationId: conversation.id, workspace: conversation.workspace, mode: 'review', outcome,
+        content, diff: '', files: [], plan: [], planExplanation: '',
+      })
+      expect(persisted.message).not.toBeNull()
+      const current = database.getSuggestion(previous.id)!
+      expect(current.status).toBe(resolves ? 'resolved' : 'new')
+      expect(current.history.map((decision) => decision.status)).toEqual(resolves ? ['new', 'resolved'] : ['new'])
+      if (resolves) expect(persisted.message?.content).toContain('Resolvidas nesta revisão: 1')
+      else expect(persisted.warning).toMatch(/preservadas/)
+    } finally {
+      database.close()
+    }
+  })
+
   it('salva a resposta e coleções derivadas antes de notificar o renderer', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-turn-')); directories.push(directory)
     const database = new LocalDatabase(directory)
@@ -17,7 +49,7 @@ describe('persistCompletedTurn', () => {
     const memory = '```nocturne-memories\n[{"kind":"learning","scope":"conversation","content":"Preservar respostas no processo principal.","confidence":90}]\n```'
     const suggestion = '```nocturne-suggestions\n[{"title":"Persistir no main","description":"Evitar perda.","reasoning":"O renderer pode reiniciar.","category":"bug","severity":"high","affectedFiles":["electron/main.ts"],"proposedChanges":"Persistir primeiro.","expectedBenefits":["Recuperação"],"complexity":"medium","risk":"low"}]\n```'
     const persisted = persistCompletedTurn(database, {
-      conversationId: conversation.id, workspace: conversation.workspace, mode: 'review',
+      conversationId: conversation.id, workspace: conversation.workspace, mode: 'review', outcome: 'completed',
       content: `Análise concluída.\n\n${memory}\n\n${suggestion}`, diff: 'diff atual',
       files: ['electron/main.ts'], plan: [{ step: 'Persistir', status: 'completed' }], planExplanation: 'Durabilidade',
     })
@@ -44,7 +76,7 @@ describe('persistCompletedTurn', () => {
       expectedBenefits: ['Review concluída'], complexity: 'low', risk: 'low',
     }]
     const persisted = persistCompletedTurn(database, {
-      conversationId: conversation.id, workspace: conversation.workspace, mode: 'review',
+      conversationId: conversation.id, workspace: conversation.workspace, mode: 'review', outcome: 'completed',
       content: `Análise concluída.\n\n\`\`\`json\n${JSON.stringify(suggestion)}\n\`\`\``,
       diff: '', files: [], plan: [], planExplanation: '',
     })
@@ -63,7 +95,7 @@ describe('persistCompletedTurn', () => {
     const memory = '```nocturne-memories\n[{"kind":"learning","scope":"conversation","content":"Não persistir","confidence":80}]\n```'
     const suggestion = '```nocturne-suggestions\n[{"title":"Não persistir","description":"Não persistir","reasoning":"Não persistir","category":"bug","severity":"low","affectedFiles":[],"proposedChanges":"Não persistir","expectedBenefits":[],"complexity":"low","risk":"low"}]\n```'
     const persisted = persistCompletedTurn(database, {
-      conversationId: conversation.id, workspace: conversation.workspace, mode: 'review',
+      conversationId: conversation.id, workspace: conversation.workspace, mode: 'review', outcome: 'completed',
       content: `${memory}\n${suggestion}`, diff: 'x'.repeat(PERSISTENCE_LIMITS.metadataCharacters), files: [], plan: [], planExplanation: '',
     })
     expect(persisted.message).toBeNull()
@@ -86,7 +118,7 @@ describe('persistCompletedTurn', () => {
     })
 
     expect(() => persistCompletedTurn(database, {
-      conversationId: conversation.id, workspace: conversation.workspace, mode: 'review',
+      conversationId: conversation.id, workspace: conversation.workspace, mode: 'review', outcome: 'completed',
       content: `Resposta.\n\n${memory}\n\n${suggestion}`, diff: 'diff', files: ['Database.ts'], plan: [], planExplanation: '',
     })).toThrow('falha final simulada')
     expect(database.listMessages(conversation.id)).toEqual([])

@@ -37,13 +37,16 @@ export function registerSuggestionIpc(
       return {
         suggestions: [],
         content: extracted.content,
-        warning: 'A resposta não trouxe um snapshot estruturado; sugestões anteriores foram preservadas.',
+        warning: extracted.snapshot === 'invalid'
+          ? 'O snapshot de sugestões é inválido ou incompleto; sugestões anteriores foram preservadas.'
+          : 'A resposta não trouxe um snapshot estruturado; sugestões anteriores foram preservadas.',
       }
     }
     const reconciliation = database.reconcileSuggestions(
       data.conversationId,
       workspace,
       extracted.suggestions,
+      false, // Renderer-provided content cannot certify a successful complete Review.
     )
     if (reconciliation.suggestions.length || reconciliation.comparison.resolvedSuggestions.length) {
       logger.info('artifacts', 'Sugestões de review reconciliadas', {

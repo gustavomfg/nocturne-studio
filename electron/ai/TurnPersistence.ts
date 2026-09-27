@@ -10,6 +10,7 @@ export interface CompletedTurnSnapshot {
   conversationId: string
   workspace: string
   mode: AgentMode
+  outcome: 'completed' | 'failed' | 'cancelled'
   content: string
   diff: string
   files: string[]
@@ -50,12 +51,13 @@ export function persistCompletedTurn(database: LocalDatabase, snapshot: Complete
     if (snapshot.mode === 'review') {
       const suggestionExtraction = extractSuggestions(assistantContent)
       try {
-        if (suggestionExtraction.structured) {
+        if (suggestionExtraction.snapshot === 'valid' && snapshot.outcome === 'completed') {
           const reconciliation = database.reconcileSuggestions(snapshot.conversationId, snapshot.workspace, suggestionExtraction.suggestions)
           assistantContent = [suggestionExtraction.content, reviewComparisonMarkdown(reconciliation.comparison)].filter(Boolean).join('\n\n')
         } else {
-          assistantContent = suggestionExtraction.content || assistantContent
-          warnings.push('A resposta não trouxe um snapshot estruturado; sugestões anteriores foram preservadas.')
+          if (suggestionExtraction.snapshot === 'absent') warnings.push('A resposta não trouxe um snapshot estruturado; sugestões anteriores foram preservadas.')
+          else if (suggestionExtraction.snapshot === 'invalid') warnings.push('O snapshot de sugestões é inválido ou incompleto; sugestões anteriores foram preservadas.')
+          else warnings.push('A Review não terminou com sucesso; sugestões anteriores foram preservadas.')
         }
       } catch {
         warnings.push('As sugestões da análise não puderam ser salvas.')

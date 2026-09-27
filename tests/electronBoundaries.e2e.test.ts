@@ -865,10 +865,15 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     await expect(api.suggestions.create(state.conversationId, structuredSuggestion('Persistir após autorização'))).resolves.toMatchObject({
       suggestions: [expect.objectContaining({ title: 'Persistir após autorização' })],
     })
-    expect(database!.listSuggestions(state.conversationId)).toEqual([
-      expect.objectContaining({ title: 'Persistir após autorização' }),
-    ])
-    expect(database!.getSuggestion(state.suggestionId)?.status).toBe('resolved')
+    expect(database!.listSuggestions(state.conversationId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: state.suggestionId, title: 'Sugestão restaurada', status: 'new' }),
+      expect.objectContaining({ title: 'Persistir após autorização', status: 'new' }),
+    ]))
+    expect(database!.getSuggestion(state.suggestionId)?.history.map((entry) => entry.status)).toEqual(['new'])
+    await expect(api.suggestions.create(state.conversationId, '```nocturne-suggestions\n[]\n```')).resolves.toMatchObject({
+      comparison: { resolvedSuggestions: [] },
+    })
+    expect(database!.getSuggestion(state.suggestionId)?.status).toBe('new')
 
     await expect(api.conversations.delete(state.conversationId)).resolves.toBeUndefined()
     expect((await api.conversations.list()).some((conversation) => conversation.id === state.conversationId)).toBe(false)

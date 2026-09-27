@@ -295,8 +295,9 @@ export class LocalDatabase {
     conversationId: string,
     workspaceId: string,
     values: SuggestionInput[],
+    resolveMissing = true,
   ): SuggestionReconciliation {
-    return this.suggestions.reconcile(conversationId, workspaceId, values)
+    return this.suggestions.reconcile(conversationId, workspaceId, values, resolveMissing)
   }
 
   setSuggestionStatus(id: string, status: SuggestionStatus, result?: string): Suggestion {

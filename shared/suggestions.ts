@@ -82,15 +82,14 @@ export const suggestionInputSchema = z.object({
 const blockPattern = /```nocturne-suggestions\s*\n([\s\S]*?)```/gi
 const trailingJsonBlockPattern = /```json\s*\n([\s\S]*?)```\s*$/i
 export function extractSuggestions(content: string) {
-  const suggestions: z.infer<typeof suggestionInputSchema>[] = []
-  let structured = false
-  let match: RegExpExecArray | null
-  while ((match = blockPattern.exec(content)) !== null) {
-    structured = true
-    try { const parsed: unknown = JSON.parse(match[1]); for (const value of Array.isArray(parsed) ? parsed : [parsed]) { const result = suggestionInputSchema.safeParse(value); if (result.success) suggestions.push(result.data) } } catch { /* bloco incompleto é ignorado */ }
-  }
+  const markerCount = content.match(/```nocturne-suggestions\b/gi)?.length ?? 0
+  const blocks = [...content.matchAll(blockPattern)]
   blockPattern.lastIndex = 0
-  if (structured) return { suggestions, content: content.replace(blockPattern, '').trim(), structured }
+  if (markerCount) {
+    const suggestions = markerCount === 1 && blocks.length === 1 ? parseStrictSuggestionArray(blocks[0][1]) : null
+    if (suggestions) return { suggestions, content: content.replace(blockPattern, '').trim(), structured: true, snapshot: 'valid' as const }
+    return { suggestions: [], content: content.trim(), structured: false, snapshot: 'invalid' as const }
+  }
 
   const fallback = trailingJsonBlockPattern.exec(content)
   const recovered = fallback ? parseStrictSuggestionArray(fallback[1]) : null
@@ -99,9 +98,10 @@ export function extractSuggestions(content: string) {
       suggestions: recovered,
       content: content.slice(0, fallback.index).trim(),
       structured: true,
+      snapshot: 'valid' as const,
     }
   }
-  return { suggestions, content: content.trim(), structured }
+  return { suggestions: [], content: content.trim(), structured: false, snapshot: fallback ? 'invalid' as const : 'absent' as const }
 }
 
 function parseStrictSuggestionArray(value: string): z.infer<typeof suggestionInputSchema>[] | null {

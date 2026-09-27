@@ -127,24 +127,39 @@ describe('sugestões', () => {
   it('distingue bloco estruturado vazio de resposta sem snapshot', () => {
     expect(extractSuggestions('```nocturne-suggestions\n[]\n```')).toMatchObject({
       structured: true,
+      snapshot: 'valid',
       suggestions: [],
     })
     expect(extractSuggestions('Análise parcial sem bloco.')).toMatchObject({
       structured: false,
+      snapshot: 'absent',
       suggestions: [],
       content: 'Análise parcial sem bloco.',
     })
+  })
+
+  it('não confunde marcadores inválidos, blocos duplicados ou schema inválido com snapshot completo', () => {
+    for (const content of [
+      '```nocturne-suggestions\n{ invalid JSON\n```',
+      '```nocturne-suggestions\n[{"title":"Incompleta"}]\n```',
+      '```nocturne-suggestions\n[]',
+      '```nocturne-suggestions\n[]\n```\n```nocturne-suggestions\n[]\n```',
+    ]) {
+      expect(extractSuggestions(content)).toMatchObject({ snapshot: 'invalid', structured: false, suggestions: [], content })
+    }
   })
 
   it('recupera uma lista de sugestões em um bloco json final estritamente válido', () => {
     const response = `Análise concluída.\n\n\`\`\`json\n${JSON.stringify([input])}\n\`\`\``
     expect(extractSuggestions(response)).toEqual({
       structured: true,
+      snapshot: 'valid',
       suggestions: [input],
       content: 'Análise concluída.',
     })
     expect(extractSuggestions('```json\n[]\n```')).toEqual({
       structured: true,
+      snapshot: 'valid',
       suggestions: [],
       content: '',
     })

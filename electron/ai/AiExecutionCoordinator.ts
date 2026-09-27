@@ -377,13 +377,15 @@ export class AiExecutionCoordinator {
     if (this.active !== active || active.finishing) return
     active.finishing = true
     const rawTurn = params.turn && typeof params.turn === 'object' ? params.turn as Record<string, unknown> : {}
-    params = { ...params, turn: { ...rawTurn, ...turnOutcome(rawTurn) } }
+    const outcome = turnOutcome(rawTurn)
+    params = { ...params, turn: { ...rawTurn, ...outcome } }
     try {
       const persisted = await this.finalizeTurn({
         ...(active.executionId ? { executionId: active.executionId } : {}),
         conversationId: active.conversationId,
         workspace: active.workspace,
         mode: active.mode,
+        outcome: outcome.status,
         content: active.content,
         diff: active.diff,
         files: active.files,

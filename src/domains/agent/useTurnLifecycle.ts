@@ -59,7 +59,7 @@ export function useTurnLifecycle({ flushStream, activeTurnRef, refreshGit }: { f
           const memoryExtraction = await window.nocturne.brain.extract(context.conversationId, assistantContent)
           assistantContent = memoryExtraction.content || (memoryExtraction.memories.length ? t('memory.candidatesSent', { count: memoryExtraction.memories.length }) : t('common.noPersistableContent'))
           if (memoryExtraction.warning) store.setError(memoryExtraction.warning)
-          if (context.mode === 'review') {
+          if (context.mode === 'review' && completion.status === 'completed' && !completion.hasError) {
             const extracted = await window.nocturne.suggestions.create(context.conversationId, assistantContent)
             assistantContent = extracted.content || assistantContent
             if (extracted.warning) store.setError(extracted.warning)
