@@ -32,6 +32,14 @@ retomadas com as raízes e políticas atuais do workspace. Cancelamento usa os
 identificadores exatos de thread e turno. Só uma execução de agente fica ativa
 por vez.
 
+Todos os eventos de turno encaminhados, inclusive conteúdo, plano, diff,
+progresso e aprovações, exigem os identificadores da thread e do turno ativos.
+Eventos sem identidade ou com identidade divergente são descartados; aprovações
+não atribuíveis são recusadas. Até 64 eventos antecipados aguardam a resposta de
+`turn/start` e só são reproduzidos para o turno correspondente. Exceder esse
+limite falha de forma conservadora. Essa guarda local não certifica todas as
+versões autenticadas do Codex CLI.
+
 Review usa sandbox somente leitura. Build usa sandbox de escrita limitada à raiz
 autorizada, rede desabilitada e aprovações do usuário. Docs usa geração somente
 leitura e aplica Markdown pela fronteira de preview e confirmação do Nocturne.

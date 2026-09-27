@@ -71,7 +71,9 @@ approval does not terminate its parent turn. Persistence warnings are separate
 from the task outcome; they must not rewrite a completed task as failed. The
 execution repository rejects terminal-to-different-terminal updates.
 
-Completion is correlated by both thread and turn ID. Late/duplicate completions
-cannot terminate a subsequent turn in the same thread. Up to eight early
-completion notifications are held while `turn/start` is pending and matched only
-after its response supplies the turn identity.
+All forwarded turn events, including content, plans, diffs, progress and
+approvals, require the active thread and turn IDs. Missing or mismatched IDs are
+discarded; an unattributed approval is rejected. At most 64 early events are
+held while `turn/start` is pending and replayed only after its response supplies
+the matching turn ID. Overflow fails the turn closed. This is a local protocol
+guard, not certification against every authenticated Codex CLI version.

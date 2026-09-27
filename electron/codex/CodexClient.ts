@@ -16,6 +16,7 @@ const APPROVAL_METHODS = new Set([
   'item/commandExecution/requestApproval',
   'item/fileChange/requestApproval',
 ])
+const MAX_EARLY_TURN_EVENTS = 64
 
 export interface CodexProcessAdapter extends EventEmitter {
   start(executable?: string): void
@@ -41,7 +42,8 @@ export class CodexClient extends EventEmitter {
   private loadedThreads = new Set<string>()
   private activeTurns = new Map<string, string>()
   private startingTurns = new Set<string>()
-  private earlyCompletions = new Map<string, RpcMessage[]>()
+  private earlyTurnEvents = new Map<string, RpcMessage[]>()
+  private earlyTurnOverflow = new Set<string>()
   private intentionalStop = false
   private executable = 'codex'
   private machine = new AgentStateMachine(
@@ -66,7 +68,8 @@ export class CodexClient extends EventEmitter {
       this.loadedThreads.clear()
       this.activeTurns.clear()
       this.startingTurns.clear()
-      this.earlyCompletions.clear()
+      this.earlyTurnEvents.clear()
+      this.earlyTurnOverflow.clear()
       this.approvalRequests.clear()
       this.rejectPending(new Error(
         `Codex App Server foi encerrado${code === null ? '.' : ` com código ${code}.`}`,
@@ -256,16 +259,22 @@ export class CodexClient extends EventEmitter {
       if (!turnId) throw new Error('turn/start não retornou um identificador válido.')
       this.activeTurns.set(threadId, turnId)
       this.startingTurns.delete(threadId)
-      const completions = this.earlyCompletions.get(threadId) ?? []
-      this.earlyCompletions.delete(threadId)
-      for (const completion of completions) this.handleMessage(completion)
+      const earlyEvents = this.earlyTurnEvents.get(threadId) ?? []
+      this.earlyTurnEvents.delete(threadId)
+      if (this.earlyTurnOverflow.delete(threadId)) {
+        this.activeTurns.delete(threadId)
+        this.stop()
+        throw new Error('O limite de eventos recebidos antes da identidade do turno foi excedido; o resultado do turno não é confiável.')
+      }
+      for (const event of earlyEvents) this.handleMessage(event)
       return turnId
     } catch (error) {
       this.setStatus('failed', `Falha ao iniciar turno: ${errorMessage(error)}`)
       throw error
     } finally {
       this.startingTurns.delete(threadId)
-      this.earlyCompletions.delete(threadId)
+      this.earlyTurnEvents.delete(threadId)
+      this.earlyTurnOverflow.delete(threadId)
     }
   }
 
@@ -406,6 +415,26 @@ export class CodexClient extends EventEmitter {
         })
         return
       }
+    }
+
+    const threadId = typeof params.threadId === 'string' ? params.threadId : ''
+    const turnId = notificationTurnId(message.method, params)
+    if (!threadId || !turnId) {
+      this.rejectUnattributedEvent(message)
+      return
+    }
+    if (this.startingTurns.has(threadId)) {
+      const queued = this.earlyTurnEvents.get(threadId) ?? []
+      if (queued.length < MAX_EARLY_TURN_EVENTS) this.earlyTurnEvents.set(threadId, [...queued, message])
+      else this.earlyTurnOverflow.add(threadId)
+      return
+    }
+    if (this.activeTurns.get(threadId) !== turnId) {
+      this.rejectUnattributedEvent(message)
+      return
+    }
+
+    if ('id' in message) {
       const itemId = String(params.itemId ?? message.id)
       this.approvalRequests.set(itemId, message.id)
       this.setStatus('waiting-approval')
@@ -420,19 +449,17 @@ export class CodexClient extends EventEmitter {
       this.setStatus('running')
     }
     if (message.method === 'turn/completed') {
-      const threadId = String(params.threadId ?? '')
-      if (this.startingTurns.has(threadId)) {
-        const queued = this.earlyCompletions.get(threadId) ?? []
-        if (queued.length < 8) this.earlyCompletions.set(threadId, [...queued, message])
-        return
-      }
-      const turn = params.turn as { id?: unknown } | undefined
-      const turnId = typeof turn?.id === 'string' ? turn.id : ''
-      if (!turnId || this.activeTurns.get(threadId) !== turnId) return
       this.activeTurns.delete(threadId)
       this.setStatus('ready')
     }
     this.emit('event', { method: message.method, params } satisfies CodexEvent)
+  }
+
+  private rejectUnattributedEvent(message: RpcMessage) {
+    if ('id' in message && 'method' in message) {
+      this.process.send({ id: message.id, error: { code: -32602, message: 'A aprovação não pertence ao turno ativo.' } })
+    }
+    this.emit('diagnostic', { level: 'warn', message: 'Evento do App Server ignorado: identidade de thread/turn ausente ou diferente do turno ativo.' })
   }
 
   private setStatus(status: CodexStatus, error?: string) {
@@ -448,6 +475,14 @@ export class CodexClient extends EventEmitter {
     }
     this.pending.clear()
   }
+}
+
+function notificationTurnId(method: string, params: Record<string, unknown>) {
+  if (method === 'turn/completed' || method === 'turn/started') {
+    const turn = params.turn && typeof params.turn === 'object' ? params.turn as Record<string, unknown> : null
+    return typeof turn?.id === 'string' ? turn.id : ''
+  }
+  return typeof params.turnId === 'string' ? params.turnId : ''
 }
 
 const initializeResponseSchema = z.object({

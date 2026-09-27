@@ -132,6 +132,90 @@ describe('CodexClient', () => {
     expect(events).toHaveLength(0)
     client.stop()
   })
+
+  it('correlaciona deltas, planos, diffs, arquivos e aprovações ao turno ativo', async () => {
+    const { client, process } = await readyClient()
+    let turn = client.sendTurn('thread-1', '/workspace', 'first')
+    process.respond('turn/start', { turn: { id: 'turn-1' } })
+    await turn
+    process.emit('message', { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status: 'completed' } } })
+    turn = client.sendTurn('thread-1', '/workspace', 'second')
+    process.respond('turn/start', { turn: { id: 'turn-2' } })
+    await turn
+    const events: Array<{ method: string }> = []
+    client.on('event', (event) => events.push(event))
+    for (const method of ['item/agentMessage/delta', 'item/reasoning/summaryTextDelta', 'turn/plan/updated', 'turn/diff/updated', 'item/started', 'item/completed', 'fs/changed']) {
+      process.emit('message', { method, params: { threadId: 'thread-1', turnId: 'turn-1', delta: 'OLD', diff: 'OLD', changedPaths: ['old.ts'] } })
+    }
+    process.emit('message', { id: 99, method: 'item/commandExecution/requestApproval', params: { threadId: 'thread-1', turnId: 'turn-1', itemId: 'old-approval', command: ['npm', 'test'] } })
+    process.emit('message', { method: 'item/agentMessage/delta', params: { threadId: 'thread-1', delta: 'UNATTRIBUTED' } })
+    expect(events).toEqual([])
+    expect(process.sent[process.sent.length - 1]).toMatchObject({ id: 99, error: { code: -32602 } })
+    await expect(client.resolveApproval('old-approval', true)).rejects.toThrow(/não encontrada/)
+    process.emit('message', { method: 'item/agentMessage/delta', params: { threadId: 'thread-1', turnId: 'turn-2', delta: 'CURRENT' } })
+    expect(events).toEqual([{ method: 'item/agentMessage/delta', params: expect.any(Object) }])
+    client.stop()
+  })
+
+  it('associa eventos recebidos antes da resposta de turn/start somente depois de conhecer o turnId', async () => {
+    const { client, process } = await readyClient()
+    const events: Array<{ method: string; params: Record<string, unknown> }> = []
+    client.on('event', (event) => events.push(event))
+    const pending = client.sendTurn('thread-1', '/workspace', 'early')
+    process.emit('message', { method: 'item/agentMessage/delta', params: { threadId: 'thread-1', turnId: 'turn-1', delta: 'ACCEPT' } })
+    process.emit('message', { method: 'item/agentMessage/delta', params: { threadId: 'thread-1', turnId: 'other-turn', delta: 'IGNORE' } })
+    expect(events).toEqual([])
+    process.respond('turn/start', { turn: { id: 'turn-1' } })
+    await pending
+    expect(events.map((event) => event.params.delta)).toEqual(['ACCEPT'])
+    client.stop()
+  })
+
+  it('não persiste delta atrasado de outra execução na mesma thread', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-stale-turn-'))
+    const database = new LocalDatabase(root)
+    const { client, process } = await readyClient()
+    const conversation = database.createConversation(root)
+    const coordinator = new AiExecutionCoordinator(
+      { isDestroyed: () => false, webContents: { send() {} } } as never,
+      new ModelRegistry(), new ProviderRegistry(), { warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as never,
+      new Map(), (snapshot) => persistCompletedTurn(database, snapshot), undefined, undefined, undefined, undefined, client,
+    )
+    const input = { conversationId: conversation.id, workspace: root, prompt: 'review', initialPrompt: 'review', attachments: [], memory: '', mode: 'review' as const, settings: {} as never }
+    try {
+      let started = coordinator.startCodex({ ...input, executionId: 'execution-one' })
+      await waitForRequest(process, 'config/read')
+      process.respond('config/read', {})
+      await waitForRequest(process, 'model/list')
+      process.respond('model/list', { data: [{ model: 'test-model', displayName: 'Test' }] })
+      await waitForRequest(process, 'thread/start')
+      process.respond('thread/start', { thread: { id: 'thread-1' } })
+      await waitForRequest(process, 'turn/start')
+      process.respond('turn/start', { turn: { id: 'turn-1' } })
+      await started
+      process.emit('message', { method: 'item/agentMessage/delta', params: { threadId: 'thread-1', turnId: 'turn-1', delta: 'FIRST' } })
+      process.emit('message', { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status: 'completed' } } })
+      await vi.waitFor(() => expect(database.listMessages(conversation.id)).toHaveLength(1))
+
+      started = coordinator.startCodex({ ...input, executionId: 'execution-two', threadId: 'thread-1' })
+      await waitForRequestCount(process, 'config/read', 2)
+      process.respond('config/read', {})
+      await waitForRequestCount(process, 'model/list', 2)
+      process.respond('model/list', { data: [{ model: 'test-model', displayName: 'Test' }] })
+      await waitForRequest(process, 'thread/resume')
+      process.respond('thread/resume', { thread: { id: 'thread-1' } })
+      await waitForRequestCount(process, 'turn/start', 2)
+      process.respond('turn/start', { turn: { id: 'turn-2' } })
+      await started
+      process.emit('message', { method: 'item/agentMessage/delta', params: { threadId: 'thread-1', turnId: 'turn-1', delta: 'STALE' } })
+      process.emit('message', { method: 'item/agentMessage/delta', params: { threadId: 'thread-1', turnId: 'turn-2', delta: 'SECOND' } })
+      process.emit('message', { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-2', status: 'completed' } } })
+      await vi.waitFor(() => expect(database.listMessages(conversation.id)).toHaveLength(2))
+      expect(database.listMessages(conversation.id).map((message) => message.content)).toEqual(['FIRST', 'SECOND'])
+    } finally {
+      coordinator.dispose(); database.close(); fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
   it.each(['completed', 'failed', 'interrupted', 'unrecognized'])('mantém protocolo, SQLite e renderer concordantes: %s', async (status) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-terminal-'))
     const database = new LocalDatabase(root)
@@ -473,7 +557,7 @@ describe('CodexClient', () => {
     process.emit('message', {
       id: 88,
       method: 'item/commandExecution/requestApproval',
-      params: { itemId: 'approval-1', command: ['npm', 'test'] },
+      params: { threadId: 'thread-1', turnId: 'turn-1', itemId: 'approval-1', command: ['npm', 'test'] },
     })
     await client.resolveApproval('approval-1', true, true)
     expect(process.sent[process.sent.length - 1]).toEqual({
