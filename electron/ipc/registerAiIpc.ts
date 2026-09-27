@@ -172,6 +172,7 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
       error: null,
     }
     database.createExecution(execution)
+    try {
     const contextEvidence = database.workspaceEvidence.record({
       kind: 'context', sourceId: executionId, executionId, workspace: conversation.workspace, startedAt: contextStartedAt,
       paths: assembledContext.sources.flatMap((source) => source.provenance?.sourcePath ? [{ path: source.provenance.sourcePath, hash: source.provenance.sourceHash ?? null }] : []),
@@ -237,6 +238,19 @@ export function registerAiIpc(win: BrowserWindow, dependencies: AiIpcDependencie
 
     await aiExecutions.startProvider(conversationId, taskInput, bindings!, executionId)
     database.markBrainMemoriesUsed(brainMemory.memoryIds)
+    } catch (error) {
+      const current = database.getExecution(executionId)
+      if (current?.status === 'created') {
+        if (mode === 'build') changeControl.abort(executionId)
+        database.saveExecution({
+          ...current,
+          status: 'failed',
+          finishedAt: new Date().toISOString(),
+          error: 'Falha ao preparar a execução de IA.',
+        })
+      }
+      throw error
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.ai.cancel, async (_event, value: unknown) => {

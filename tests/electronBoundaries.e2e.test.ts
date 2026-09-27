@@ -881,6 +881,21 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     expect((await api.artifacts.page(state.conversationId)).items).toEqual([])
     expect((await api.suggestions.page(state.conversationId)).items).toEqual([])
   })
+
+  it('finaliza a execution reservada quando a preparação de anexo falha', async () => {
+    electron.dialogs.open.push({ canceled: false, filePaths: [workspace] })
+    await api.workspace.select()
+    const conversation = await api.conversations.create(workspace)
+    await expect(api.ai.send(conversation.id, 'Revisar', ['../fora.txt'], 'review')).rejects.toThrow(/dentro do workspace/)
+    expect(database!.listExecutions(workspace, conversation.id)).toEqual([])
+
+    const missing = path.join(workspace, `missing-${randomUUID()}.txt`)
+    await expect(api.ai.send(conversation.id, 'Revisar', [missing], 'review')).rejects.toThrow(/anexo não foi encontrado/)
+    const executions = database!.listExecutions(workspace, conversation.id)
+    expect(executions).toHaveLength(1)
+    const execution = database!.getExecution(executions[0]!.id)
+    expect(execution).toMatchObject({ status: 'failed', error: 'Falha ao preparar a execução de IA.', finishedAt: expect.any(String) })
+  })
 })
 
 const workspace = canonicalTestPath('/tmp/test-workspace-nocturne')
