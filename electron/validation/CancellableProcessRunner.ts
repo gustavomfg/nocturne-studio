@@ -98,6 +98,12 @@ export class CancellableProcessRunner implements ProcessRunner {
         if (timeoutTimer) clearTimeout(timeoutTimer)
         if (uncertainTimer) clearTimeout(uncertainTimer)
         options.signal.removeEventListener('abort', onAbort)
+        // A descendant can escape the dedicated group and keep inherited pipes
+        // open after our deadline. Settlement must release Nocturne's readers,
+        // not continue retaining handles/listeners until that process cooperates.
+        child?.stdout?.destroy()
+        child?.stderr?.destroy()
+        if (terminationUncertain) child?.unref()
         resolve(result(exitCode, stdout, stderr, started, cancelled, timedOut, truncated, processError, terminationUncertain, terminationScope))
       }
 
