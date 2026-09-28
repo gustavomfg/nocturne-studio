@@ -13,12 +13,16 @@
     "npm": ">=11 <12"
   },
   "scripts": {
+    "build:boundary": "node scripts/build-native-boundary.mjs",
+    "prebuild": "npm run build:boundary",
+    "prebuild:app": "npm run build:boundary",
+    "pretest": "npm run build:boundary",
     "dev": "vite",
     "build": "tsc && vite build",
     "build:app": "tsc && vite build",
     "typecheck": "tsc --noEmit",
     "rebuild:native": "electron-builder install-app-deps",
-    "postinstall": "electron-builder install-app-deps",
+    "postinstall": "electron-builder install-app-deps && npm run build:boundary",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0 && npm run lint:design",
     "lint:design": "node scripts/check-design-system.mjs",
     "test": "node scripts/run-tests.mjs",

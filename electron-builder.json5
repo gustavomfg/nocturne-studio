@@ -30,6 +30,7 @@
     "dist-electron",
     "build/icon.png"
   ],
+  "extraResources": [{ "from": "dist-native", "to": "native-boundary", "filter": ["rollback-boundary", "rollback-boundary.exe"] }],
   "mac": {
     "hardenedRuntime": true,
     "gatekeeperAssess": false,

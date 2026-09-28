@@ -61,7 +61,8 @@ if (runtimeProbe.error || runtimeProbe.status !== 0 || !runtimeProbe.stdout) {
       // enquanto o Nocturne está aberto pode sobrescrever o addon nativo mapeado e
       // encerrar o processo inteiro com SIGBUS/segmentation fault.
       const mode = process.argv.includes('--watch') ? [] : ['run']
-      const result = spawnSync(electron, [vitest, ...mode], { stdio: 'inherit', shell: false, env: electronEnv })
+      const filters = process.argv.slice(2).filter((argument) => argument !== '--watch')
+      const result = spawnSync(electron, [vitest, ...mode, ...filters], { stdio: 'inherit', shell: false, env: electronEnv })
       process.exitCode = result.status ?? 1
     }
   }
