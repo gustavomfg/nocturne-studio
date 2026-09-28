@@ -25,3 +25,20 @@ and startup displays them. Recovery is diagnostic, not automatic repair: a
 conflicted rollback requires inspecting retained bytes and filesystem state before
 any new decision. No restored workspace gains filesystem authorization through
 this process. Source records and recovery entries remain workspace-scoped in SQLite.
+
+## Owned process shutdown
+
+Validation and Codex transport cleanup have bounded deadlines. Codex retains
+cleanup ownership after its direct child exits, closes its streams, sends TERM
+and escalates the owned POSIX process group to KILL after three seconds, even if
+the parent already exited. Cleanup settles by four seconds and application
+shutdown awaits it. Restart waits for transport cleanup rather than treating
+parent exit as completion of cleanup.
+
+This is not certification of every descendant: a descendant can escape a POSIX
+group, and Windows Node supervision targets only the parent. Codex termination
+diagnostics therefore explicitly retain `terminationUncertain: true`. Closing
+transport streams or reaching the cleanup deadline never completes an AI turn
+successfully. Startup reconciliation still records unfinished executions as
+interrupted; it does not infer what external processes did after transport loss.
+User-owned detached editors/terminals are not part of this cleanup.

@@ -8,6 +8,7 @@ import type { NormalizedTaskInput } from '../shared/ai/task'
 import type { ProviderExecutionControl, ProviderExecutionRequest } from '../shared/ai/providerExecution'
 import { FakeProviderAdapter } from './helpers/FakeProviderAdapter'
 import { providerDefinition } from './helpers/providerDefinition'
+import { CodexClient } from '../electron/codex/CodexClient'
 
 const descriptor: ModelDescriptor = { providerId: 'fake', modelId: 'model', displayName: 'Fake', source: 'local', capabilities: ['chat', 'streaming'], availability: 'available' }
 const bindings: WorkspaceModelBindings = { workspaceId: '/workspace', defaultBinding: { providerId: 'fake', modelId: 'model' } }
@@ -52,6 +53,21 @@ function testLogger() {
 }
 
 describe('AiExecutionCoordinator', () => {
+  it('entrega ao shutdown a conclusão do cleanup Codex sem inventar término síncrono', async () => {
+    const codex = new CodexClient()
+    let release!: () => void
+    const cleanup = new Promise<void>((resolve) => { release = resolve })
+    vi.spyOn(codex, 'stop').mockReturnValue(cleanup)
+    const { win } = testWindow()
+    const coordinator = new AiExecutionCoordinator(win as never, new ModelRegistry(), new ProviderRegistry(), testLogger() as never, new Map(), vi.fn(), undefined, undefined, undefined, undefined, codex)
+    const disposed = coordinator.dispose()
+    expect(disposed).toBe(cleanup)
+    expect(codex.listenerCount('event')).toBe(0)
+    release()
+    await disposed
+    expect(codex.stop).toHaveBeenCalledOnce()
+  })
+
   it('persiste a resposta antes de publicar a conclusão ao renderer', async () => {
     const { sent, win } = testWindow()
     const models = new ModelRegistry(); models.register(descriptor)

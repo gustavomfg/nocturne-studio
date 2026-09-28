@@ -70,13 +70,12 @@ export function buildCodexEnvironment(source: Record<string, string | undefined>
 
 export class CodexProcess extends EventEmitter {
   private child: ChildProcessWithoutNullStreams | null = null
-  private stopping = false
+  private readonly owned = new Map<ChildProcessWithoutNullStreams, { intentional: boolean; stop(): Promise<void> }>()
   private executable = 'codex'
 
   start(executable = this.executable) {
     if (this.child) return
     this.executable = executable
-    this.stopping = false
     this.child = spawn(executable, ['app-server', '--stdio'], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: buildCodexEnvironment(),
@@ -85,19 +84,62 @@ export class CodexProcess extends EventEmitter {
 
     const child = this.child
     const lines = readline.createInterface({ input: child.stdout })
+    let cleanup: Promise<void> | undefined
+    let parentExited = false
+    let finishCleanup: (() => void) | undefined
+    const record = { intentional: false, stop: () => {
+      if (cleanup) return cleanup
+      cleanup = new Promise<void>((resolve) => {
+        let settled = false
+        let escalation: NodeJS.Timeout | undefined
+        let deadline: NodeJS.Timeout | undefined
+        const finish = () => {
+          if (settled) return
+          settled = true
+          if (escalation) clearTimeout(escalation)
+          if (deadline) clearTimeout(deadline)
+          lines.close()
+          child.stdin.destroy(); child.stdout.destroy(); child.stderr.destroy()
+          child.unref()
+          this.owned.delete(child)
+          // Group disappearance is not proof about descendants that escaped it.
+          this.emit('termination', { pid: child.pid, scope: usesDedicatedProcessGroup() ? 'process-group' : 'parent-only', terminationUncertain: true })
+          resolve()
+        }
+        finishCleanup = () => {
+          if (parentExited && !isProcessGroupAlive(child.pid)) finish()
+        }
+        terminateProcess(child, 'SIGTERM')
+        escalation = setTimeout(() => {
+          // The parent exiting must not cancel escalation of its owned group.
+          if (isProcessGroupAlive(child.pid) || !parentExited) terminateProcess(child, 'SIGKILL')
+        }, 3_000)
+        deadline = setTimeout(finish, 4_000)
+        finishCleanup()
+      })
+      return cleanup
+    } }
+    this.owned.set(child, record)
     lines.on('line', (line) => {
+      if (this.child !== child) return
       const message = parseRpcLine(line)
       if (message) this.emit('message', message)
       else this.emit('stdout', line)
     })
-    child.stderr.on('data', (chunk) => this.emit('stderr', chunk.toString().slice(-64_000)))
-    child.stdin.on('error', (error) => this.emit('error', error))
-    child.on('error', (error) => this.emit('error', error))
+    child.stderr.on('data', (chunk) => { if (this.child === child) this.emit('stderr', chunk.toString().slice(-64_000)) })
+    child.stdin.on('error', (error) => { if (this.child === child && !record.intentional) this.emit('error', error) })
+    child.on('error', (error) => {
+      if (this.child === child) this.emit('error', error)
+      if (!child.pid) { parentExited = true; if (this.child === child) this.child = null; void record.stop() }
+    })
     child.on('exit', (code, signal) => {
+      parentExited = true
       if (this.child === child) this.child = null
       lines.close()
-      this.emit('exit', code, signal, this.stopping)
-      this.stopping = false
+      child.stdin.destroy(); child.stdout.destroy(); child.stderr.destroy()
+      this.emit('exit', code, signal, record.intentional)
+      void record.stop()
+      finishCleanup?.()
     })
     child.on('close', (code, signal) => this.emit('close', code, signal))
   }
@@ -108,19 +150,14 @@ export class CodexProcess extends EventEmitter {
   }
 
   stop() {
-    if (!this.child) return
-    this.stopping = true
-    terminateProcess(this.child, 'SIGTERM')
-    const child = this.child
-    setTimeout(() => {
-      if (isProcessGroupAlive(child.pid) || (this.child === child && child.exitCode === null && child.signalCode === null)) {
-        terminateProcess(child, 'SIGKILL')
-      }
-    }, 3_000).unref()
+    return Promise.all([...this.owned.values()].map((record) => {
+      record.intentional = true
+      return record.stop()
+    })).then(() => undefined)
   }
 
   isRunning() {
-    return Boolean(this.child && !this.child.killed)
+    return Boolean(this.child && this.child.exitCode === null && this.child.signalCode === null)
   }
 
   get pid() {

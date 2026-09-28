@@ -223,8 +223,8 @@ export class AiExecutionCoordinator {
     this.codex.off('log', this.onCodexLog)
     this.codex.off('diagnostic', this.onCodexDiagnostic)
     this.active = null
-    this.codex.stop()
     this.approvalDetails.clear()
+    return this.codex.stop()
   }
 
   private reserve(conversationId: string, workspace: string, mode: AgentMode, kind: ActiveExecution['kind'], executionId?: string) {

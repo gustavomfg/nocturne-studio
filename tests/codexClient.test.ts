@@ -102,6 +102,38 @@ async function createThread(client: CodexClient, process: FakeCodexProcess) {
 }
 
 describe('CodexClient', () => {
+  it('falha restart no deadline se o adapter não confirmar cleanup', async () => {
+    const { client, process } = await readyClient()
+    const stop = process.stop.bind(process)
+    const observation = vi.spyOn(process, 'stop').mockImplementation(() => { stop(); return new Promise<void>(() => undefined) })
+    vi.useFakeTimers()
+    try {
+      const restarted = client.restart()
+      const rejected = expect(restarted).rejects.toThrow('não confirmou encerramento')
+      await vi.advanceTimersByTimeAsync(5_000)
+      await rejected
+      expect(process.starts).toBe(1)
+    } finally { vi.useRealTimers(); observation.mockRestore(); client.stop() }
+  })
+
+  it('aguarda cleanup assíncrono antes de reinicializar o transporte, mesmo após exit', async () => {
+    const { client, process } = await readyClient()
+    let release!: () => void
+    const cleanup = new Promise<void>((resolve) => { release = resolve })
+    const stop = process.stop.bind(process)
+    vi.spyOn(process, 'stop').mockImplementation(() => { stop(); return cleanup })
+    const restarted = client.restart()
+    await Promise.resolve()
+    expect(process.starts).toBe(1)
+    expect(client.status).toBe('disconnected')
+    release()
+    await waitForRequestCount(process, 'initialize', 2)
+    process.respond('initialize')
+    await restarted
+    expect(process.starts).toBe(2)
+    await client.stop()
+  })
+
   it('correlaciona uma conclusão recebida antes da resposta de turn/start', async () => {
     const { client, process } = await readyClient()
     const events: unknown[] = []

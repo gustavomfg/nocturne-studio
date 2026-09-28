@@ -21,7 +21,7 @@ const MAX_EARLY_TURN_EVENTS = 64
 export interface CodexProcessAdapter extends EventEmitter {
   start(executable?: string): void
   send(message: RpcMessage): void
-  stop(): void
+  stop(): void | Promise<void>
   isRunning(): boolean
   readonly pid: number | null
   readonly path: string
@@ -87,6 +87,12 @@ export class CodexClient extends EventEmitter {
       message: 'Transporte do App Server fechado',
       code,
       signal,
+    }))
+    this.process.on('termination', (result: { scope: string; terminationUncertain: boolean }) => this.emit('diagnostic', {
+      level: result.terminationUncertain ? 'warn' : 'info',
+      message: 'Cleanup do transporte Codex concluído; término de toda a árvore não certificado.',
+      scope: result.scope,
+      terminationUncertain: result.terminationUncertain,
     }))
   }
 
@@ -309,7 +315,7 @@ export class CodexClient extends EventEmitter {
   stop() {
     this.intentionalStop = true
     this.approvalRequests.clear()
-    this.process.stop()
+    return this.process.stop()
   }
 
   async restart() {
@@ -346,21 +352,30 @@ export class CodexClient extends EventEmitter {
   }
 
   private async stopTransport() {
-    if (!this.process.isRunning()) return
     this.intentionalStop = true
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
       let settled = false
+      let exited = !this.process.isRunning()
+      let cleaned = false
       const finish = () => {
+        exited = true
+        if (!cleaned) return
         if (settled) return
         settled = true
         clearTimeout(timer)
         this.process.off('exit', finish)
         resolve()
       }
-      const timer = setTimeout(finish, 5_000)
-      timer.unref()
+      const timer = setTimeout(() => {
+        this.process.off('exit', finish)
+        reject(new Error('O transporte Codex não confirmou encerramento dentro do prazo.'))
+      }, 5_000)
       this.process.once('exit', finish)
-      this.process.stop()
+      Promise.resolve(this.process.stop()).then(() => { cleaned = true; if (exited) finish() }, (error: unknown) => {
+        clearTimeout(timer)
+        this.process.off('exit', finish)
+        reject(error)
+      })
     })
   }
 

@@ -347,9 +347,10 @@ export function registerIpc(
   const disposeUpdates = registerUpdateIpc(win, updateService, ipcMain)
 
   return () => {
-    aiExecutions.dispose()
+    const aiShutdown = aiExecutions.dispose()
     ipcMain.dispose()
     return Promise.all([
+      aiShutdown,
       validation.dispose(),
       engineeringSignals?.dispose(),
       semanticIndex.dispose(),
