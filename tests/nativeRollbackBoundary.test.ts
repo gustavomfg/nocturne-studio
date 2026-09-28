@@ -151,7 +151,7 @@ describe.runIf(process.platform === 'linux')('native Linux rollback capabilities
     const observations: string[] = []
     for (let index = 0; index < 40; index++) {
       observations.push(`file-${index}:${'evidence'.repeat(100)}`)
-      await value.operation.journal({ step: index, observations }, { step: index, added: observations.at(-1) })
+      await value.operation.journal({ step: index, observations }, { step: index, added: observations[observations.length - 1] })
     }
     const steps = fs.readFileSync(path.join(value.recovery, 'steps.jsonl'), 'utf8')
     expect(steps.trim().split('\n')).toHaveLength(40)

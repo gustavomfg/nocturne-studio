@@ -92,7 +92,7 @@ export class SnapshotRollbackService {
     const persistJournal = (error?: string) => operation!.journal({ ...journal, ...(error ? { error } : {}) }, {
       operationId, executionId, beforeId, afterId, workspace, step: journal.step,
       status: journal.status, outcome: journal.outcome, restoredCount: restored.length,
-      observation: journal.observations.at(-1), retained: journal.retained.at(-1),
+      observation: journal.observations[journal.observations.length - 1], retained: journal.retained[journal.retained.length - 1],
       ...(error ? { error } : {}),
     })
     try {
