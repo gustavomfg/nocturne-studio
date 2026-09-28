@@ -42,3 +42,6 @@ transport streams or reaching the cleanup deadline never completes an AI turn
 successfully. Startup reconciliation still records unfinished executions as
 interrupted; it does not infer what external processes did after transport loss.
 User-owned detached editors/terminals are not part of this cleanup.
+Provider disposal also aborts its active execution signal and discards late
+events. This requests cooperative cancellation; it does not certify completion
+of a remote request or turn an unfinished durable execution into success.

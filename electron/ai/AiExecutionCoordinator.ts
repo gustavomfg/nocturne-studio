@@ -36,7 +36,7 @@ interface ActiveExecution {
   cancelRequested: boolean
   sequence: number
   lifecycle: AgentRunState | null
-  cancel(): Promise<void>
+  cancel(reason?: string): Promise<void>
 }
 
 interface CodexTurnInput {
@@ -170,9 +170,9 @@ export class AiExecutionCoordinator {
         turn.cancel('A execução perdeu seu contexto ativo.')
         throw new Error('A execução foi cancelada antes de iniciar.')
       }
-      this.active.cancel = async () => {
+      this.active.cancel = async (reason = 'Execução cancelada pelo usuário.') => {
         active.cancelRequested = true
-        turn.cancel('Execução cancelada pelo usuário.')
+        turn.cancel(reason)
       }
       if (active.cancelRequested) turn.cancel('Execução cancelada pelo usuário.')
       this.pushExecutionStatus(active, 'running')
@@ -222,7 +222,13 @@ export class AiExecutionCoordinator {
     this.codex.off('status', this.onCodexStatus)
     this.codex.off('log', this.onCodexLog)
     this.codex.off('diagnostic', this.onCodexDiagnostic)
+    const active = this.active
     this.active = null
+    if (active?.kind === 'provider') {
+      void active.cancel('Aplicação encerrando; execução interrompida.').catch((error: unknown) => {
+        this.logger.warn('ai', 'O cancelamento do Provider durante shutdown falhou.', { error: error instanceof Error ? error.message : String(error) })
+      })
+    }
     this.approvalDetails.clear()
     return this.codex.stop()
   }

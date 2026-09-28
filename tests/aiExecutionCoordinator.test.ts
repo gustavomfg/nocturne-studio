@@ -53,6 +53,22 @@ function testLogger() {
 }
 
 describe('AiExecutionCoordinator', () => {
+  it('revoga o signal de Provider no dispose sem persistir conclusão tardia', async () => {
+    const models = new ModelRegistry(); models.register(descriptor)
+    const providers = new ProviderRegistry()
+    const provider = new ControlledProviderAdapter([descriptor], true)
+    providers.register(provider)
+    const { win } = testWindow()
+    const finalize = vi.fn()
+    const coordinator = new AiExecutionCoordinator(win as never, models, providers, testLogger() as never, new Map(), finalize)
+    await coordinator.startProvider('conversation-shutdown', task, bindings)
+    await vi.waitFor(() => expect(provider.controls).toHaveLength(1))
+    await coordinator.dispose()
+    expect(provider.controls[0].signal.aborted).toBe(true)
+    await Promise.resolve()
+    expect(finalize).not.toHaveBeenCalled()
+  })
+
   it('entrega ao shutdown a conclusão do cleanup Codex sem inventar término síncrono', async () => {
     const codex = new CodexClient()
     let release!: () => void
