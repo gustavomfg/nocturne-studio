@@ -1,7 +1,7 @@
 import type { LocalDatabase } from '../database/Database'
 import type { SnapshotRollbackService } from '../change-control/SnapshotRollbackService'
 import { ChangeDecisionService } from '../change-control/ChangeDecisionService'
-import { protectedRollbackSupported } from '../change-control/NativeRollbackOperation'
+import { protectedRollbackSupported, withRollbackRootBinding } from '../change-control/NativeRollbackOperation'
 
 export interface BuildRollbackStatus {
   available: boolean
@@ -39,15 +39,17 @@ export class BuildRollbackService {
     const status = this.status(conversationId)
     if (!value || value.execution.workspace !== workspace || !status.available) throw new Error(status.reason ?? 'Rollback indisponível.')
     if (expectedExecutionId && value.execution.id !== expectedExecutionId) throw new Error('O Build mudou durante a confirmação. Revise novamente antes de reverter.')
-    const conflicts = await this.snapshots.verifyPaths(value.execution.id, workspace, value.changeSet.afterCheckpointId, status.files)
-    if (conflicts.length) throw new Error(`Rollback em conflito: ${conflicts.join(', ')}.`)
-    const decisions = new ChangeDecisionService(this.database.changeSets, this.snapshots)
-    const restored: string[] = []
-    for (const change of this.database.changeSets.listChanges(value.changeSet.id)) {
-      if (!status.files.includes(change.relativePath)) continue
-      await decisions.decide(value.execution.id, change.id, 'rejected', workspace, true)
-      restored.push(change.relativePath)
-    }
-    return { restored }
+    return withRollbackRootBinding(workspace, undefined, async (rootIdentity) => {
+      const conflicts = await this.snapshots.verifyPaths(value.execution.id, workspace, value.changeSet.afterCheckpointId, status.files)
+      if (conflicts.length) throw new Error(`Rollback em conflito: ${conflicts.join(', ')}.`)
+      const decisions = new ChangeDecisionService(this.database.changeSets, this.snapshots)
+      const restored: string[] = []
+      for (const change of this.database.changeSets.listChanges(value.changeSet.id)) {
+        if (!status.files.includes(change.relativePath)) continue
+        await decisions.decide(value.execution.id, change.id, 'rejected', workspace, true, rootIdentity)
+        restored.push(change.relativePath)
+      }
+      return { restored }
+    })
   }
 }

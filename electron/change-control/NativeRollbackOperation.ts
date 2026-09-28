@@ -21,6 +21,18 @@ export function nativeRollbackWorkerPath() {
 
 export function protectedRollbackSupported() { return process.platform === 'linux' }
 
+/** Read-only root custody spanning async preparation or several file decisions. */
+export async function withRollbackRootBinding<T>(workspace: string, expectedIdentity: string | undefined, action: (identity: string | undefined) => Promise<T>): Promise<T> {
+  if (!protectedRollbackSupported()) return action(undefined)
+  const root = await fs.promises.open(workspace, fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW)
+  try {
+    const metadata = await root.stat({ bigint: true })
+    const identity = `${metadata.dev}:${metadata.ino}`
+    if (expectedIdentity && identity !== expectedIdentity) throw new NativeBoundaryError('REVOKED', 'Workspace root changed during preparation.')
+    return await action(identity)
+  } finally { await root.close() }
+}
+
 /** One trusted main-process owner, one native worker, short-lived capabilities. */
 export class NativeRollbackOperation {
   private state: 'ACTIVE' | 'REVOKED' | 'CLOSED' = 'ACTIVE'
@@ -62,14 +74,16 @@ export class NativeRollbackOperation {
     })
   }
 
-  static async create(workspace: string, recoveryDirectory: string) {
-    const root = await fs.promises.stat(workspace, { bigint: true })
-    const recovery = await fs.promises.stat(recoveryDirectory, { bigint: true })
-    const operation = new NativeRollbackOperation(`${root.dev}:${root.ino}`, `${recovery.dev}:${recovery.ino}`)
-    try {
-      await operation.request('INIT', encode(workspace), encode(`${root.dev}:${root.ino}`), encode(recoveryDirectory), encode(`${recovery.dev}:${recovery.ino}`))
-      return operation
-    } catch (error) { await operation.close(); throw error }
+  static async create(workspace: string, recoveryDirectory: string, expectedRootIdentity?: string) {
+    return withRollbackRootBinding(workspace, expectedRootIdentity, (rootIdentity) =>
+      withRollbackRootBinding(recoveryDirectory, undefined, async (recoveryIdentity) => {
+        const operation = new NativeRollbackOperation(rootIdentity ?? '', recoveryIdentity ?? '')
+        try {
+          await operation.request('INIT', encode(workspace), encode(operation.rootIdentity), encode(recoveryDirectory), encode(operation.recoveryIdentity))
+          return operation
+        } catch (error) { await operation.close(); throw error }
+      }),
+    )
   }
 
   async inspect(relativePath: string) {

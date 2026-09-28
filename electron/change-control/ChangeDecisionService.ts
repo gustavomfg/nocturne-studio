@@ -2,6 +2,7 @@ import type { ChangeRecord, ChangeSetRecord } from '../../shared/changeControl'
 import type { ChangeSetRepository } from '../database/ChangeSetRepository'
 import type { SnapshotRollbackService } from './SnapshotRollbackService'
 import { enqueueSerializedWrite } from '../persistence/SerializedWriteQueue'
+import { withRollbackRootBinding } from './NativeRollbackOperation'
 
 /** Applies explicit file decisions and derives the aggregate ChangeSet state. */
 export class ChangeDecisionService {
@@ -11,11 +12,11 @@ export class ChangeDecisionService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  decide(executionId: string, changeId: string, status: Extract<ChangeRecord['status'], 'accepted' | 'rejected'>, workspace: string, revertingBuild = false) {
-    return enqueueSerializedWrite(`decision:${workspace}`, () => this.apply(executionId, changeId, status, workspace, revertingBuild))
+  decide(executionId: string, changeId: string, status: Extract<ChangeRecord['status'], 'accepted' | 'rejected'>, workspace: string, revertingBuild = false, expectedRootIdentity?: string) {
+    return enqueueSerializedWrite(`decision:${workspace}`, () => this.apply(executionId, changeId, status, workspace, revertingBuild, expectedRootIdentity))
   }
 
-  private async apply(executionId: string, changeId: string, status: 'accepted' | 'rejected', workspace: string, revertingBuild: boolean) {
+  private async apply(executionId: string, changeId: string, status: 'accepted' | 'rejected', workspace: string, revertingBuild: boolean, expectedRootIdentity: string | undefined) {
     const change = this.repository.getChange(changeId, executionId)
     if (!change) throw new Error('A mudança solicitada não pertence a esta execução.')
     if (change.policy === 'blocked') throw new Error('Esta mudança está bloqueada pela política do workspace.')
@@ -25,17 +26,19 @@ export class ChangeDecisionService {
     if (!changeSet) throw new Error('O ChangeSet da mudança não está disponível.')
     const operationId = this.repository.reserveDecision(executionId, changeId, status)
     try {
-      const conflicts = await this.rollback.verifyPaths(executionId, workspace, changeSet.afterCheckpointId, [change.relativePath])
-      if (conflicts.length) throw new Error(`O arquivo mudou desde AFTER: ${conflicts.join(', ')}.`)
-      if (status === 'rejected') {
-        const result = await this.rollback.rollbackPaths(executionId, workspace, changeSet.beforeCheckpointId, changeSet.afterCheckpointId, [change.relativePath])
-        if (result.status !== 'restored') throw new Error(`Rollback em conflito (${result.boundaryOutcome ?? 'CONFLICT'}): ${result.conflicts.join(', ')}. ${result.error ?? ''} Recuperação: ${result.recoveryDirectory ?? 'checkpoints preservados'}.`)
-      }
-    const updatedChange = { ...change, status, updatedAt: this.now().toISOString() }
-    const changes = this.repository.listChanges(changeSet.id).map((item) => item.id === changeId ? updatedChange : item)
-    const updatedSet: ChangeSetRecord = { ...changeSet, status: aggregateStatus(changes), updatedAt: this.now().toISOString() }
-    this.repository.saveDecision(updatedSet, updatedChange, operationId)
-    return { changeSet: updatedSet, change: updatedChange }
+      return await withRollbackRootBinding(workspace, expectedRootIdentity, async (rootIdentity) => {
+        const conflicts = await this.rollback.verifyPaths(executionId, workspace, changeSet.afterCheckpointId, [change.relativePath])
+        if (conflicts.length) throw new Error(`O arquivo mudou desde AFTER: ${conflicts.join(', ')}.`)
+        if (status === 'rejected') {
+          const result = await this.rollback.rollbackPaths(executionId, workspace, changeSet.beforeCheckpointId, changeSet.afterCheckpointId, [change.relativePath], rootIdentity)
+          if (result.status !== 'restored') throw new Error(`Rollback em conflito (${result.boundaryOutcome ?? 'CONFLICT'}): ${result.conflicts.join(', ')}. ${result.error ?? ''} Recuperação: ${result.recoveryDirectory ?? 'checkpoints preservados'}.`)
+        }
+        const updatedChange = { ...change, status, updatedAt: this.now().toISOString() }
+        const changes = this.repository.listChanges(changeSet.id).map((item) => item.id === changeId ? updatedChange : item)
+        const updatedSet: ChangeSetRecord = { ...changeSet, status: aggregateStatus(changes), updatedAt: this.now().toISOString() }
+        this.repository.saveDecision(updatedSet, updatedChange, operationId)
+        return { changeSet: updatedSet, change: updatedChange }
+      })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.repository.failDecision(operationId, message)

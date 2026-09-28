@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { CheckpointFileRecord } from '../../shared/changeControl'
+import type { CheckpointFileRecord, CheckpointRecord } from '../../shared/changeControl'
 import { resolveInsideWorkspace } from '../security/ExecutionPolicy'
 import type { CheckpointService } from './CheckpointService'
 import { enqueueSerializedWrite } from '../persistence/SerializedWriteQueue'
-import { NativeBoundaryError, NativeRollbackOperation, type BoundaryOutcome } from './NativeRollbackOperation'
+import { NativeBoundaryError, NativeRollbackOperation, withRollbackRootBinding, type BoundaryOutcome } from './NativeRollbackOperation'
 
 export interface SnapshotRollbackResult {
   status: 'restored' | 'conflicted'
@@ -43,15 +43,22 @@ export class SnapshotRollbackService {
     return this.rollbackPaths(executionId, workspace, beforeId, afterId)
   }
 
-  async rollbackPaths(executionId: string, workspace: string, beforeId: string, afterId: string, requestedPaths?: readonly string[]): Promise<SnapshotRollbackResult> {
-    return enqueueSerializedWrite(`rollback:${path.resolve(workspace)}`, () => this.restore(executionId, workspace, beforeId, afterId, requestedPaths))
+  async rollbackPaths(executionId: string, workspace: string, beforeId: string, afterId: string, requestedPaths?: readonly string[], expectedRootIdentity?: string): Promise<SnapshotRollbackResult> {
+    return enqueueSerializedWrite(`rollback:${path.resolve(workspace)}`, () => this.restore(executionId, workspace, beforeId, afterId, requestedPaths, expectedRootIdentity))
   }
 
-  private async restore(executionId: string, workspace: string, beforeId: string, afterId: string, requestedPaths?: readonly string[]): Promise<SnapshotRollbackResult> {
+  private async restore(executionId: string, workspace: string, beforeId: string, afterId: string, requestedPaths?: readonly string[], expectedRootIdentity?: string): Promise<SnapshotRollbackResult> {
     const before = this.checkpoints.get(beforeId, executionId)
     const after = this.checkpoints.get(afterId, executionId)
     if (!before || !after || before.status !== 'ready' || after.status !== 'ready') throw new Error('Os checkpoints necessários para o rollback não estão disponíveis.')
     if (before.workspace !== workspace || after.workspace !== workspace) throw new Error('O rollback não corresponde ao workspace autorizado.')
+    // Retain the observed root across asynchronous preparation; its identity
+    // cannot be recycled or silently replaced before native acquisition.
+    return withRollbackRootBinding(workspace, expectedRootIdentity, (identity) => this.restoreFiles(executionId, workspace, before, after, requestedPaths, identity))
+  }
+
+  private async restoreFiles(executionId: string, workspace: string, before: CheckpointRecord, after: CheckpointRecord, requestedPaths: readonly string[] | undefined, expectedRootIdentity: string | undefined): Promise<SnapshotRollbackResult> {
+    const beforeId = before.id, afterId = after.id
     const beforeFiles = new Map(this.checkpoints.listFiles(before.id).map((file) => [file.relativePath, file]))
     const afterFiles = new Map(this.checkpoints.listFiles(after.id).map((file) => [file.relativePath, file]))
     const paths = requestedPaths ? [...new Set(requestedPaths)].sort() : [...new Set([...beforeFiles.keys(), ...afterFiles.keys()])].sort()
@@ -83,7 +90,7 @@ export class SnapshotRollbackService {
     let operation: NativeRollbackOperation | undefined
     let currentPath = restorations[0].relativePath
     try {
-      operation = await NativeRollbackOperation.create(workspace, recoveryDirectory)
+      operation = await NativeRollbackOperation.create(workspace, recoveryDirectory, expectedRootIdentity)
       journal.rootIdentity = operation.rootIdentity
       journal.recoveryIdentity = operation.recoveryIdentity
       await operation.journal(journal)

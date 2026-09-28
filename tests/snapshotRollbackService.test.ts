@@ -33,6 +33,32 @@ async function fixture() {
 }
 
 describe.runIf(process.platform === 'linux')('SnapshotRollbackService protected mutations', () => {
+  it('does not authorize a replacement root after the rollback preflight has started', async () => {
+    const value = await fixture()
+    const target = path.join(value.workspace, 'target.txt')
+    fs.writeFileSync(target, 'BEFORE')
+    const before = await value.checkpoints.capture(value.executionId, value.workspace, 'before')
+    fs.writeFileSync(target, 'AFTER')
+    const after = await value.checkpoints.capture(value.executionId, value.workspace, 'after')
+    directories.push(`${value.workspace}-retained`)
+    const read = fs.promises.readFile.bind(fs.promises)
+    let replaced = false
+    vi.spyOn(fs.promises, 'readFile').mockImplementation(async (...args: Parameters<typeof fs.promises.readFile>) => {
+      const result = await read(...args)
+      if (!replaced && args[0] === target) {
+        replaced = true
+        const peer = spawnSync(process.execPath, ['-e', 'const fs=require("node:fs"),path=require("node:path");const p=process.argv[1];fs.renameSync(p,p+"-retained");fs.mkdirSync(p);fs.writeFileSync(path.join(p,"target.txt"),"AFTER")', value.workspace], { shell: false, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } })
+        expect(peer.status).toBe(0)
+      }
+      return result
+    })
+    const result = await value.rollback.rollback(value.executionId, value.workspace, before.checkpoint.id, after.checkpoint.id)
+    expect(replaced).toBe(true)
+    expect(result).toMatchObject({ status: 'conflicted', restored: [], boundaryOutcome: 'REVOKED' })
+    expect(fs.readFileSync(target, 'utf8')).toBe('AFTER')
+    expect(fs.readFileSync(path.join(`${value.workspace}-retained`, 'target.txt'), 'utf8')).toBe('AFTER')
+  })
+
   it('revokes the real rollback after an external parent swap; preserves external bytes and journal truth', async () => {
     const value = await fixture()
     const parent = path.join(value.workspace, 'parent')

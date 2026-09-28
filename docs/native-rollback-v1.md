@@ -43,6 +43,10 @@ constraints; parents additionally disallow mount crossings. Mutations use retain
 directory descriptors and single entry names. Fresh pathname observations can
 revoke authority but cannot replace retained capabilities. Root/parent substitution
 therefore cannot redirect a mutation to a newly substituted directory.
+Read-only root custody spans asynchronous preflight and all decisions of a
+whole-Build rollback; native acquisition must match that still-retained object.
+A replacement with identical AFTER bytes is not a newly authorized root. The
+retained descriptor also prevents identity recycling during this preparation.
 
 New content is written to an anonymous `O_TMPFILE` descriptor, not a named private
 stage. Publication selects that descriptor through `/proc/self/fd` and `linkat`;
