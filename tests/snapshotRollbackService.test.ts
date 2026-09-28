@@ -21,7 +21,7 @@ afterEach(() => {
 
 async function fixture() {
   const userData = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-rollback-db-')))
-  const workspace = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-rollback-project-')))
+  const workspace = canonicalTestPath(fs.mkdtempSync(path.join(process.env.NOCTURNE_NATIVE_TEST_ROOT ?? os.tmpdir(), 'nocturne-rollback-project-')))
   directories.push(userData, workspace)
   const database = new LocalDatabase(userData)
   databases.push(database)

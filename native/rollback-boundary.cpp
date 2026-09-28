@@ -146,8 +146,8 @@ public:
       require(identity(root.value)==rootId && identity(recovery.value)==recoveryId,"Root identity changed");
       struct statfs filesystem{};
       require(fstatfs(root.value,&filesystem)==0,"Filesystem unavailable");
-      if(filesystem.f_type!=TMPFS_MAGIC && filesystem.f_type!=EXT4_SUPER_MAGIC)
-        throw Failure("UNSUPPORTED","V1 requires local tmpfs or ext4");
+      if(filesystem.f_type!=TMPFS_MAGIC && filesystem.f_type!=EXT4_SUPER_MAGIC && filesystem.f_type!=BTRFS_SUPER_MAGIC)
+        throw Failure("UNSUPPORTED","V1 requires local tmpfs, ext4 or Btrfs");
       log.reset(checked(openat(recovery.value,"steps.jsonl",O_WRONLY|O_CREAT|O_EXCL|O_CLOEXEC|O_NOFOLLOW,0600)));
       snapshot.reset(checked(openat(recovery.value,"operation.json",O_RDWR|O_CREAT|O_EXCL|O_CLOEXEC|O_NOFOLLOW,0600)));
       flush(recovery.value);active=true;return "OK";

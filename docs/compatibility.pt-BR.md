@@ -1,7 +1,7 @@
 # Compatibilidade
 
 A restauração protegida tem contrato mais restrito que a aplicação:
-[rollback V1](native-rollback-v1.md) suporta apenas Linux tmpfs/ext4 local.
+[rollback V1](native-rollback-v1.md) suporta apenas Linux tmpfs/ext4/Btrfs local.
 macOS e Windows recusam a mutação com `UNSUPPORTED`; captura de checkpoints,
 inspeção de diffs e aceitação continuam disponíveis. O worker nativo exige
 toolchain C++17 de desenvolvimento, sem alterar o ABI SQLite/Electron.

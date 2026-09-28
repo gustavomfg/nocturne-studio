@@ -10,7 +10,7 @@ const cleanup: Array<() => Promise<void> | void> = []
 afterEach(async () => { for (const release of cleanup.splice(0).reverse()) await release() })
 
 async function fixture() {
-  const base = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-native-boundary-')))
+  const base = canonicalTestPath(fs.mkdtempSync(path.join(process.env.NOCTURNE_NATIVE_TEST_ROOT ?? os.tmpdir(), 'nocturne-native-boundary-')))
   cleanup.push(() => removeTestDirectory(base))
   const workspace = path.join(base, 'workspace')
   const recovery = path.join(base, 'recovery')

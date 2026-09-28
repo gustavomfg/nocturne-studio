@@ -10,7 +10,7 @@ observed. Once structural loss is known, no further workspace mutation is admitt
 
 | Backend | V1 behavior |
 | --- | --- |
-| Linux, local tmpfs/ext4 | Native capability-based operations; missing kernel/filesystem primitives fail closed |
+| Linux, local tmpfs/ext4/Btrfs | Native capability-based operations; missing kernel/filesystem primitives fail closed |
 | macOS | `UNSUPPORTED`; no named-source staging or pathname fallback |
 | Windows | `UNSUPPORTED`; experimental handle research is not an implemented backend |
 | Other filesystems/platforms | `UNSUPPORTED`; no copy/delete fallback |
@@ -102,3 +102,6 @@ Tests distinguish Linux real-filesystem restoration from macOS/Windows real-plat
 fail-closed behavior. A passing unsupported-backend test is not a working rollback
 certification. Protected backend support must be added and tested before lifting
 any platform restriction; unsupported operations must never silently fall back.
+For targeted local filesystem verification, set `NOCTURNE_NATIVE_TEST_ROOT` to an
+explicitly created disposable directory and run the native/snapshot tests. Fixtures
+are created beneath it; no existing files are used as rollback targets.

@@ -8,7 +8,7 @@ of BEFORE and are preserved.
 
 After explicit confirmation, each target must match AFTER, including mode and
 bytes. [Protected rollback V1](native-rollback-v1.md) currently supports Linux
-tmpfs/ext4; macOS/Windows explicitly report `UNSUPPORTED` and require manual
+tmpfs/ext4/Btrfs; macOS/Windows explicitly report `UNSUPPORTED` and require manual
 recovery. Displaced files stay in their acquired parent as
 `.nocturne-rollback-<operation>-<file>.after`; the operation journal is in the private
 checkpoint store's `rollback/<operation>` directory. A restored file is published exclusively: it never

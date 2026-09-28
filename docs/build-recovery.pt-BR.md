@@ -9,7 +9,7 @@ A confirmação fica vinculada ao ID da execução. Cada caminho precisa corresp
 a AFTER em bytes e modo antes da restauração. Arquivos deslocados são preservados
 no parent adquirido, como `.nocturne-rollback-<operação>-<arquivo>.after`; o journal
 fica em `rollback/<operação>` no armazenamento privado de checkpoints.
-A [boundary V1](native-rollback-v1.md) suporta Linux tmpfs/ext4. macOS/Windows
+A [boundary V1](native-rollback-v1.md) suporta Linux tmpfs/ext4/Btrfs. macOS/Windows
 recusam explicitamente com `UNSUPPORTED`, preservando checkpoints para recuperação
 manual. A publicação exclusiva não
 substitui um caminho recriado por outro processo. O resultado produzido, inclusive
