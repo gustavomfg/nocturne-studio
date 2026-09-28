@@ -153,9 +153,10 @@ public:
       flush(recovery.value);active=true;return "OK";
     }
     if(cmd=="JOURNAL") {
-      require(args.size()==2 && log.value>=0,"Journal unavailable");
-      const auto data=unhex(args[1]);require(data.size()<=1024*1024,"Journal budget exceeded");
-      writeAll(log.value,data+"\n");flush(log.value);
+      require(args.size()==3 && log.value>=0,"Journal unavailable");
+      const auto data=unhex(args[1]),entry=unhex(args[2]);
+      require(data.size()<=1024*1024 && entry.size()<=65536,"Journal budget exceeded");
+      writeAll(log.value,entry+"\n");flush(log.value);
       require(lseek(snapshot.value,0,SEEK_SET)==0 && ftruncate(snapshot.value,0)==0,"Journal snapshot unavailable");
       writeAll(snapshot.value,data);flush(snapshot.value);return "OK";
     }

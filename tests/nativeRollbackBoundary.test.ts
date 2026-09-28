@@ -145,6 +145,40 @@ describe.runIf(process.platform === 'linux')('native Linux rollback capabilities
     await expect(value.operation.publish()).rejects.toMatchObject({ outcome: 'REVOKED' })
     expect(fs.readFileSync(value.target, 'utf8')).toBe('AFTER')
   })
+
+  it('retains compact ordered steps instead of appending the complete growing snapshot each time', async () => {
+    const value = await fixture()
+    const observations: string[] = []
+    for (let index = 0; index < 40; index++) {
+      observations.push(`file-${index}:${'evidence'.repeat(100)}`)
+      await value.operation.journal({ step: index, observations }, { step: index, added: observations.at(-1) })
+    }
+    const steps = fs.readFileSync(path.join(value.recovery, 'steps.jsonl'), 'utf8')
+    expect(steps.trim().split('\n')).toHaveLength(40)
+    expect(Buffer.byteLength(steps)).toBeLessThan(fs.statSync(path.join(value.recovery, 'operation.json')).size * 2)
+    expect(JSON.parse(fs.readFileSync(path.join(value.recovery, 'operation.json'), 'utf8')).observations).toHaveLength(40)
+  })
+
+  it('classifies disposed unconfirmed publication as UNKNOWN and never replays the retained intent', async () => {
+    const value = await fixture()
+    await value.operation.inspect('parent/target.txt')
+    await value.operation.stage(Buffer.from('BEFORE'), 0o644)
+    await value.operation.displace('.nocturne-rollback-test.after')
+    await value.operation.journal({ step: 'publish-intent', status: 'running' })
+    const unconfirmed = expect(value.operation.publish()).rejects.toMatchObject({ outcome: 'UNKNOWN' })
+    await value.operation.close()
+    await unconfirmed
+    // The command may have executed before its response was discarded. Neither
+    // destination absence nor matching bytes establishes a terminal decision.
+    if (fs.existsSync(value.target)) expect(fs.readFileSync(value.target, 'utf8')).toBe('BEFORE')
+    const retained = path.join(value.workspace, 'parent', '.nocturne-rollback-test.after')
+    expect(fs.readFileSync(retained, 'utf8')).toBe('AFTER')
+    expect(JSON.parse(fs.readFileSync(path.join(value.recovery, 'operation.json'), 'utf8'))).toEqual({ step: 'publish-intent', status: 'running' })
+    const entries = fs.readdirSync(path.dirname(value.target)).sort()
+    await expect(NativeRollbackOperation.create(value.workspace, value.recovery)).rejects.toMatchObject({ outcome: 'CONFLICT' })
+    expect(fs.readdirSync(path.dirname(value.target)).sort()).toEqual(entries)
+    expect(fs.readFileSync(retained, 'utf8')).toBe('AFTER')
+  })
 })
 
 it.runIf(process.platform !== 'linux')('unverified backend fails closed before workspace mutation', async () => {

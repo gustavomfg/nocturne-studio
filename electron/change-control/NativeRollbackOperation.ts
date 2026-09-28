@@ -101,7 +101,7 @@ export class NativeRollbackOperation {
   async next() { return this.request('NEXT') }
   async displace(retentionEntry: string) { return this.request('DISPLACE', encode(retentionEntry)) }
   async publish() { return this.request('PUBLISH') }
-  async journal(record: unknown) { return this.request('JOURNAL', encode(JSON.stringify(record))) }
+  async journal(record: unknown, entry: unknown = record) { return this.request('JOURNAL', encode(JSON.stringify(record)), encode(JSON.stringify(entry))) }
   async revoke() {
     if (this.state !== 'CLOSED') { this.state = 'REVOKED'; await this.request('REVOKE').catch(() => undefined) }
   }

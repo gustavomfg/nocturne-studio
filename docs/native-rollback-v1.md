@@ -72,6 +72,9 @@ each file, retained entry labels and the observed outcome. A failed journal writ
 prevents the next mutation. Snapshot writes can be incomplete on crash; the
 append journal is retained. File/directory fsync acknowledgments are not a
 power-loss certification.
+The append log stores compact per-step observations, not repeated cumulative
+snapshots. Entries are limited to 64 KiB and the diagnostic snapshot to 1 MiB;
+exceeding a journal budget aborts further mutations rather than dropping evidence.
 
 Only individually verified files appear in `restored`. A later conflict preserves
 earlier restorations as partial work; no automatic compensation or destructive

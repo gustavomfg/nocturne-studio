@@ -89,11 +89,17 @@ export class SnapshotRollbackService {
     }
     let operation: NativeRollbackOperation | undefined
     let currentPath = restorations[0].relativePath
+    const persistJournal = (error?: string) => operation!.journal({ ...journal, ...(error ? { error } : {}) }, {
+      operationId, executionId, beforeId, afterId, workspace, step: journal.step,
+      status: journal.status, outcome: journal.outcome, restoredCount: restored.length,
+      observation: journal.observations.at(-1), retained: journal.retained.at(-1),
+      ...(error ? { error } : {}),
+    })
     try {
       operation = await NativeRollbackOperation.create(workspace, recoveryDirectory, expectedRootIdentity)
       journal.rootIdentity = operation.rootIdentity
       journal.recoveryIdentity = operation.recoveryIdentity
-      await operation.journal(journal)
+      await persistJournal()
       for (const [index, restoration] of restorations.entries()) {
         currentPath = restoration.relativePath
         if (index) await operation.next()
@@ -113,24 +119,24 @@ export class SnapshotRollbackService {
         const retentionEntry = `.nocturne-rollback-${operationId}-${index}.after`
         journal.step = `displace-intent:${currentPath}`
         if (restoration.after.exists) journal.retained.push(path.posix.join(path.posix.dirname(currentPath.replace(/\\/g, '/')), retentionEntry))
-        await operation.journal(journal)
+        await persistJournal()
         await operation.displace(retentionEntry)
         journal.step = `publish-intent:${currentPath}`
-        await operation.journal(journal)
+        await persistJournal()
         await operation.publish()
         restored.push(currentPath)
         journal.step = `verified:${currentPath}`
-        await operation.journal(journal)
+        await persistJournal()
       }
       journal.status = 'restored'
-      await operation.journal(journal)
+      await persistJournal()
       return { status: 'restored', restored, conflicts: [] }
     } catch (error) {
       journal.status = 'conflicted'
       journal.outcome = error instanceof NativeBoundaryError ? error.outcome : 'UNKNOWN'
       // No compensation, pathname cleanup or new workspace admission after failure.
       await operation?.revoke()
-      await operation?.journal({ ...journal, error: error instanceof Error ? error.message : 'Operação interrompida.' }).catch(() => undefined)
+      if (operation) await persistJournal(error instanceof Error ? error.message : 'Operação interrompida.').catch(() => undefined)
       return { status: 'conflicted', restored, conflicts: [currentPath], recoveryDirectory, boundaryOutcome: journal.outcome, error: error instanceof Error ? error.message : 'Operação interrompida.' }
     } finally { await operation?.close() }
   }
