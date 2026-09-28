@@ -6,6 +6,7 @@ import { LocalDatabase } from '../electron/database/Database'
 import { ValidationPipeline, planValidation } from '../electron/validation/ValidationPipeline'
 import type { ProcessRunner, ProcessRunResult } from '../electron/validation/CancellableProcessRunner'
 import type { StackEvidence } from '../shared/codeIntelligence'
+import { canonicalTestPath } from './helpers/platform'
 
 const directories: string[] = []
 const databases: LocalDatabase[] = []
@@ -255,8 +256,8 @@ describe('Validation Pipeline', () => {
 })
 
 function createFixture() {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-validation-db-'))
-  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-validation-project-'))
+  const userData = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-validation-db-')))
+  const workspace = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-validation-project-')))
   directories.push(userData, workspace)
   fs.writeFileSync(path.join(workspace, 'package.json'), JSON.stringify({ scripts: { test: 'vitest' } }))
   const database = new LocalDatabase(userData)
