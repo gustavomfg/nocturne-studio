@@ -17,7 +17,7 @@ import { canonicalTestPath, removeTestDirectory } from './helpers/platform'
 
 vi.mock('electron', () => ({ ipcMain: {}, dialog: { showMessageBox: async () => ({ response: 1 }) } }))
 
-it('whole Build rollback crosses IPC, resolves the decision gate and publishes the persisted result', async () => {
+it('whole Build rollback crosses IPC: protected success or explicit unsupported with the gate retained', async () => {
   const root = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-rollback-boundary-')))
   const workspace = path.join(root, 'project'); fs.mkdirSync(workspace)
   const db = new LocalDatabase(root)
@@ -42,6 +42,14 @@ it('whole Build rollback crosses IPC, resolves the decision gate and publishes t
       approvalDetails: new Map(), readWorkspaceContext: async () => ({ content: '', rules: '', updatedAt: '' }),
     }, { handle: (channel, handler) => { handlers.set(channel, handler) }, dispose: () => undefined })
     expect(gate.isHeld(workspace)).toBe(true)
+    if (process.platform !== 'linux') {
+      await expect(Promise.resolve().then(() => handlers.get(IPC_CHANNELS.ai.rollback)!({} as never, conversation.id))).rejects.toThrow(/UNSUPPORTED/)
+      expect(fs.readFileSync(target, 'utf8')).toBe('after')
+      expect(db.getExecution(executionId)?.decision).toBe('pending')
+      expect(gate.isHeld(workspace)).toBe(true)
+      expect(send).not.toHaveBeenCalled()
+      return
+    }
     await handlers.get(IPC_CHANNELS.ai.rollback)!({} as never, conversation.id)
     expect(fs.readFileSync(target, 'utf8')).toBe('before')
     expect(db.getExecution(executionId)?.decision).toBe('rejected')

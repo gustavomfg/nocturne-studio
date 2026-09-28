@@ -1,6 +1,9 @@
 import { app, type BrowserWindow } from 'electron'
 import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import type { LocalDatabase } from '../database/Database'
+import { NativeBoundaryError, NativeRollbackOperation } from '../change-control/NativeRollbackOperation'
 
 interface PackageSmokeDependencies {
   getWindow(): BrowserWindow | null
@@ -41,12 +44,44 @@ export async function runPackageSmoke(output: string, dependencies: PackageSmoke
     }
     const finalUrl = window?.webContents.getURL()
     const navigation = { externalWindowsDenied: preload?.externalWindowsDenied === true, unexpectedNavigationBlocked: Boolean(originalUrl && finalUrl === originalUrl), originalUrl, finalUrl }
-    const ok = Boolean(preload?.available && preload.settings && preload.updates && preload.updateState && preload.geolocation === 'denied' && sqlite && lifecycle.closed && lifecycle.activated && lifecycle.secondInstanceReused && lifecycle.api && lifecycle.settings && lifecycle.updates && security.contextIsolationEnabled && security.nodeIntegrationDisabled && security.sandboxEnabled && navigation && Object.values(navigation).every(Boolean))
-    fs.writeFileSync(output, `${JSON.stringify({ ok, packaged: app.isPackaged, preload, sqlite, lifecycle, security, navigation })}\n`, { encoding: 'utf8', mode: 0o600 })
+    const nativeBoundary = await runNativeBoundarySmoke()
+    const ok = Boolean(nativeBoundary.checked && preload?.available && preload.settings && preload.updates && preload.updateState && preload.geolocation === 'denied' && sqlite && lifecycle.closed && lifecycle.activated && lifecycle.secondInstanceReused && lifecycle.api && lifecycle.settings && lifecycle.updates && security.contextIsolationEnabled && security.nodeIntegrationDisabled && security.sandboxEnabled && navigation && Object.values(navigation).every(Boolean))
+    fs.writeFileSync(output, `${JSON.stringify({ ok, packaged: app.isPackaged, preload, sqlite, lifecycle, security, navigation, nativeBoundary })}\n`, { encoding: 'utf8', mode: 0o600 })
     app.quit()
   } catch (error) {
     fs.writeFileSync(output, `${JSON.stringify({ ok: false, packaged: app.isPackaged, error: error instanceof Error ? error.message : String(error) })}\n`, { encoding: 'utf8', mode: 0o600 })
     app.exit(1)
+  }
+}
+
+async function runNativeBoundarySmoke() {
+  // This fixture is independent of the user's workspace and the smoke database.
+  const base = await fs.promises.realpath(await fs.promises.mkdtemp(path.join(os.tmpdir(), 'nocturne-native-package-')))
+  const workspace = path.join(base, 'workspace'), recovery = path.join(base, 'recovery')
+  let operation: NativeRollbackOperation | undefined
+  try {
+    await fs.promises.mkdir(workspace); await fs.promises.mkdir(recovery)
+    const target = path.join(workspace, 'target.txt')
+    await fs.promises.writeFile(target, 'AFTER')
+    try { operation = await NativeRollbackOperation.create(workspace, recovery) } catch (error) {
+      if (process.platform !== 'linux' && error instanceof NativeBoundaryError && error.outcome === 'UNSUPPORTED') {
+        return { checked: await fs.promises.readFile(target, 'utf8') === 'AFTER', supported: false, outcome: 'UNSUPPORTED' }
+      }
+      throw error
+    }
+    await operation.inspect('target.txt')
+    await operation.stage(Buffer.from('BEFORE'), 0o600)
+    await operation.journal({ step: 'displace-intent' })
+    await operation.displace('.nocturne-rollback-package.after')
+    await operation.journal({ step: 'publish-intent' })
+    await operation.publish()
+    const checked = await fs.promises.readFile(target, 'utf8') === 'BEFORE'
+      && await fs.promises.readFile(path.join(workspace, '.nocturne-rollback-package.after'), 'utf8') === 'AFTER'
+    return { checked, supported: true, outcome: 'VERIFIED' }
+  } finally {
+    await operation?.close()
+    // Only the unique, explicitly created smoke fixture is removed.
+    await fs.promises.rm(base, { recursive: true, force: true })
   }
 }
 

@@ -81,7 +81,7 @@ it('rejeição de decisão terminal nunca modifica bytes pelo IPC', async () => 
   expect(value.database.changeSets.getChange(value.captured.changes[0].id)?.status).toBe('accepted')
 })
 
-it('serializa decisões concorrentes e mantém execução, ChangeSet e bytes concordantes', async () => {
+it.runIf(process.platform === 'linux')('serializa decisões concorrentes e mantém execução, ChangeSet e bytes concordantes', async () => {
   const value = await fixture()
   const outcomes = await Promise.allSettled([value.decide('rejected'), value.decide('accepted')])
   expect(outcomes.map((item) => item.status)).toEqual(['fulfilled', 'rejected'])
@@ -98,11 +98,19 @@ it('não aceita bytes que mudaram desde AFTER', async () => {
   expect(value.database.getExecution(value.executionId)?.decision).toBe('conflicted')
 })
 
-it('preserva conflito explícito quando persistir a decisão falha depois da mutação', async () => {
+it.runIf(process.platform === 'linux')('preserva conflito explícito quando persistir a decisão falha depois da mutação', async () => {
   const value = await fixture()
   const save = value.database.changeSets.saveDecision.bind(value.database.changeSets)
   vi.spyOn(value.database.changeSets, 'saveDecision').mockImplementationOnce(() => { throw new Error('commit failed') }).mockImplementation(save)
   await expect(value.decide('rejected')).rejects.toThrow('commit failed')
   expect(fs.readFileSync(value.target, 'utf8')).toBe('before')
   expect(value.database.getExecution(value.executionId)?.decision).toBe('conflicted')
+})
+
+it.runIf(process.platform !== 'linux')('IPC cannot persist rejection success for an unsupported rollback backend', async () => {
+  const value = await fixture()
+  await expect(value.decide('rejected')).rejects.toThrow(/UNSUPPORTED/)
+  expect(fs.readFileSync(value.target, 'utf8')).toBe('after')
+  expect(value.database.getExecution(value.executionId)?.decision).toBe('conflicted')
+  expect(value.database.changeSets.get(value.captured.changeSet.id)?.status).toBe('conflicted')
 })

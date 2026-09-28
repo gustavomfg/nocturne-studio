@@ -5,9 +5,11 @@ on:
   pull_request:
     paths:
       - electron/**
+      - native/**
       - src/**
       - shared/**
       - scripts/smoke-package.mjs
+      - scripts/build-native-boundary.mjs
       - scripts/rehearse-packaged-recovery.mjs
       - electron-builder.json5
       - package.json

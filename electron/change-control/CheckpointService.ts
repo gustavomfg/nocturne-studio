@@ -48,6 +48,8 @@ export class CheckpointService {
     return this.store.readContent(file)
   }
 
+  recoveryPath(operationId: string) { return this.store.recoveryPath(operationId) }
+
   private storeRoot(checkpointId: string) {
     return this.store.pathFor(checkpointId)
   }

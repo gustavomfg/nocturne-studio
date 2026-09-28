@@ -49,6 +49,7 @@ import { registerChangeControlIpc } from './registerChangeControlIpc'
 import { ChangeHunkService } from '../change-control/ChangeHunkService'
 import { WorkspaceChangeGate } from '../change-control/WorkspaceChangeGate'
 import { SnapshotRollbackService } from '../change-control/SnapshotRollbackService'
+import { closeNativeRollbackOperations } from '../change-control/NativeRollbackOperation'
 import { registerUpdateIpc } from './registerUpdateIpc'
 import type { UpdateService } from '../updates/UpdateService'
 import { EngineeringSignalEngine } from '../engineering/EngineeringSignalEngine'
@@ -372,6 +373,7 @@ export function registerIpc(
       disposeDiagnostics(),
       disposeAi(),
       disposeChangeControl(),
+      closeNativeRollbackOperations(),
       disposeSettings(),
       disposeDocuments(),
       disposeUpdates(),

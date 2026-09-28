@@ -29,7 +29,7 @@ export class ChangeDecisionService {
       if (conflicts.length) throw new Error(`O arquivo mudou desde AFTER: ${conflicts.join(', ')}.`)
       if (status === 'rejected') {
         const result = await this.rollback.rollbackPaths(executionId, workspace, changeSet.beforeCheckpointId, changeSet.afterCheckpointId, [change.relativePath])
-        if (result.status !== 'restored') throw new Error(`Rollback em conflito: ${result.conflicts.join(', ')}. Recuperação: ${result.recoveryDirectory ?? 'checkpoints preservados'}.`)
+        if (result.status !== 'restored') throw new Error(`Rollback em conflito (${result.boundaryOutcome ?? 'CONFLICT'}): ${result.conflicts.join(', ')}. ${result.error ?? ''} Recuperação: ${result.recoveryDirectory ?? 'checkpoints preservados'}.`)
       }
     const updatedChange = { ...change, status, updatedAt: this.now().toISOString() }
     const changes = this.repository.listChanges(changeSet.id).map((item) => item.id === changeId ? updatedChange : item)

@@ -7,8 +7,11 @@ read a mutable Git HEAD or reset the Git index. Existing user changes are part
 of BEFORE and are preserved.
 
 After explicit confirmation, each target must match AFTER, including mode and
-bytes. Displaced files are retained under `.nocturne/rollback/<operation>` with
-an operation journal. A restored file is published exclusively: it never
+bytes. [Protected rollback V1](native-rollback-v1.md) currently supports Linux
+tmpfs/ext4; macOS/Windows explicitly report `UNSUPPORTED` and require manual
+recovery. Displaced files stay in their acquired parent as
+`.nocturne-rollback-<operation>-<file>.after`; the operation journal is in the private
+checkpoint store's `rollback/<operation>` directory. A restored file is published exclusively: it never
 replaces a competing newly created path. A conflict or partial failure preserves
 the displaced bytes and reports the recovery directory. Delete and rename are
 restored through their file-level BEFORE/AFTER manifests.

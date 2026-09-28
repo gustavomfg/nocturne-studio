@@ -13,6 +13,13 @@ are retained for manual reconciliation. Pending ChangeSets restore the in-memory
 decision gate. Ready checkpoints remain available; incomplete captures are not
 promoted to ready. Reopening again does not duplicate interruption records.
 
+[Native rollback V1](native-rollback-v1.md) retains per-step journals in the
+private checkpoint store and displaced entries in their acquired project parent.
+An intent without confirmation remains potentially executed. These records are
+manual reconciliation evidence, never authority to reopen a capability or replay
+filesystem mutations automatically. Unsupported backends cannot restore bytes
+through a weaker pathname fallback.
+
 The named, read-only `recovery.list` preload capability returns up to 200 records
 and startup displays them. Recovery is diagnostic, not automatic repair: a
 conflicted rollback requires inspecting retained bytes and filesystem state before

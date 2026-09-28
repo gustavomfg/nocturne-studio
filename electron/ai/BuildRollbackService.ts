@@ -1,6 +1,7 @@
 import type { LocalDatabase } from '../database/Database'
 import type { SnapshotRollbackService } from '../change-control/SnapshotRollbackService'
 import { ChangeDecisionService } from '../change-control/ChangeDecisionService'
+import { protectedRollbackSupported } from '../change-control/NativeRollbackOperation'
 
 export interface BuildRollbackStatus {
   available: boolean
@@ -24,6 +25,7 @@ export class BuildRollbackService {
   }
 
   status(conversationId: string): BuildRollbackStatus {
+    if (!protectedRollbackSupported()) return { available: false, files: [], reason: 'UNSUPPORTED: rollback protegido V1 ainda não verificado nesta plataforma; checkpoints preservados para recuperação manual.' }
     const value = this.latest(conversationId)
     if (!value) return { available: false, files: [], reason: 'Nenhum Build com BEFORE/AFTER disponível.' }
     const changes = this.database.changeSets.listChanges(value.changeSet.id)

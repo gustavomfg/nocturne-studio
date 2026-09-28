@@ -1,11 +1,13 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CheckpointService } from '../electron/change-control/CheckpointService'
 import { SnapshotRollbackService } from '../electron/change-control/SnapshotRollbackService'
 import { WorkspaceCheckpointStore } from '../electron/change-control/WorkspaceCheckpointStore'
 import { LocalDatabase } from '../electron/database/Database'
+import { NativeRollbackOperation } from '../electron/change-control/NativeRollbackOperation'
 import { canonicalTestPath, removeTestDirectory } from './helpers/platform'
 
 const directories: string[] = []
@@ -30,7 +32,34 @@ async function fixture() {
   return { database, workspace, executionId, checkpoints, rollback: new SnapshotRollbackService(checkpoints) }
 }
 
-describe('SnapshotRollbackService', () => {
+describe.runIf(process.platform === 'linux')('SnapshotRollbackService protected mutations', () => {
+  it('revokes the real rollback after an external parent swap; preserves external bytes and journal truth', async () => {
+    const value = await fixture()
+    const parent = path.join(value.workspace, 'parent')
+    const outside = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-rollback-outside-')))
+    directories.push(outside)
+    fs.mkdirSync(parent)
+    fs.writeFileSync(path.join(parent, 'target.txt'), 'BEFORE')
+    fs.writeFileSync(path.join(outside, 'target.txt'), 'PROTECTED')
+    const outsideIdentity = fs.statSync(path.join(outside, 'target.txt')).ino
+    const before = await value.checkpoints.capture(value.executionId, value.workspace, 'before')
+    fs.writeFileSync(path.join(parent, 'target.txt'), 'AFTER')
+    const after = await value.checkpoints.capture(value.executionId, value.workspace, 'after')
+    const stage = NativeRollbackOperation.prototype.stage
+    vi.spyOn(NativeRollbackOperation.prototype, 'stage').mockImplementation(async function (this: NativeRollbackOperation, bytes, mode) {
+      const result = await stage.call(this, bytes, mode)
+      const peer = spawnSync(process.execPath, ['-e', 'const fs=require("node:fs");const [p,o]=process.argv.slice(1);fs.renameSync(p,p+"-retained");fs.symlinkSync(o,p,"dir")', parent, outside], { shell: false, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } })
+      expect(peer.status).toBe(0)
+      return result
+    })
+    const result = await value.rollback.rollback(value.executionId, value.workspace, before.checkpoint.id, after.checkpoint.id)
+    expect(result).toMatchObject({ status: 'conflicted', restored: [], boundaryOutcome: 'REVOKED' })
+    expect(fs.readFileSync(path.join(outside, 'target.txt'), 'utf8')).toBe('PROTECTED')
+    expect(fs.statSync(path.join(outside, 'target.txt')).ino).toBe(outsideIdentity)
+    expect(fs.readdirSync(outside)).toEqual(['target.txt'])
+    expect(fs.readFileSync(path.join(value.workspace, 'parent-retained', 'target.txt'), 'utf8')).toBe('AFTER')
+    expect(JSON.parse(fs.readFileSync(path.join(result.recoveryDirectory!, 'operation.json'), 'utf8'))).toMatchObject({ status: 'conflicted', outcome: 'REVOKED', restored: [] })
+  })
   it('reverte delete e rename como operações de bytes sem depender de Git', async () => {
     const value = await fixture()
     fs.writeFileSync(path.join(value.workspace, 'deleted.txt'), 'deleted before')
@@ -53,10 +82,11 @@ describe('SnapshotRollbackService', () => {
     const before = await value.checkpoints.capture(value.executionId, value.workspace, 'before')
     fs.writeFileSync(target, 'after')
     const after = await value.checkpoints.capture(value.executionId, value.workspace, 'after')
-    const rename = fs.promises.rename.bind(fs.promises)
-    vi.spyOn(fs.promises, 'rename').mockImplementation(async (source, destination) => {
-      await rename(source, destination)
-      if (source === target) fs.writeFileSync(target, 'concurrent replacement')
+    const displace = NativeRollbackOperation.prototype.displace
+    vi.spyOn(NativeRollbackOperation.prototype, 'displace').mockImplementation(async function (this: NativeRollbackOperation, entry) {
+      const result = await displace.call(this, entry)
+      fs.writeFileSync(target, 'concurrent replacement')
+      return result
     })
     const result = await value.rollback.rollback(value.executionId, value.workspace, before.checkpoint.id, after.checkpoint.id)
     expect(result.status).toBe('conflicted')
@@ -146,4 +176,18 @@ describe('SnapshotRollbackService', () => {
     expect(fs.readFileSync(path.join(value.workspace, 'keep.txt'), 'utf8')).toBe('depois keep\n')
     expect(fs.readFileSync(path.join(value.workspace, 'reject.txt'), 'utf8')).toBe('antes reject\n')
   })
+})
+
+it.runIf(process.platform !== 'linux')('unimplemented protected rollback is explicit and leaves BEFORE/AFTER and current bytes intact', async () => {
+  const value = await fixture()
+  const target = path.join(value.workspace, 'target.txt')
+  fs.writeFileSync(target, 'BEFORE')
+  const before = await value.checkpoints.capture(value.executionId, value.workspace, 'before')
+  fs.writeFileSync(target, 'AFTER')
+  const after = await value.checkpoints.capture(value.executionId, value.workspace, 'after')
+  const result = await value.rollback.rollback(value.executionId, value.workspace, before.checkpoint.id, after.checkpoint.id)
+  expect(result).toMatchObject({ status: 'conflicted', restored: [], boundaryOutcome: 'UNSUPPORTED' })
+  expect(fs.readFileSync(target, 'utf8')).toBe('AFTER')
+  expect(value.checkpoints.get(before.checkpoint.id, value.executionId)?.status).toBe('ready')
+  expect(value.checkpoints.get(after.checkpoint.id, value.executionId)?.status).toBe('ready')
 })

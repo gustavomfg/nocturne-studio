@@ -7,7 +7,11 @@ Rollback usa checkpoints privados e imutáveis BEFORE/AFTER, sem depender de
 
 A confirmação fica vinculada ao ID da execução. Cada caminho precisa corresponder
 a AFTER em bytes e modo antes da restauração. Arquivos deslocados são preservados
-em `.nocturne/rollback/<operação>`, com um journal. A publicação exclusiva não
+no parent adquirido, como `.nocturne-rollback-<operação>-<arquivo>.after`; o journal
+fica em `rollback/<operação>` no armazenamento privado de checkpoints.
+A [boundary V1](native-rollback-v1.md) suporta Linux tmpfs/ext4. macOS/Windows
+recusam explicitamente com `UNSUPPORTED`, preservando checkpoints para recuperação
+manual. A publicação exclusiva não
 substitui um caminho recriado por outro processo. O resultado produzido, inclusive
 a ausência esperada de um arquivo novo, é conferido antes de declarar restauração.
 Delete e rename seguem a mesma semântica de estados BEFORE/AFTER por arquivo.

@@ -5,13 +5,15 @@ import type { CheckpointFileRecord } from '../../shared/changeControl'
 import { resolveInsideWorkspace } from '../security/ExecutionPolicy'
 import type { CheckpointService } from './CheckpointService'
 import { enqueueSerializedWrite } from '../persistence/SerializedWriteQueue'
-import { writeAtomicFile } from '../persistence/AtomicFile'
+import { NativeBoundaryError, NativeRollbackOperation, type BoundaryOutcome } from './NativeRollbackOperation'
 
 export interface SnapshotRollbackResult {
   status: 'restored' | 'conflicted'
   restored: string[]
   conflicts: string[]
   recoveryDirectory?: string
+  boundaryOutcome?: BoundaryOutcome
+  error?: string
 }
 
 interface CurrentState {
@@ -22,7 +24,7 @@ interface CurrentState {
   mode: number | null
 }
 
-/** Restores a checkpoint only when every target still matches the expected AFTER state. */
+/** Checkpoints authorize bytes; only native capabilities authorize workspace mutation. */
 export class SnapshotRollbackService {
   constructor(private readonly checkpoints: CheckpointService) {}
 
@@ -52,46 +54,78 @@ export class SnapshotRollbackService {
     if (before.workspace !== workspace || after.workspace !== workspace) throw new Error('O rollback não corresponde ao workspace autorizado.')
     const beforeFiles = new Map(this.checkpoints.listFiles(before.id).map((file) => [file.relativePath, file]))
     const afterFiles = new Map(this.checkpoints.listFiles(after.id).map((file) => [file.relativePath, file]))
-    const paths = requestedPaths
-      ? [...new Set(requestedPaths.map((relativePath) => {
-        resolveInsideWorkspace(relativePath, workspace)
-        return relativePath
-      }))].sort()
-      : [...new Set([...beforeFiles.keys(), ...afterFiles.keys()])].sort()
+    const paths = requestedPaths ? [...new Set(requestedPaths)].sort() : [...new Set([...beforeFiles.keys(), ...afterFiles.keys()])].sort()
     const conflicts: string[] = []
     const restorations: Array<{ relativePath: string; before: CheckpointFileRecord; after: CheckpointFileRecord }> = []
     for (const relativePath of paths) {
+      resolveInsideWorkspace(relativePath, workspace)
       const original = beforeFiles.get(relativePath) ?? missingFile(before.id, relativePath)
       const expected = afterFiles.get(relativePath) ?? missingFile(after.id, relativePath)
       if (sameState(original, expected)) continue
-      const current = await inspectCurrent(workspace, relativePath)
-      if (!sameState(current, expected)) conflicts.push(relativePath)
+      if (!sameState(await inspectCurrent(workspace, relativePath), expected)) conflicts.push(relativePath)
       else restorations.push({ relativePath, before: original, after: expected })
     }
     if (conflicts.length) return { status: 'conflicted', restored: [], conflicts }
+    if (!restorations.length) return { status: 'restored', restored: [], conflicts: [] }
 
-    const restored: string[] = []
-    // Keep displaced bytes and a durable intent before touching the workspace.
-    // Exclusive links publish restored files without replacing a racing writer.
-    const recoveryDirectory = resolveInsideWorkspace(`.nocturne/rollback/${randomUUID()}`, workspace)
+    const operationId = randomUUID()
+    const recoveryDirectory = this.checkpoints.recoveryPath(operationId)
+    // This is the separately authorized private application store, NEVER a project pathname.
     await fs.promises.mkdir(recoveryDirectory, { recursive: true, mode: 0o700 })
-    const journal = { executionId, beforeId, afterId, status: 'running', restored, paths: restorations.map((item) => item.relativePath) }
-    const journalPath = path.join(recoveryDirectory, 'operation.json')
-    await writeAtomicFile(journalPath, JSON.stringify(journal))
-    for (const restoration of restorations) {
-      try {
-        await restoreFile(workspace, restoration.relativePath, restoration.before, restoration.after, this.checkpoints, recoveryDirectory)
-        restored.push(restoration.relativePath)
-        await writeAtomicFile(journalPath, JSON.stringify(journal))
-      } catch {
-        journal.status = 'conflicted'
-        await writeAtomicFile(journalPath, JSON.stringify(journal))
-        return { status: 'conflicted', restored, conflicts: [restoration.relativePath], recoveryDirectory }
-      }
+    const restored: string[] = []
+    const journal = {
+      contract: 'native-rollback-v1', operationId, executionId, beforeId, afterId, workspace,
+      status: 'running', restored, paths: restorations.map((item) => item.relativePath),
+      step: 'acquire', retained: [] as string[], outcome: null as BoundaryOutcome | null,
+      rootIdentity: '', recoveryIdentity: '',
+      observations: [] as Array<{ path: string; parentIdentity: string; afterIdentity: string; stagedIdentity: string | null; beforeHash: string | null; afterHash: string | null }>,
     }
-    journal.status = 'restored'
-    await writeAtomicFile(journalPath, JSON.stringify(journal))
-    return { status: 'restored', restored, conflicts: [] }
+    let operation: NativeRollbackOperation | undefined
+    let currentPath = restorations[0].relativePath
+    try {
+      operation = await NativeRollbackOperation.create(workspace, recoveryDirectory)
+      journal.rootIdentity = operation.rootIdentity
+      journal.recoveryIdentity = operation.recoveryIdentity
+      await operation.journal(journal)
+      for (const [index, restoration] of restorations.entries()) {
+        currentPath = restoration.relativePath
+        if (index) await operation.next()
+        const observed = await operation.inspect(currentPath)
+        const current: CurrentState = observed.exists
+          ? { exists: true, kind: 'file', mode: observed.mode, size: observed.content.length, hash: createHash('sha256').update(observed.content).digest('hex') }
+          : { exists: false, kind: 'missing', mode: null, size: null, hash: null }
+        if (!sameState(current, restoration.after)) throw new NativeBoundaryError('CONFLICT', 'O arquivo não corresponde ao AFTER.')
+        if ((restoration.before.exists && restoration.before.kind !== 'file') || (restoration.after.exists && restoration.after.kind !== 'file')) throw new NativeBoundaryError('UNSUPPORTED', 'Tipo de arquivo não restaurável.')
+        const observation = { path: currentPath, parentIdentity: observed.parentIdentity, afterIdentity: observed.identity, stagedIdentity: null as string | null, beforeHash: restoration.before.hash, afterHash: restoration.after.hash }
+        journal.observations.push(observation)
+        if (restoration.before.exists) {
+          const content = await this.checkpoints.readContent(restoration.before)
+          if (createHash('sha256').update(content).digest('hex') !== restoration.before.hash) throw new NativeBoundaryError('CONFLICT', 'Checkpoint corrompido.')
+          observation.stagedIdentity = (await operation.stage(content, restoration.before.mode ?? 0o600)).identity
+        }
+        const retentionEntry = `.nocturne-rollback-${operationId}-${index}.after`
+        journal.step = `displace-intent:${currentPath}`
+        if (restoration.after.exists) journal.retained.push(path.posix.join(path.posix.dirname(currentPath.replace(/\\/g, '/')), retentionEntry))
+        await operation.journal(journal)
+        await operation.displace(retentionEntry)
+        journal.step = `publish-intent:${currentPath}`
+        await operation.journal(journal)
+        await operation.publish()
+        restored.push(currentPath)
+        journal.step = `verified:${currentPath}`
+        await operation.journal(journal)
+      }
+      journal.status = 'restored'
+      await operation.journal(journal)
+      return { status: 'restored', restored, conflicts: [] }
+    } catch (error) {
+      journal.status = 'conflicted'
+      journal.outcome = error instanceof NativeBoundaryError ? error.outcome : 'UNKNOWN'
+      // No compensation, pathname cleanup or new workspace admission after failure.
+      await operation?.revoke()
+      await operation?.journal({ ...journal, error: error instanceof Error ? error.message : 'Operação interrompida.' }).catch(() => undefined)
+      return { status: 'conflicted', restored, conflicts: [currentPath], recoveryDirectory, boundaryOutcome: journal.outcome, error: error instanceof Error ? error.message : 'Operação interrompida.' }
+    } finally { await operation?.close() }
   }
 }
 
@@ -113,51 +147,4 @@ async function inspectCurrent(workspace: string, relativePath: string): Promise<
   if (!stat.isFile()) return { exists: true, kind: stat.isDirectory() ? 'directory' : 'symlink', size: stat.size, hash: null, mode: stat.mode }
   const content = await fs.promises.readFile(resolved)
   return { exists: true, kind: 'file', size: content.length, hash: createHash('sha256').update(content).digest('hex'), mode: stat.mode }
-}
-
-async function restoreFile(workspace: string, relativePath: string, before: CheckpointFileRecord, after: CheckpointFileRecord, checkpoints: CheckpointService, recoveryDirectory: string) {
-  if ((before.exists && before.kind !== 'file') || (after.exists && after.kind !== 'file')) throw new Error('Tipo não restaurável com segurança.')
-  const content = before.exists ? await checkpoints.readContent(before) : null
-  if (content && createHash('sha256').update(content).digest('hex') !== before.hash) throw new Error('Checkpoint corrompido.')
-  const resolved = resolveInsideWorkspace(relativePath, workspace)
-  const current = await inspectCurrent(workspace, relativePath)
-  if (!sameState(current, after)) throw new Error('O arquivo não corresponde ao AFTER.')
-  await fs.promises.mkdir(path.dirname(resolved), { recursive: true, mode: 0o700 })
-  const displaced = path.join(recoveryDirectory, `${createHash('sha256').update(relativePath).digest('hex')}.after`)
-  if (after.exists) {
-    await fs.promises.rename(resolved, displaced)
-    const moved = await inspectCurrent(workspace, path.relative(workspace, displaced))
-    if (!sameState(moved, after)) {
-      // Never overwrite an external replacement to put the displaced file back.
-      await fs.promises.link(displaced, resolved).catch(() => undefined)
-      throw new Error('Alteração concorrente preservada no diretório de recuperação.')
-    }
-  }
-  try {
-    if (content) await writeExclusiveBuffer(resolved, content, before.mode ?? 0o600)
-    if (after.exists && !sameState(await inspectCurrent(workspace, path.relative(workspace, displaced)), after)) throw new Error('O arquivo deslocado recebeu uma edição concorrente.')
-    if (!sameState(await inspectCurrent(workspace, relativePath), before)) throw new Error('O estado produzido mudou durante o rollback.')
-  } catch (error) {
-    if (after.exists) await fs.promises.link(displaced, resolved).catch(() => undefined)
-    throw error
-  }
-}
-
-async function writeExclusiveBuffer(filePath: string, content: Buffer, mode: number) {
-  const temporary = `${filePath}.tmp-${process.pid}-${randomUUID()}`
-  let handle: fs.promises.FileHandle | undefined
-  try {
-    handle = await fs.promises.open(temporary, 'wx', 0o600)
-    await handle.writeFile(content)
-    await handle.sync()
-    await handle.close()
-    handle = undefined
-    await fs.promises.chmod(temporary, mode)
-    await fs.promises.link(temporary, filePath)
-    await fs.promises.unlink(temporary)
-  } catch (error) {
-    await handle?.close().catch(() => undefined)
-    await fs.promises.unlink(temporary).catch(() => undefined)
-    throw error
-  }
 }

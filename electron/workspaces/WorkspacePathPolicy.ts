@@ -34,7 +34,7 @@ export function relativeWorkspacePath(workspace: string, candidate: string) {
 }
 
 export function isIgnoredWorkspaceRelativePath(relative: string) {
-  return relative.split('/').some((segment) => WORKSPACE_IGNORED_DIRECTORIES.has(segment))
+  return relative.split('/').some((segment) => WORKSPACE_IGNORED_DIRECTORIES.has(segment) || segment.startsWith('.nocturne-rollback-'))
 }
 
 export function isIgnoredWorkspacePath(workspace: string, candidate: string) {
@@ -43,5 +43,5 @@ export function isIgnoredWorkspacePath(workspace: string, candidate: string) {
 }
 
 export function isIgnoredProjectDiscoveryRelativePath(relative: string) {
-  return relative.split('/').some((segment) => PROJECT_DISCOVERY_IGNORED_DIRECTORIES.has(segment))
+  return relative.split('/').some((segment) => PROJECT_DISCOVERY_IGNORED_DIRECTORIES.has(segment) || segment.startsWith('.nocturne-rollback-'))
 }

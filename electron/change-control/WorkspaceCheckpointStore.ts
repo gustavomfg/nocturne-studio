@@ -56,6 +56,10 @@ export class WorkspaceCheckpointStore {
     return path.join(this.rootDirectory, checkpointId)
   }
 
+  recoveryPath(operationId: string) {
+    return path.join(this.rootDirectory, 'rollback', operationId)
+  }
+
   private async captureCandidate(candidate: FileCandidate, workspace: string, checkpointId: string, checkpointDirectory: string, totalBytes: number): Promise<CheckpointFileRecord> {
     const resolved = resolveInsideWorkspace(candidate.relativePath, workspace)
     const stat = await fs.promises.lstat(resolved).catch((error: unknown) => {
