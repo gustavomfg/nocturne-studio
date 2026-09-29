@@ -100,11 +100,20 @@ it('não aceita bytes que mudaram desde AFTER', async () => {
 
 it.runIf(process.platform === 'linux')('preserva conflito explícito quando persistir a decisão falha depois da mutação', async () => {
   const value = await fixture()
+  const reserve = vi.spyOn(value.database.changeSets, 'reserveDecision')
   const save = value.database.changeSets.saveDecision.bind(value.database.changeSets)
   vi.spyOn(value.database.changeSets, 'saveDecision').mockImplementationOnce(() => { throw new Error('commit failed') }).mockImplementation(save)
   await expect(value.decide('rejected')).rejects.toThrow('commit failed')
   expect(fs.readFileSync(value.target, 'utf8')).toBe('before')
   expect(value.database.getExecution(value.executionId)?.decision).toBe('conflicted')
+  const directory = path.join(path.dirname(value.workspace), 'snapshots', 'rollback')
+  const operations = fs.readdirSync(directory)
+  expect(operations).toHaveLength(1)
+  const journal = JSON.parse(fs.readFileSync(path.join(directory, operations[0], 'operation.json'), 'utf8'))
+  expect(journal).toMatchObject({ status: 'restored', executionId: value.executionId,
+    decisionContext: { decisionOperationId: reserve.mock.results[0].value, changeId: value.captured.changes[0].id, changeSetId: value.captured.changeSet.id } })
+  const steps = fs.readFileSync(path.join(directory, operations[0], 'steps.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line))
+  expect(steps.every((step) => step.decisionContext?.decisionOperationId === reserve.mock.results[0].value)).toBe(true)
 })
 
 it.runIf(process.platform !== 'linux')('IPC cannot persist rejection success for an unsupported rollback backend', async () => {

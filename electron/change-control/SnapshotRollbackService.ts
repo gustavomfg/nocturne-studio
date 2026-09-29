@@ -24,6 +24,12 @@ interface CurrentState {
   mode: number | null
 }
 
+export interface RollbackDecisionContext {
+  decisionOperationId: string
+  changeId: string
+  changeSetId: string
+}
+
 /** Checkpoints authorize bytes; only native capabilities authorize workspace mutation. */
 export class SnapshotRollbackService {
   constructor(private readonly checkpoints: CheckpointService) {}
@@ -43,21 +49,21 @@ export class SnapshotRollbackService {
     return this.rollbackPaths(executionId, workspace, beforeId, afterId)
   }
 
-  async rollbackPaths(executionId: string, workspace: string, beforeId: string, afterId: string, requestedPaths?: readonly string[], expectedRootIdentity?: string): Promise<SnapshotRollbackResult> {
-    return enqueueSerializedWrite(`rollback:${path.resolve(workspace)}`, () => this.restore(executionId, workspace, beforeId, afterId, requestedPaths, expectedRootIdentity))
+  async rollbackPaths(executionId: string, workspace: string, beforeId: string, afterId: string, requestedPaths?: readonly string[], expectedRootIdentity?: string, decisionContext?: RollbackDecisionContext): Promise<SnapshotRollbackResult> {
+    return enqueueSerializedWrite(`rollback:${path.resolve(workspace)}`, () => this.restore(executionId, workspace, beforeId, afterId, requestedPaths, expectedRootIdentity, decisionContext))
   }
 
-  private async restore(executionId: string, workspace: string, beforeId: string, afterId: string, requestedPaths?: readonly string[], expectedRootIdentity?: string): Promise<SnapshotRollbackResult> {
+  private async restore(executionId: string, workspace: string, beforeId: string, afterId: string, requestedPaths?: readonly string[], expectedRootIdentity?: string, decisionContext?: RollbackDecisionContext): Promise<SnapshotRollbackResult> {
     const before = this.checkpoints.get(beforeId, executionId)
     const after = this.checkpoints.get(afterId, executionId)
     if (!before || !after || before.status !== 'ready' || after.status !== 'ready') throw new Error('Os checkpoints necessários para o rollback não estão disponíveis.')
     if (before.workspace !== workspace || after.workspace !== workspace) throw new Error('O rollback não corresponde ao workspace autorizado.')
     // Retain the observed root across asynchronous preparation; its identity
     // cannot be recycled or silently replaced before native acquisition.
-    return withRollbackRootBinding(workspace, expectedRootIdentity, (identity) => this.restoreFiles(executionId, workspace, before, after, requestedPaths, identity))
+    return withRollbackRootBinding(workspace, expectedRootIdentity, (identity) => this.restoreFiles(executionId, workspace, before, after, requestedPaths, identity, decisionContext))
   }
 
-  private async restoreFiles(executionId: string, workspace: string, before: CheckpointRecord, after: CheckpointRecord, requestedPaths: readonly string[] | undefined, expectedRootIdentity: string | undefined): Promise<SnapshotRollbackResult> {
+  private async restoreFiles(executionId: string, workspace: string, before: CheckpointRecord, after: CheckpointRecord, requestedPaths: readonly string[] | undefined, expectedRootIdentity: string | undefined, decisionContext: RollbackDecisionContext | undefined): Promise<SnapshotRollbackResult> {
     const beforeId = before.id, afterId = after.id
     const beforeFiles = new Map(this.checkpoints.listFiles(before.id).map((file) => [file.relativePath, file]))
     const afterFiles = new Map(this.checkpoints.listFiles(after.id).map((file) => [file.relativePath, file]))
@@ -81,7 +87,7 @@ export class SnapshotRollbackService {
     await fs.promises.mkdir(recoveryDirectory, { recursive: true, mode: 0o700 })
     const restored: string[] = []
     const journal = {
-      contract: 'native-rollback-v1', operationId, executionId, beforeId, afterId, workspace,
+      contract: 'native-rollback-v1', operationId, executionId, beforeId, afterId, workspace, decisionContext,
       status: 'running', restored, paths: restorations.map((item) => item.relativePath),
       step: 'acquire', retained: [] as string[], outcome: null as BoundaryOutcome | null,
       rootIdentity: '', recoveryIdentity: '',
@@ -90,7 +96,7 @@ export class SnapshotRollbackService {
     let operation: NativeRollbackOperation | undefined
     let currentPath = restorations[0].relativePath
     const persistJournal = (error?: string) => operation!.journal({ ...journal, ...(error ? { error } : {}) }, {
-      operationId, executionId, beforeId, afterId, workspace, step: journal.step,
+      operationId, executionId, beforeId, afterId, workspace, decisionContext, step: journal.step,
       status: journal.status, outcome: journal.outcome, restoredCount: restored.length,
       observation: journal.observations[journal.observations.length - 1], retained: journal.retained[journal.retained.length - 1],
       ...(error ? { error } : {}),

@@ -81,6 +81,11 @@ earlier restorations as partial work; no automatic compensation or destructive
 pathname cleanup runs. `CONFLICT`, `REVOKED`, `UNSUPPORTED` and `UNKNOWN` all map
 to non-successful decisions. Filesystem verification does not commit SQLite:
 decision persistence can still fail, in which case the decision remains conflicted.
+Rollback invoked by Change Control records the reserved decision-operation,
+change and ChangeSet IDs in each journal step. A native journal's `restored`
+status describes filesystem verification only; consult the linked SQLite
+decision operation for decision persistence. A lost commit acknowledgment is
+not a successful decision and does not grant authority to compensate.
 An intent without confirmation means **possibly executed**, not "not executed".
 
 Restart does not replay a worker, numeric descriptor, file identity or path.
