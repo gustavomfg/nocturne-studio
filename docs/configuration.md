@@ -24,6 +24,17 @@ Selecting a folder is an authorization decision, not just a recent-path entry.
 Restored or moved workspaces must be selected again before file, Git, memory or
 AI operations can use them.
 
+## External workspace tools
+
+The editor shortcut uses the WebStorm `webstorm` launcher. If it is unavailable,
+the application reports an error rather than guessing another editor.
+Windows opens its system command prompt with the workspace as the process cwd;
+macOS opens Terminal. Linux discovers installed GNOME Terminal, Konsole, Xfce
+Terminal, kitty, Alacritty, Debian's terminal alternative or xterm. `TERMINAL`
+can prefer one of these executable names/paths, without command arguments.
+Unsupported command strings are not evaluated. These user-owned applications
+are detached from Nocturne's internal job supervision.
+
 ## Diagnostics
 
 Detailed logging is opt-in. Logs and exported diagnostic reports are sanitized,

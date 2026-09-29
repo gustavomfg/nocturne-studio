@@ -10,6 +10,7 @@ import { WorkspaceChangeWatcher } from '../workspaces/WorkspaceChangeWatcher'
 import { IPC_CHANNELS } from '../../shared/ipc/channels'
 import { resolveExecutable } from '../runtime/resolveExecutable'
 import type { WorkspaceChangeEvent } from '../../shared/types'
+import { resolveWorkspaceTerminal } from '../workspaces/WorkspaceTerminal'
 
 interface Dependencies {
   ensureWorkspace(workspace: string): Promise<void>
@@ -92,12 +93,10 @@ export function registerWorkspaceIpc(win: BrowserWindow, database: LocalDatabase
       try { await dependencies.run('webstorm', [workspace], workspace) } catch { throw new Error('Não foi possível abrir o WebStorm. Verifique se o comando “webstorm” está no PATH.') }
       return
     }
-    const terminal = process.platform === 'win32' ? ['cmd', ['/K', 'cd', '/d', workspace]] as const : process.platform === 'darwin' ? ['open', ['-a', 'Terminal', workspace]] as const : ['x-terminal-emulator', ['--working-directory', workspace]] as const
-    if (process.platform !== 'win32' && process.platform !== 'darwin' && !(await resolveExecutable(terminal[0]))) {
-      throw new Error('Terminal não encontrado. Instale x-terminal-emulator ou configure um terminal alternativo.')
-    }
+    const terminal = await resolveWorkspaceTerminal(workspace)
+    dependencies.assertKnownWorkspace(workspace)
     await new Promise<void>((resolve, reject) => {
-      const child = spawn(terminal[0], [...terminal[1]], { cwd: workspace, detached: true, stdio: 'ignore' })
+      const child = spawn(terminal.command, terminal.args, { cwd: workspace, detached: true, stdio: 'ignore', shell: false })
       child.once('error', () => reject(new Error('Não foi possível abrir o terminal. Instale ou configure o terminal padrão do sistema.')))
       child.once('spawn', () => { child.unref(); resolve() })
     })
