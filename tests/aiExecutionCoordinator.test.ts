@@ -53,6 +53,20 @@ function testLogger() {
 }
 
 describe('AiExecutionCoordinator', () => {
+  it.each(['models', 'protocol'] as const)('recusa uma solicitação %s atrasada após dispose sem reabrir o transporte', async (kind) => {
+    const codex = new CodexClient()
+    vi.spyOn(codex, 'stop').mockResolvedValue(undefined)
+    const models = vi.spyOn(codex, 'listModels').mockImplementation(async () => { throw new Error('probe admitted after disposal') })
+    const protocol = vi.spyOn(codex, 'checkExecutionContract').mockImplementation(async () => { throw new Error('probe admitted after disposal') })
+    const { win } = testWindow()
+    const coordinator = new AiExecutionCoordinator(win as never, new ModelRegistry(), new ProviderRegistry(), testLogger() as never, new Map(), vi.fn(), undefined, undefined, undefined, undefined, codex)
+    await coordinator.dispose()
+    const request = Promise.resolve().then(async () => kind === 'models' ? await coordinator.listCodexModels() : await coordinator.checkCodexProtocol())
+    await expect(request).rejects.toThrow(/encerrado/i)
+    expect(models).not.toHaveBeenCalled()
+    expect(protocol).not.toHaveBeenCalled()
+  })
+
   it('revoga o signal de Provider no dispose sem persistir conclusão tardia', async () => {
     const models = new ModelRegistry(); models.register(descriptor)
     const providers = new ProviderRegistry()

@@ -32,6 +32,7 @@ Closing a window detaches its IPC resource owner synchronously. Reopening can
 install a new owner while the old cleanup drains, without the old completion
 clearing the new owner. Application shutdown waits for both generations before
 closing SQLite, including when one disposer reports a failure.
+Late model/protocol probes cannot reopen a disposed coordinator's Codex transport.
 
 Validation and Codex transport cleanup have bounded deadlines. Codex retains
 cleanup ownership after its direct child exits, closes its streams, sends TERM

@@ -142,11 +142,13 @@ export class AiExecutionCoordinator {
     }
   }
 
-  listCodexModels() {
+  async listCodexModels() {
+    if (this.disposed) throw new Error('O coordenador de execução já foi encerrado.')
     return this.codex.listModels()
   }
 
-  checkCodexProtocol() {
+  async checkCodexProtocol() {
+    if (this.disposed) throw new Error('O coordenador de execução já foi encerrado.')
     return this.codex.checkExecutionContract()
   }
 
