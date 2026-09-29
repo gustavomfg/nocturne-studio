@@ -1,4 +1,31 @@
-## 1.0.1 — Release candidate (unreleased)
+## 1.0.2 — Release candidate (unreleased)
+
+### Fixed
+
+- Protected rollback now uses native capabilities on supported Linux local
+  filesystems, Windows NTFS and macOS APFS instead of reusing checked pathnames
+  for mutation. Collisions preserve competing data; unsupported cases fail closed.
+- Change decisions verify filesystem results before terminal persistence, retain
+  recovery evidence and do not claim success after interruption or lost confirmation.
+- Codex events are isolated by turn, preparation failures finish their reserved
+  execution, and failed or invalid Reviews cannot silently resolve earlier findings.
+- Validation rechecks authorization after asynchronous preparation. Project index
+  relations are invalidated when new targets change import resolution, and older
+  same-session refreshes cannot overwrite newer renderer state.
+- Linux terminal launch discovers supported installed applications without requiring
+  `x-terminal-emulator`; Windows workspace paths are not interpolated into a shell command.
+- Build/test dependency advisories were remediated without changing adopted major lines.
+
+### Validation and limits
+
+- Cross-platform native, package and recovery gates remain separate from protected
+  authenticated Codex and Linux checksum-signing gates. The updater rehearsal now
+  uses the published `1.0.1` baseline and the actual `1.0.2` candidate version.
+- Rollback is not a global filesystem/SQLite transaction or a guarantee of continuous
+  pathname membership. Retained artifacts require manual reconciliation; see
+  [the implemented restrictions](docs/native-rollback-v1.md).
+
+## 1.0.1
 
 ### Changed
 
@@ -9,7 +36,7 @@
 - Establishes `gustavomfg/nocturne-studio` as the canonical distribution and
   updater identity while preserving the GitHub rename bridge for `v1.0.0`.
 
-## 1.0.0 — Release candidate (unreleased)
+## 1.0.0
 
 ### Added
 
@@ -47,8 +74,8 @@
 - OpenAI-compatible endpoints do not expose identical tool-calling capabilities,
   and dedicated native Anthropic, Gemini and GitHub Copilot adapters are outside
   the 1.0.0 contract.
-- Signing/notarization and final protected publication gates are still required;
-  this entry is not a published release.
+- Windows and macOS distribution remains unsigned and not notarized under the
+  current policy; Linux checksum signatures use the protected release workflow.
 
 ## 0.9.5-beta
 

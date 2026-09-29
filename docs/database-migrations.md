@@ -47,6 +47,20 @@ a restauração falhar, eles voltam aos caminhos originais.
 | 22 | Estado persistido de hunks revisáveis |
 | 23 | Política e motivo de segurança por mudança |
 | 24 | Associação opcional entre validação e execução |
+| 25 | Índice semântico: execuções, unidades, vetores e busca FTS |
+| 26 | Sinais, snapshots de saúde e insights de Engineering Intelligence |
+| 27 | Estados dos sinais preservados nos snapshots históricos |
+| 28 | Reserva e ciclo de vida das operações de decisão de Change Control |
+| 29 | Registro explícito de operações interrompidas para reconciliação no startup |
+| 30 | Registro de manifests de evidência do estado observado do workspace |
+| 31 | Chaves compostas por workspace nas relações import/export, com cópia das relações existentes para as tabelas derivadas migradas |
+
+O schema atual é **31**. A reserva de uma decisão e sua persistência terminal
+não tornam filesystem e SQLite uma transação única. Journals e bytes privados
+de rollback são evidência operacional, não estão no backup JSON de conteúdo e
+não autorizam replay automático após restart. Consulte
+[recuperação operacional](operational-recovery.md) e
+[rollback protegido V1](native-rollback-v1.md).
 
 As migrações são progressivas. Reversão para uma versão antiga do aplicativo
 deve usar um backup criado por essa versão; não se remove schema novo
