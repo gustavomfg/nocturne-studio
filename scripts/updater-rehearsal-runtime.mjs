@@ -7,6 +7,15 @@ export function closeRehearsalServer(server) {
   return closed
 }
 
+export function disarmRehearsalUpdater(updater) {
+  // BaseUpdater's application quit listener outlives removeAllListeners().
+  // This download-only fixture MUST NOT run an installer after restoring
+  // APPIMAGE or deleting its temporary cache. Product policy is unchanged.
+  updater.autoInstallOnAppQuit = false
+  updater.removeAllListeners()
+  updater.closeServerIfExists?.()
+}
+
 // Longer than the child smoke's 120s deadline so that its owner gets to kill
 // and settle the child before the enclosing rehearsal stage can time out.
 export async function runRehearsalPhase(label, action, timeoutMs = 180_000) {

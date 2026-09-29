@@ -4,7 +4,7 @@ import { once } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 // @ts-expect-error Repository scripts are executable JavaScript, not TS modules.
-import { closeRehearsalServer, runRehearsalPhase } from '../scripts/updater-rehearsal-runtime.mjs'
+import { closeRehearsalServer, disarmRehearsalUpdater, runRehearsalPhase } from '../scripts/updater-rehearsal-runtime.mjs'
 
 describe('bounded updater rehearsal', () => {
   afterEach(() => vi.useRealTimers())
@@ -43,5 +43,18 @@ describe('bounded updater rehearsal', () => {
     vi.useFakeTimers()
     await expect(runRehearsalPhase('verify', async () => 'verified', 100)).resolves.toBe('verified')
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('disarms the application quit hook, not just updater event listeners', () => {
+    const install = vi.fn()
+    const updater = { autoInstallOnAppQuit: true, removeAllListeners: vi.fn(), closeServerIfExists: vi.fn() }
+    // BaseUpdater registers this on the application, not on the updater.
+    const applicationQuit = () => { if (updater.autoInstallOnAppQuit) install() }
+    disarmRehearsalUpdater(updater)
+    applicationQuit()
+    expect(install).not.toHaveBeenCalled()
+    expect(updater.autoInstallOnAppQuit).toBe(false)
+    expect(updater.removeAllListeners).toHaveBeenCalledOnce()
+    expect(updater.closeServerIfExists).toHaveBeenCalledOnce()
   })
 })

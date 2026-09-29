@@ -10,7 +10,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { resolveBaseVersion, validateRehearsalVersions } from './updater-rehearsal-contract.mjs'
-import { closeRehearsalServer, runRehearsalPhase } from './updater-rehearsal-runtime.mjs'
+import { closeRehearsalServer, disarmRehearsalUpdater, runRehearsalPhase } from './updater-rehearsal-runtime.mjs'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3')
@@ -566,8 +566,7 @@ async function disposeUpdater() {
 
 function disposeUpdaterInstance(currentUpdater) {
   try {
-    currentUpdater.removeAllListeners()
-    currentUpdater.closeServerIfExists?.()
+    disarmRehearsalUpdater(currentUpdater)
   } catch { /* diagnostic harness cleanup is best effort */ }
 }
 
