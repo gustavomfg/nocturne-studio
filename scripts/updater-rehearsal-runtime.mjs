@@ -7,7 +7,9 @@ export function closeRehearsalServer(server) {
   return closed
 }
 
-export async function runRehearsalPhase(label, action, timeoutMs = 120_000) {
+// Longer than the child smoke's 120s deadline so that its owner gets to kill
+// and settle the child before the enclosing rehearsal stage can time out.
+export async function runRehearsalPhase(label, action, timeoutMs = 180_000) {
   let timer
   try {
     return await Promise.race([

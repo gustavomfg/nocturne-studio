@@ -304,13 +304,16 @@ function toUpdatePlatform(platform: NodeJS.Platform): UpdatePlatform {
 function isSupportedTarget(platform: UpdatePlatform, packaged: boolean, packageSmoke: boolean) {
   if (!packaged || packageSmoke) return false
   if (platform === 'linux') return Boolean(process.env.APPIMAGE)
-  return platform === 'windows' || platform === 'macos'
+  // The current macOS distribution is unsigned. Squirrel.Mac requires a
+  // signed application; do not offer an installer handoff we cannot support.
+  return platform === 'windows'
 }
 
 function unsupportedReason(platform: UpdatePlatform, packaged: boolean, packageSmoke: boolean) {
   if (!packaged) return 'Atualizações ficam disponíveis somente em uma instalação empacotada.'
   if (packageSmoke) return 'Atualizações ficam desabilitadas durante o smoke empacotado.'
   if (platform === 'linux') return 'Esta instalação Linux não possui auto-update. Use o formato AppImage para atualizar pelo aplicativo.'
+  if (platform === 'macos') return 'Auto-update macOS exige uma aplicação assinada. Esta distribuição é unsigned; instale a nova versão manualmente pelo DMG, preservando os dados locais.'
   return 'O auto-update não é suportado nesta plataforma.'
 }
 

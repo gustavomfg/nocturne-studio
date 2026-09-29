@@ -24,7 +24,10 @@ publish a release or modify the historical `v1.0.1` and `v1.0.0` lines.
 - Windows x64 publishes the configured NSIS artifacts with checksums and no
   platform signature under the current policy.
 - macOS ARM64 publishes the configured DMG and updater ZIP with checksums and
-  no platform signature or notarization under the current policy.
+  no platform signature or notarization under the current policy. Automatic
+  update is explicitly unsupported for that unsigned distribution; manual DMG
+  upgrade preserves local data. The macOS rehearsal is transport/startup/data
+  preservation evidence, not native Squirrel installer certification.
 - The `electron-builder` configuration must not request notarization until an
   approved Apple credentials contract, workflow and verification gate exist.
 

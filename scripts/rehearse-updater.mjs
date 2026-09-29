@@ -24,6 +24,17 @@ const reportPath = path.resolve(process.env.UPDATER_REHEARSAL_REPORT || path.joi
 const startupTimeoutMs = 120_000
 const downloadChunkDelayMs = 5
 
+// Transport-only adapter for the explicitly unsigned macOS distribution.
+// Retains real metadata/download/hash/cancellation behavior, but never asks
+// Squirrel to install Nocturne into the development Electron application.
+// This does NOT certify native installer handoff or unsigned auto-update.
+class UnsignedMacTransportRehearsal extends MacUpdater {
+  async updateDownloaded(_zipFileInfo, event) {
+    this.dispatchUpdateDownloaded(event)
+    return []
+  }
+}
+
 let fixtureRoot
 let processUserData
 let cacheRoot
@@ -31,6 +42,9 @@ let targetUserData
 const report = {
   ok: false,
   phase: 'setup',
+  automaticUpdateSupported: process.platform !== 'darwin',
+  nativeInstallerHandoff: { performed: false, verified: false },
+  downloadAdapter: process.platform === 'darwin' ? 'MacUpdater transport-only; unsigned manual upgrade' : 'electron-updater',
   platform: process.platform,
   architecture: process.arch,
   currentVersion: packageMetadata.version,
@@ -61,7 +75,7 @@ const report = {
   candidateStartup: null,
   binaryInstallation: {
     performed: false,
-    mode: 'unpacked-candidate-first-startup',
+    mode: process.platform === 'darwin' ? 'unsigned-manual-candidate-first-startup' : 'unpacked-candidate-first-startup',
     note: 'The real updater download is exercised; replacing the running installation is intentionally not performed in CI.',
   },
   preservedData: null,
@@ -423,7 +437,7 @@ function createUpdater(configPath, baseUrl, versionOverride) {
     ? new AppImageUpdater()
     : process.platform === 'win32'
       ? new NsisUpdater()
-      : new MacUpdater()
+      : new UnsignedMacTransportRehearsal()
   updater.updateConfigPath = configPath
   updater.setFeedURL({ provider: 'github', owner: 'fixture', repo: 'rehearsal', protocol: 'http', host: new URL(baseUrl).host })
   updater.forceDevUpdateConfig = true

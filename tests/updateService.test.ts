@@ -46,6 +46,23 @@ describe('serviço de atualização', () => {
   })
   afterEach(() => vi.useRealTimers())
 
+  it('recusa auto-update macOS unsigned sem chamar download ou instalador nativo', async () => {
+    const updater = new FakeUpdater()
+    const service = startUpdateService(logger, () => window as never, updater as unknown as AppUpdater,
+      { currentVersion: '1.0.2', platform: 'darwin', packaged: true })
+    try {
+      expect(service.getCurrentState()).toMatchObject({ status: 'unsupported', platform: 'macos' })
+      expect(service.getCurrentState()).toHaveProperty('reason', expect.stringContaining('assinada'))
+      await service.checkForUpdates('manual')
+      await service.downloadUpdate()
+      await service.installUpdate()
+      await vi.advanceTimersByTimeAsync(20_000)
+      expect(updater.checkForUpdates).not.toHaveBeenCalled()
+      expect(updater.downloadUpdate).not.toHaveBeenCalled()
+      expect(updater.quitAndInstall).not.toHaveBeenCalled()
+    } finally { service.dispose() }
+  })
+
   it('consulta automaticamente sem sobreposição e remove timers e listeners ao encerrar', async () => {
     const { service, updater } = createService()
     let finishCheck: (() => void) | undefined

@@ -17,6 +17,8 @@
 - Linux terminal launch discovers supported installed applications without requiring
   `x-terminal-emulator`; Windows workspace paths are not interpolated into a shell command.
 - Build/test dependency advisories were remediated without changing adopted major lines.
+- Unsigned macOS builds explicitly refuse automatic installer handoff and explain
+  manual DMG upgrades; rehearsal cleanup/deadlines no longer hang indefinitely.
 
 ### Validation and limits
 

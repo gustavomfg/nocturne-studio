@@ -36,8 +36,12 @@ Releases estáveis publicam os targets configurados para as três plataformas:
 O estado de auto-update é `unsupported` em instalações Linux por `tar.gz`. A
 metadata Windows e macOS é gerada e publicada para os targets configurados,
 mas esses artefatos atualmente não possuem assinatura e o macOS não é
-notarizado. Avisos de confiança do sistema operacional fazem parte da
-instalação nessas plataformas.
+notarizado. Auto-update macOS fica explicitamente `unsupported`: Squirrel.Mac
+exige aplicação assinada ([contrato Electron](https://www.electronjs.org/docs/latest/api/auto-updater)).
+Atualize manualmente pelo DMG, preservando os dados locais. O rehearsal macOS
+verifica metadata real, transporte ZIP interrompido/retomado e startup/preservação
+de dados; seu adapter apenas de transporte **não** certifica handoff do instalador nativo.
+Avisos de confiança do sistema operacional fazem parte da instalação nessas plataformas.
 
 Toda metadata da v1.0.1 aponta para o repositório canônico do GitHub
 `gustavomfg/nocturne-studio`, owner `gustavomfg`, canal `release` e versão

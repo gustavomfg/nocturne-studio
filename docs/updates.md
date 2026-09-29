@@ -36,6 +36,11 @@ Stable releases publish the configured targets for all three platforms:
 The auto-update state is `unsupported` for Linux `tar.gz` installations. The
 Windows and macOS metadata is generated and published for the configured
 targets, but those artifacts are currently unsigned and macOS is not notarized.
+macOS auto-update is therefore explicitly `unsupported`: Squirrel.Mac requires
+a signed application ([Electron contract](https://www.electronjs.org/docs/latest/api/auto-updater)).
+Use a manual DMG upgrade preserving local user data. The macOS rehearsal verifies
+real metadata, interrupted/retried ZIP transport and candidate startup/data preservation;
+its transport-only adapter does **not** certify native installer handoff.
 Operating-system trust prompts remain part of installation on those platforms.
 
 All v1.0.1 metadata points to the canonical GitHub repository
