@@ -26,10 +26,12 @@ de desenvolvimento até passarem pelos mesmos smoke checks e gates.
 - Node.js `>=24.18 <25`;
 - npm `>=11 <12`;
 - Electron 43.x;
-- `better-sqlite3` recompilado para o ABI do Electron adotado.
+- `better-sqlite3` 13.x com N-API, verificado no runtime Electron adotado e no
+  Node.js de desenvolvimento.
 
-Use `npm run test:abi` para verificar a compatibilidade do módulo nativo antes
-da suíte completa.
+Use `npm run test:abi` para verificar o carregamento do módulo nativo no
+runtime empacotado antes da suíte completa. A compatibilidade N-API não
+substitui o smoke do pacote.
 
 ## Compatibilidade de IA
 

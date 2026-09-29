@@ -19,10 +19,11 @@ development artifacts until they pass the same smoke and release gates.
 - Node.js `>=24.18 <25`;
 - npm `>=11 <12`;
 - Electron 43.x;
-- `better-sqlite3` rebuilt for the adopted Electron ABI.
+- `better-sqlite3` 13.x with N-API, verified under the adopted Electron runtime
+  and the development Node.js host.
 
-Use `npm run test:abi` to check that native module compatibility before running
-the full suite.
+Use `npm run test:abi` to check the packaged runtime's native module load before
+running the full suite. N-API compatibility does not replace the packaged smoke.
 
 Protected filesystem rollback has a narrower platform contract than application
 startup: [V1](native-rollback-v1.md) supports local Linux tmpfs/ext4/Btrfs, macOS

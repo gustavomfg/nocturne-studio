@@ -5,8 +5,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
 
-// better-sqlite3 is compiled for Electron's ABI. Keep the public command
-// reproducible while delegating the actual workload to the supported runtime.
+// Measure in the shipped Electron runtime even though better-sqlite3 uses
+// N-API and also loads under the development Node.js host.
 if (!process.versions.electron) {
   const electron = createRequire(import.meta.url)('electron')
   const result = spawnSync(electron, [process.argv[1], ...process.argv.slice(2)], {

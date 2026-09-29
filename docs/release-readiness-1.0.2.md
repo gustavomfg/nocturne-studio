@@ -49,7 +49,11 @@ recorded separately at the final candidate, not inferred from these results.
 A subsequent security audit identified advisories in the bundled Electron
 `43.1.1` runtime. The candidate now pins patched Electron `43.5.0` without
 changing the adopted major line; the development `allowScripts` entry and lockfile
-match. Local pre-candidate validation passed 591 unit/integration tests with
+match. An Electron-embedded Node cleanup assertion then reproduced in hosted
+Vitest workers on Linux, Windows and macOS with `better-sqlite3` 12.x. The
+candidate moves the addon to its N-API 13.x line; cross-platform CI must prove
+the crash is gone before this is a release candidate. Local pre-candidate
+validation passed 591 unit/integration tests with
 12 skips across 94 files, 63 renderer tests, Electron/SQLite ABI, Linux packaged
 smoke and recovery, and production plus dev-inclusive audits with zero reported
 vulnerabilities. Cross-platform packages and all gates still require evidence
