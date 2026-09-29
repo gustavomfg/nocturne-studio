@@ -102,6 +102,29 @@ async function createThread(client: CodexClient, process: FakeCodexProcess) {
 }
 
 describe('CodexClient', () => {
+  it('aguarda initialize pendente antes de admitir uma checagem concorrente de protocolo', async () => {
+    const process = new FakeCodexProcess()
+    const client = new CodexClient(process)
+    const started = client.start()
+    let settled = false
+    const protocol = client.checkProtocol().then((result) => { settled = true; return result }, (error: Error) => { settled = true; return error })
+    try {
+      for (let index = 0; index < 8; index += 1) await Promise.resolve()
+      expect(process.running).toBe(true)
+      expect(settled).toBe(false)
+      expect(process.request('config/read')).toBeUndefined()
+    } finally {
+      process.respond('initialize')
+      await started
+      for (let index = 0; index < 8; index += 1) await Promise.resolve()
+      if (process.request('config/read')) process.respond('config/read', {})
+      const result = await protocol
+      client.stop()
+      expect(result).toMatchObject({ compatible: true, serverVersion: 'codex-cli/0.146.0' })
+      expect(process.starts).toBe(1)
+    }
+  })
+
   it('falha restart no deadline se o adapter não confirmar cleanup', async () => {
     const { client, process } = await readyClient()
     const stop = process.stop.bind(process)

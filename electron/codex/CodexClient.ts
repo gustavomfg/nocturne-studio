@@ -97,8 +97,8 @@ export class CodexClient extends EventEmitter {
   }
 
   async start(executable = this.executable) {
-    if (this.process.isRunning() && this.status !== 'failed' && this.status !== 'disconnected') return
     if (this.starting) return this.starting
+    if (this.process.isRunning() && this.status !== 'failed' && this.status !== 'disconnected') return
     this.intentionalStop = false
     this.executable = executable
     this.starting = this.reconnectAndInitialize()

@@ -9,6 +9,8 @@
   recovery evidence and do not claim success after interruption or lost confirmation.
 - Codex events are isolated by turn, preparation failures finish their reserved
   execution, and failed or invalid Reviews cannot silently resolve earlier findings.
+- Concurrent Codex startup requests wait for the pending compatibility handshake
+  instead of treating a live but uninitialized App Server as ready.
 - Validation rechecks authorization after asynchronous preparation. Project index
   relations are invalidated when new targets change import resolution, and older
   same-session refreshes cannot overwrite newer renderer state.
