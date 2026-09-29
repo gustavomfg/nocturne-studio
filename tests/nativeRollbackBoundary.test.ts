@@ -63,6 +63,19 @@ describe.runIf(protectedRollbackSupported())('native rollback capabilities (real
     expect(fs.readdirSync(path.dirname(value.target))).toEqual(['target.txt'])
   })
 
+  it.runIf(process.platform === 'win32' || process.platform === 'darwin')('refuses case aliases of protected metadata before opening the leaf', async () => {
+    const value = await fixture()
+    const git = path.join(value.workspace, '.git')
+    fs.mkdirSync(git)
+    fs.writeFileSync(path.join(git, 'target'), 'PROTECTED-METADATA')
+    const alias = fs.statSync(path.join(value.workspace, '.GiT', 'target'), { throwIfNoEntry: false })
+    if (alias) expect(alias.ino).toBe(fs.statSync(path.join(git, 'target')).ino)
+    console.info(`Native protected metadata case alias resolves: ${Boolean(alias)}`)
+    await expect(value.operation.inspect('.GiT/target')).rejects.toMatchObject({ outcome: 'CONFLICT' })
+    expect(fs.readFileSync(path.join(git, 'target'), 'utf8')).toBe('PROTECTED-METADATA')
+    expect(fs.readdirSync(git)).toEqual(['target'])
+  })
+
   it('retains a peer-held data handle without changing that object in place', async () => {
     const value = await fixture()
     const fd = fs.openSync(value.target, 'r')

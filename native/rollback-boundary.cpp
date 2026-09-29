@@ -129,6 +129,11 @@ static void validRelative(const std::string& value) {
     && value.find('\\')==std::string::npos,"Invalid relative path");
   std::istringstream stream(value);std::string part;
   while(std::getline(stream,part,'/')) {
+#if defined(__APPLE__)
+    // APFS commonly resolves ASCII case aliases to the same protected entry.
+    // Reject those aliases even on case-sensitive APFS; do not broaden Linux.
+    for(char& c:part)if(c>='A'&&c<='Z')c=static_cast<char>(c-'A'+'a');
+#endif
     require(!part.empty() && part!="." && part!=".." && part!=".git" && part!=".nocturne"
       && part.rfind(".nocturne-rollback-",0)!=0,"Protected path");
   }
