@@ -10,13 +10,18 @@ import { canonicalTestPath } from './helpers/platform'
 
 const directories: string[] = []
 const databases: LocalDatabase[] = []
+const pipelines: ValidationPipeline[] = []
 
 afterEach(async () => {
+  // Abort and drain preparation before closing the real SQLite connection.
+  await Promise.all(pipelines.splice(0).map((pipeline) => pipeline.dispose()))
   for (const database of databases.splice(0)) database.close()
   for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true })
 })
 
-describe('Validation Pipeline', () => {
+// FULL-sync fixture creation and real descriptor reads can exceed a unit-test
+// budget on the hosted Windows volume. This does not change runner deadlines.
+describe('Validation Pipeline', { timeout: process.platform === 'win32' ? 30_000 : 5_000 }, () => {
   it('não compartilha o resultado de uma validação diferente no mesmo workspace', async () => {
     const fixture = createFixture()
     fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [
@@ -24,15 +29,16 @@ describe('Validation Pipeline', () => {
       evidence(fixture.workspace, 'script', 'build=vite build'),
     ])
     let release: (() => void) | undefined
-    const runner: ProcessRunner = { run: async () => await new Promise<ProcessRunResult>((resolve) => {
+    const runner: ProcessRunner = { run: async (_command, _args, { signal }) => await new Promise<ProcessRunResult>((resolve) => {
       release = () => resolve(successfulResult('', ''))
+      signal.addEventListener('abort', () => resolve({ ...successfulResult('', ''), cancelled: true }), { once: true })
     }) }
-    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
+    const pipeline = createPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
 
     const testRun = pipeline.run(fixture.workspace, 'test')
     const buildRun = pipeline.run(fixture.workspace, 'build')
     const rejected = expect(buildRun).rejects.toThrow(/validação.*andamento|conflito/i)
-    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'), { timeout: process.platform === 'win32' ? 10_000 : 1_000 })
     release!()
 
     await expect(testRun).resolves.toMatchObject({ kind: 'test', status: 'passed' })
@@ -43,15 +49,16 @@ describe('Validation Pipeline', () => {
     const fixture = createFixture()
     fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [evidence(fixture.workspace, 'script', 'test=vitest')])
     let release: (() => void) | undefined
-    const runner: ProcessRunner = { run: async () => await new Promise<ProcessRunResult>((resolve) => {
+    const runner: ProcessRunner = { run: async (_command, _args, { signal }) => await new Promise<ProcessRunResult>((resolve) => {
       release = () => resolve(successfulResult('', ''))
+      signal.addEventListener('abort', () => resolve({ ...successfulResult('', ''), cancelled: true }), { once: true })
     }) }
-    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
+    const pipeline = createPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
 
     const first = pipeline.run(fixture.workspace, 'test')
     const duplicate = pipeline.run(fixture.workspace, 'test')
     expect(duplicate).toBe(first)
-    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'), { timeout: process.platform === 'win32' ? 10_000 : 1_000 })
     release!()
     await expect(first).resolves.toMatchObject({ kind: 'test', status: 'passed' })
   })
@@ -65,15 +72,16 @@ describe('Validation Pipeline', () => {
     for (const id of [executionA, executionB]) fixture.database.createExecution({ id, workspace: fixture.workspace, conversationId: conversation.id, prompt: 'validar', mode: 'build', status: 'running', decision: 'pending', retryOf: null, startedAt: now, finishedAt: null, error: null })
     fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [evidence(fixture.workspace, 'script', 'test=vitest')])
     let release: (() => void) | undefined
-    const runner: ProcessRunner = { run: async () => await new Promise<ProcessRunResult>((resolve) => {
+    const runner: ProcessRunner = { run: async (_command, _args, { signal }) => await new Promise<ProcessRunResult>((resolve) => {
       release = () => resolve(successfulResult('', ''))
+      signal.addEventListener('abort', () => resolve({ ...successfulResult('', ''), cancelled: true }), { once: true })
     }) }
-    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
+    const pipeline = createPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
 
     const first = pipeline.run(fixture.workspace, 'test', executionA)
     const second = pipeline.run(fixture.workspace, 'test', executionB)
     await expect(second).rejects.toThrow(/validação diferente/i)
-    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'), { timeout: process.platform === 'win32' ? 10_000 : 1_000 })
     release!()
     await expect(first).resolves.toMatchObject({ executionId: executionA, status: 'passed' })
   })
@@ -91,7 +99,7 @@ describe('Validation Pipeline', () => {
       calls.push([command, ...args])
       return successfulResult('api_key=do-not-persist\nreports/test.html\n', '')
     } }
-    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
+    const pipeline = createPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
 
     const run = await pipeline.run(fixture.workspace, 'test')
 
@@ -110,7 +118,7 @@ describe('Validation Pipeline', () => {
       fs.rmSync(fixture.workspace, { recursive: true, force: true })
       return successfulResult('reports/test.html', '')
     } }
-    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
+    const pipeline = createPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
 
     const run = await pipeline.run(fixture.workspace, 'test')
 
@@ -121,7 +129,7 @@ describe('Validation Pipeline', () => {
   it('registra falhas inesperadas de filesystem sem alterar o resultado do processo', async () => {
     const fixture = createFixture()
     fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [evidence(fixture.workspace, 'script', 'test=vitest')])
-    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), {
+    const pipeline = createPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), {
       runner: { run: async () => successfulResult('reports/test.html', '') },
     })
     const originalStat = fs.promises.stat.bind(fs.promises)
@@ -147,7 +155,7 @@ describe('Validation Pipeline', () => {
     const executionId = '00000000-0000-4000-8000-000000000090'
     fixture.database.createExecution({ id: executionId, workspace: fixture.workspace, conversationId: conversation.id, prompt: 'validar', mode: 'build', status: 'running', decision: 'pending', retryOf: null, startedAt: new Date().toISOString(), finishedAt: null, error: null })
     fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [evidence(fixture.workspace, 'script', 'test=vitest')])
-    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner: { run: async () => successfulResult('', '') } })
+    const pipeline = createPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner: { run: async () => successfulResult('', '') } })
 
     const run = await pipeline.run(fixture.workspace, 'test', executionId)
 
@@ -157,7 +165,7 @@ describe('Validation Pipeline', () => {
 
   it('bloqueia validação sem comando identificado e mantém resultado estruturado', async () => {
     const fixture = createFixture()
-    const pipeline = new ValidationPipeline(fixture.database.validation, () => [], { runner: throwingRunner() })
+    const pipeline = createPipeline(fixture.database.validation, () => [], { runner: throwingRunner() })
 
     const run = await pipeline.run(fixture.workspace, 'lint')
 
@@ -172,7 +180,7 @@ describe('Validation Pipeline', () => {
     const runner: ProcessRunner = { run: async (_command, _args, options) => new Promise<ProcessRunResult>((resolve) => {
       options.signal.addEventListener('abort', () => resolve({ ...successfulResult('', ''), cancelled: true }), { once: true })
     }) }
-    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
+    const pipeline = createPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
     const pending = pipeline.run(fixture.workspace, 'test')
     await new Promise((resolve) => setTimeout(resolve, 5))
     expect(pipeline.cancel(fixture.workspace)).toBe(true)
@@ -186,7 +194,7 @@ describe('Validation Pipeline', () => {
     fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [evidence(fixture.workspace, 'script', 'test=vitest')])
     const runner = { run: vi.fn(async () => successfulResult('', '')) }
     let authorized = true
-    const pipeline = new ValidationPipeline(
+    const pipeline = createPipeline(
       fixture.database.validation,
       (workspace) => fixture.database.projectIndex.listStackEvidence(workspace),
       {
@@ -213,7 +221,7 @@ describe('Validation Pipeline', () => {
     fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [evidence(fixture.workspace, 'script', 'test=vitest')])
     const runner = { run: vi.fn(async () => successfulResult('', '')) }
     let authorized = true
-    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), {
+    const pipeline = createPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), {
       runner,
       authorizeExecution: (workspace) => {
         if (!authorized) throw new Error('Workspace não autorizado.')
@@ -241,7 +249,7 @@ describe('Validation Pipeline', () => {
     const fixture = createFixture()
     fixture.database.projectIndex.replaceStackEvidence(fixture.workspace, [evidence(fixture.workspace, 'script', 'test=vitest')])
     const runner = { run: vi.fn(async () => successfulResult('', '')) }
-    const pipeline = new ValidationPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
+    const pipeline = createPipeline(fixture.database.validation, (workspace) => fixture.database.projectIndex.listStackEvidence(workspace), { runner })
     const pending = pipeline.run(fixture.workspace, 'test')
     expect(pipeline.cancel(fixture.workspace)).toBe(true)
     await expect(pending).resolves.toMatchObject({ status: 'cancelled' })
@@ -264,6 +272,12 @@ function createFixture() {
   databases.push(database)
   database.touchWorkspace(workspace)
   return { workspace, database }
+}
+
+function createPipeline(...args: ConstructorParameters<typeof ValidationPipeline>) {
+  const pipeline = new ValidationPipeline(...args)
+  pipelines.push(pipeline)
+  return pipeline
 }
 
 function evidence(workspace: string, category: StackEvidence['category'], value: string): StackEvidence {
