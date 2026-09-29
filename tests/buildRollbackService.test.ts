@@ -9,6 +9,7 @@ import { CheckpointService } from '../electron/change-control/CheckpointService'
 import { WorkspaceCheckpointStore } from '../electron/change-control/WorkspaceCheckpointStore'
 import { ChangeCaptureService } from '../electron/change-control/ChangeCaptureService'
 import { SnapshotRollbackService } from '../electron/change-control/SnapshotRollbackService'
+import { closeNativeRollbackOperations } from '../electron/change-control/NativeRollbackOperation'
 import { canonicalTestPath, removeTestDirectoryAsync } from './helpers/platform'
 
 const cleanup: Array<() => void | Promise<void>> = []
@@ -17,7 +18,7 @@ afterEach(async () => {
   for (const fn of cleanup.splice(0).reverse()) await fn()
 })
 
-it.runIf(process.platform === 'linux')('retains the same root authority across every file decision of a whole Build', async () => {
+it.runIf(process.platform === 'linux').each(['root', 'shutdown'])('retains root authority and admission epoch across whole-Build decisions: %s', async (interference) => {
   const base = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-build-root-')))
   cleanup.push(() => removeTestDirectoryAsync(base))
   const workspace = path.join(base, 'project')
@@ -35,20 +36,28 @@ it.runIf(process.platform === 'linux')('retains the same root authority across e
   await new ChangeCaptureService(checkpoints, database.changeSets).capture(executionId, workspace, before.checkpoint.id, 'manual')
   const save = database.changeSets.saveDecision.bind(database.changeSets)
   let swapped = false
+  let shutdown: Promise<void> | undefined
   vi.spyOn(database.changeSets, 'saveDecision').mockImplementation((...args: Parameters<typeof save>) => {
     const result = save(...args)
     if (!swapped && args[1].relativePath === 'a.txt' && args[1].status === 'rejected') {
       swapped = true
-      execFileSync(process.execPath, ['-e', 'const fs=require("node:fs"),p=require("node:path");const w=process.argv[1];fs.renameSync(w,w+"-retained");fs.mkdirSync(w);for(const n of ["a.txt","b.txt"])fs.writeFileSync(p.join(w,n),"AFTER")', workspace], { shell: false, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } })
+      if (interference === 'root') execFileSync(process.execPath, ['-e', 'const fs=require("node:fs"),p=require("node:path");const w=process.argv[1];fs.renameSync(w,w+"-retained");fs.mkdirSync(w);for(const n of ["a.txt","b.txt"])fs.writeFileSync(p.join(w,n),"AFTER")', workspace], { shell: false, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } })
+      else shutdown = closeNativeRollbackOperations()
     }
     return result
   })
   const service = new BuildRollbackService(database, new SnapshotRollbackService(checkpoints))
   await expect(service.rollback(conversation.id, workspace)).rejects.toThrow(/REVOKED/)
+  await shutdown
   expect(swapped).toBe(true)
-  for (const name of ['a.txt', 'b.txt']) expect(fs.readFileSync(path.join(workspace, name), 'utf8')).toBe('AFTER')
-  expect(fs.readFileSync(path.join(`${workspace}-retained`, 'a.txt'), 'utf8')).toBe('BEFORE')
-  expect(fs.readFileSync(path.join(`${workspace}-retained`, 'b.txt'), 'utf8')).toBe('AFTER')
+  if (interference === 'root') {
+    for (const name of ['a.txt', 'b.txt']) expect(fs.readFileSync(path.join(workspace, name), 'utf8')).toBe('AFTER')
+    expect(fs.readFileSync(path.join(`${workspace}-retained`, 'a.txt'), 'utf8')).toBe('BEFORE')
+    expect(fs.readFileSync(path.join(`${workspace}-retained`, 'b.txt'), 'utf8')).toBe('AFTER')
+  } else {
+    expect(fs.readFileSync(path.join(workspace, 'a.txt'), 'utf8')).toBe('BEFORE')
+    expect(fs.readFileSync(path.join(workspace, 'b.txt'), 'utf8')).toBe('AFTER')
+  }
   expect(database.getExecution(executionId)?.decision).toBe('conflicted')
 })
 

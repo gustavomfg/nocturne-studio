@@ -5,7 +5,7 @@ import type { CheckpointFileRecord, CheckpointRecord } from '../../shared/change
 import { resolveInsideWorkspace } from '../security/ExecutionPolicy'
 import type { CheckpointService } from './CheckpointService'
 import { enqueueSerializedWrite } from '../persistence/SerializedWriteQueue'
-import { NativeBoundaryError, NativeRollbackOperation, withRollbackRootBinding, type BoundaryOutcome } from './NativeRollbackOperation'
+import { NativeBoundaryError, NativeRollbackOperation, nativeRollbackAdmissionEpoch, withRollbackRootBinding, type BoundaryOutcome } from './NativeRollbackOperation'
 
 export interface SnapshotRollbackResult {
   status: 'restored' | 'conflicted'
@@ -32,9 +32,12 @@ export interface RollbackDecisionContext {
 
 /** Checkpoints authorize bytes; only native capabilities authorize workspace mutation. */
 export class SnapshotRollbackService {
+  private disposed = false
   constructor(private readonly checkpoints: CheckpointService) {}
+  dispose() { this.disposed = true }
 
   async verifyPaths(executionId: string, workspace: string, checkpointId: string, paths: readonly string[]) {
+    if (this.disposed) throw new NativeBoundaryError('REVOKED', 'Rollback owner disposed.')
     const checkpoint = this.checkpoints.get(checkpointId, executionId)
     if (!checkpoint || checkpoint.workspace !== workspace || checkpoint.status !== 'ready') throw new Error('Checkpoint indisponível.')
     const files = new Map(this.checkpoints.listFiles(checkpointId).map((file) => [file.relativePath, file]))
@@ -49,21 +52,22 @@ export class SnapshotRollbackService {
     return this.rollbackPaths(executionId, workspace, beforeId, afterId)
   }
 
-  async rollbackPaths(executionId: string, workspace: string, beforeId: string, afterId: string, requestedPaths?: readonly string[], expectedRootIdentity?: string, decisionContext?: RollbackDecisionContext): Promise<SnapshotRollbackResult> {
-    return enqueueSerializedWrite(`rollback:${path.resolve(workspace)}`, () => this.restore(executionId, workspace, beforeId, afterId, requestedPaths, expectedRootIdentity, decisionContext))
+  async rollbackPaths(executionId: string, workspace: string, beforeId: string, afterId: string, requestedPaths?: readonly string[], expectedRootIdentity?: string, decisionContext?: RollbackDecisionContext, expectedEpoch = nativeRollbackAdmissionEpoch()): Promise<SnapshotRollbackResult> {
+    if (this.disposed) throw new NativeBoundaryError('REVOKED', 'Rollback owner disposed.')
+    return enqueueSerializedWrite(`rollback:${path.resolve(workspace)}`, () => this.restore(executionId, workspace, beforeId, afterId, requestedPaths, expectedRootIdentity, decisionContext, expectedEpoch))
   }
 
-  private async restore(executionId: string, workspace: string, beforeId: string, afterId: string, requestedPaths?: readonly string[], expectedRootIdentity?: string, decisionContext?: RollbackDecisionContext): Promise<SnapshotRollbackResult> {
+  private async restore(executionId: string, workspace: string, beforeId: string, afterId: string, requestedPaths: readonly string[] | undefined, expectedRootIdentity: string | undefined, decisionContext: RollbackDecisionContext | undefined, expectedEpoch: number): Promise<SnapshotRollbackResult> {
     const before = this.checkpoints.get(beforeId, executionId)
     const after = this.checkpoints.get(afterId, executionId)
     if (!before || !after || before.status !== 'ready' || after.status !== 'ready') throw new Error('Os checkpoints necessários para o rollback não estão disponíveis.')
     if (before.workspace !== workspace || after.workspace !== workspace) throw new Error('O rollback não corresponde ao workspace autorizado.')
     // Retain the observed root across asynchronous preparation; its identity
     // cannot be recycled or silently replaced before native acquisition.
-    return withRollbackRootBinding(workspace, expectedRootIdentity, (identity) => this.restoreFiles(executionId, workspace, before, after, requestedPaths, identity, decisionContext))
+    return withRollbackRootBinding(workspace, expectedRootIdentity, (identity) => this.restoreFiles(executionId, workspace, before, after, requestedPaths, identity, decisionContext, expectedEpoch))
   }
 
-  private async restoreFiles(executionId: string, workspace: string, before: CheckpointRecord, after: CheckpointRecord, requestedPaths: readonly string[] | undefined, expectedRootIdentity: string | undefined, decisionContext: RollbackDecisionContext | undefined): Promise<SnapshotRollbackResult> {
+  private async restoreFiles(executionId: string, workspace: string, before: CheckpointRecord, after: CheckpointRecord, requestedPaths: readonly string[] | undefined, expectedRootIdentity: string | undefined, decisionContext: RollbackDecisionContext | undefined, expectedEpoch: number): Promise<SnapshotRollbackResult> {
     const beforeId = before.id, afterId = after.id
     const beforeFiles = new Map(this.checkpoints.listFiles(before.id).map((file) => [file.relativePath, file]))
     const afterFiles = new Map(this.checkpoints.listFiles(after.id).map((file) => [file.relativePath, file]))
@@ -102,7 +106,8 @@ export class SnapshotRollbackService {
       ...(error ? { error } : {}),
     })
     try {
-      operation = await NativeRollbackOperation.create(workspace, recoveryDirectory, expectedRootIdentity)
+      if (this.disposed) throw new NativeBoundaryError('REVOKED', 'Rollback owner disposed.')
+      operation = await NativeRollbackOperation.create(workspace, recoveryDirectory, expectedRootIdentity, expectedEpoch)
       journal.rootIdentity = operation.rootIdentity
       journal.recoveryIdentity = operation.recoveryIdentity
       await persistJournal()

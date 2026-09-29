@@ -37,6 +37,10 @@ API. One worker owns one bounded rollback operation, including its root, current
 parent, observed file, anonymous staging file and journal descriptors. Commands
 are serialized. A lost response/transport or 15-second command deadline means
 `UNKNOWN`; shutdown closes workers with a bounded one-second grace interval.
+Shutdown also advances an in-memory admission epoch and disposes the service
+owner. File/whole-Build requests retain the epoch captured before queueing or
+asynchronous preparation. They cannot start a new helper after cleanup overtakes
+them. The epoch is a lifecycle cutoff, not a persisted filesystem capability.
 
 Linux root/parent acquisition uses `openat2` beneath/no-symlink/no-magic-link
 constraints; parents additionally disallow mount crossings. Mutations use retained

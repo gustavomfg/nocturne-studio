@@ -2,7 +2,7 @@ import type { ChangeRecord, ChangeSetRecord } from '../../shared/changeControl'
 import type { ChangeSetRepository } from '../database/ChangeSetRepository'
 import type { SnapshotRollbackService } from './SnapshotRollbackService'
 import { enqueueSerializedWrite } from '../persistence/SerializedWriteQueue'
-import { withRollbackRootBinding } from './NativeRollbackOperation'
+import { nativeRollbackAdmissionEpoch, withRollbackRootBinding } from './NativeRollbackOperation'
 
 /** Applies explicit file decisions and derives the aggregate ChangeSet state. */
 export class ChangeDecisionService {
@@ -12,11 +12,11 @@ export class ChangeDecisionService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  decide(executionId: string, changeId: string, status: Extract<ChangeRecord['status'], 'accepted' | 'rejected'>, workspace: string, revertingBuild = false, expectedRootIdentity?: string) {
-    return enqueueSerializedWrite(`decision:${workspace}`, () => this.apply(executionId, changeId, status, workspace, revertingBuild, expectedRootIdentity))
+  decide(executionId: string, changeId: string, status: Extract<ChangeRecord['status'], 'accepted' | 'rejected'>, workspace: string, revertingBuild = false, expectedRootIdentity?: string, admissionEpoch = nativeRollbackAdmissionEpoch()) {
+    return enqueueSerializedWrite(`decision:${workspace}`, () => this.apply(executionId, changeId, status, workspace, revertingBuild, expectedRootIdentity, admissionEpoch))
   }
 
-  private async apply(executionId: string, changeId: string, status: 'accepted' | 'rejected', workspace: string, revertingBuild: boolean, expectedRootIdentity: string | undefined) {
+  private async apply(executionId: string, changeId: string, status: 'accepted' | 'rejected', workspace: string, revertingBuild: boolean, expectedRootIdentity: string | undefined, admissionEpoch: number) {
     const change = this.repository.getChange(changeId, executionId)
     if (!change) throw new Error('A mudança solicitada não pertence a esta execução.')
     if (change.policy === 'blocked') throw new Error('Esta mudança está bloqueada pela política do workspace.')
@@ -30,7 +30,7 @@ export class ChangeDecisionService {
         const conflicts = await this.rollback.verifyPaths(executionId, workspace, changeSet.afterCheckpointId, [change.relativePath])
         if (conflicts.length) throw new Error(`O arquivo mudou desde AFTER: ${conflicts.join(', ')}.`)
         if (status === 'rejected') {
-          const result = await this.rollback.rollbackPaths(executionId, workspace, changeSet.beforeCheckpointId, changeSet.afterCheckpointId, [change.relativePath], rootIdentity, { decisionOperationId: operationId, changeId, changeSetId: changeSet.id })
+          const result = await this.rollback.rollbackPaths(executionId, workspace, changeSet.beforeCheckpointId, changeSet.afterCheckpointId, [change.relativePath], rootIdentity, { decisionOperationId: operationId, changeId, changeSetId: changeSet.id }, admissionEpoch)
           if (result.status !== 'restored') throw new Error(`Rollback em conflito (${result.boundaryOutcome ?? 'CONFLICT'}): ${result.conflicts.join(', ')}. ${result.error ?? ''} Recuperação: ${result.recoveryDirectory ?? 'checkpoints preservados'}.`)
         }
         const updatedChange = { ...change, status, updatedAt: this.now().toISOString() }

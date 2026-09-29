@@ -7,7 +7,7 @@ import { CheckpointService } from '../electron/change-control/CheckpointService'
 import { SnapshotRollbackService } from '../electron/change-control/SnapshotRollbackService'
 import { WorkspaceCheckpointStore } from '../electron/change-control/WorkspaceCheckpointStore'
 import { LocalDatabase } from '../electron/database/Database'
-import { NativeRollbackOperation } from '../electron/change-control/NativeRollbackOperation'
+import { NativeRollbackOperation, closeNativeRollbackOperations } from '../electron/change-control/NativeRollbackOperation'
 import { canonicalTestPath, removeTestDirectory } from './helpers/platform'
 
 const directories: string[] = []
@@ -32,7 +32,41 @@ async function fixture() {
   return { database, workspace, executionId, checkpoints, rollback: new SnapshotRollbackService(checkpoints) }
 }
 
+it('disposed rollback owners reject late requests without starting filesystem work', async () => {
+  const value = await fixture()
+  const target = path.join(value.workspace, 'target.txt')
+  fs.writeFileSync(target, 'BEFORE')
+  const before = await value.checkpoints.capture(value.executionId, value.workspace, 'before')
+  fs.writeFileSync(target, 'AFTER')
+  const after = await value.checkpoints.capture(value.executionId, value.workspace, 'after')
+  value.rollback.dispose()
+  await expect(value.rollback.rollback(value.executionId, value.workspace, before.checkpoint.id, after.checkpoint.id)).rejects.toThrow(/REVOKED/)
+  await expect(value.rollback.verifyPaths(value.executionId, value.workspace, after.checkpoint.id, ['target.txt'])).rejects.toThrow(/REVOKED/)
+  expect(fs.readFileSync(target, 'utf8')).toBe('AFTER')
+})
+
 describe.runIf(process.platform === 'linux')('SnapshotRollbackService protected mutations', () => {
+  it('does not admit a helper after shutdown overtakes asynchronous rollback preparation', async () => {
+    const value = await fixture()
+    const target = path.join(value.workspace, 'target.txt')
+    fs.writeFileSync(target, 'BEFORE')
+    const before = await value.checkpoints.capture(value.executionId, value.workspace, 'before')
+    fs.writeFileSync(target, 'AFTER')
+    const after = await value.checkpoints.capture(value.executionId, value.workspace, 'after')
+    const read = fs.promises.readFile.bind(fs.promises)
+    let shutdown = false
+    vi.spyOn(fs.promises, 'readFile').mockImplementation(async (...args: Parameters<typeof fs.promises.readFile>) => {
+      const bytes = await read(...args)
+      if (!shutdown && args[0] === target) { shutdown = true; await closeNativeRollbackOperations() }
+      return bytes
+    })
+    const result = await value.rollback.rollback(value.executionId, value.workspace, before.checkpoint.id, after.checkpoint.id)
+    expect(shutdown).toBe(true)
+    expect(result).toMatchObject({ status: 'conflicted', restored: [], boundaryOutcome: 'REVOKED' })
+    expect(fs.readFileSync(target, 'utf8')).toBe('AFTER')
+    expect(fs.readdirSync(value.workspace)).toEqual(['target.txt'])
+  })
+
   it('does not authorize a replacement root after the rollback preflight has started', async () => {
     const value = await fixture()
     const target = path.join(value.workspace, 'target.txt')

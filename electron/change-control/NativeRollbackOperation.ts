@@ -10,6 +10,8 @@ export class NativeBoundaryError extends Error {
 
 const MAX_FRAME = 32 * 1024 * 1024 * 2 + 16384
 const activeOperations = new Set<NativeRollbackOperation>()
+let admissionEpoch = 0
+export function nativeRollbackAdmissionEpoch() { return admissionEpoch }
 const encode = (value: string | Buffer) => Buffer.from(value).toString('hex')
 
 export function nativeRollbackWorkerPath() {
@@ -40,7 +42,7 @@ export class NativeRollbackOperation {
   private buffered = ''
   private pending?: { resolve(value: string[]): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }
 
-  private constructor(readonly rootIdentity: string, readonly recoveryIdentity: string) {
+  private constructor(readonly rootIdentity: string, readonly recoveryIdentity: string, private readonly epoch: number) {
     this.child = spawn(nativeRollbackWorkerPath(), [], {
       shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
       env: { NODE_ENV: 'production', VITE_DEV_SERVER_URL: '', APP_ROOT: '', VITE_PUBLIC: '', LANG: 'C.UTF-8', ...(process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot } : {}) },
@@ -74,10 +76,11 @@ export class NativeRollbackOperation {
     })
   }
 
-  static async create(workspace: string, recoveryDirectory: string, expectedRootIdentity?: string) {
+  static async create(workspace: string, recoveryDirectory: string, expectedRootIdentity?: string, expectedEpoch = admissionEpoch) {
     return withRollbackRootBinding(workspace, expectedRootIdentity, (rootIdentity) =>
       withRollbackRootBinding(recoveryDirectory, undefined, async (recoveryIdentity) => {
-        const operation = new NativeRollbackOperation(rootIdentity ?? '', recoveryIdentity ?? '')
+        if (expectedEpoch !== admissionEpoch) throw new NativeBoundaryError('REVOKED', 'Rollback preparation crossed a shutdown boundary.')
+        const operation = new NativeRollbackOperation(rootIdentity ?? '', recoveryIdentity ?? '', expectedEpoch)
         try {
           await operation.request('INIT', encode(workspace), encode(operation.rootIdentity), encode(recoveryDirectory), encode(operation.recoveryIdentity))
           return operation
@@ -107,6 +110,7 @@ export class NativeRollbackOperation {
   }
 
   private request(command: string, ...fields: string[]): Promise<string[]> {
+    if (this.epoch !== admissionEpoch && command !== 'JOURNAL' && command !== 'REVOKE') this.state = this.state === 'CLOSED' ? 'CLOSED' : 'REVOKED'
     if (this.state === 'CLOSED' || (this.state === 'REVOKED' && command !== 'JOURNAL' && command !== 'REVOKE')) return Promise.reject(new NativeBoundaryError('REVOKED', 'No new mutation after capability loss.'))
     if (fields.reduce((size, field) => size + field.length + 1, command.length) > MAX_FRAME) return Promise.reject(new NativeBoundaryError('UNSUPPORTED', 'Native request exceeded budget.'))
     if (this.pending) return Promise.reject(new NativeBoundaryError('CONFLICT', 'Native operations must be serialized.'))
@@ -141,5 +145,6 @@ export class NativeRollbackOperation {
 }
 
 export async function closeNativeRollbackOperations() {
+  admissionEpoch += 1
   await Promise.all([...activeOperations].map((operation) => operation.close()))
 }

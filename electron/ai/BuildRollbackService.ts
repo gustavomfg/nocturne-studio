@@ -1,7 +1,7 @@
 import type { LocalDatabase } from '../database/Database'
 import type { SnapshotRollbackService } from '../change-control/SnapshotRollbackService'
 import { ChangeDecisionService } from '../change-control/ChangeDecisionService'
-import { protectedRollbackSupported, withRollbackRootBinding } from '../change-control/NativeRollbackOperation'
+import { nativeRollbackAdmissionEpoch, protectedRollbackSupported, withRollbackRootBinding } from '../change-control/NativeRollbackOperation'
 
 export interface BuildRollbackStatus {
   available: boolean
@@ -35,6 +35,7 @@ export class BuildRollbackService {
   }
 
   async rollback(conversationId: string, workspace: string, expectedExecutionId?: string) {
+    const admissionEpoch = nativeRollbackAdmissionEpoch()
     const value = this.latest(conversationId)
     const status = this.status(conversationId)
     if (!value || value.execution.workspace !== workspace || !status.available) throw new Error(status.reason ?? 'Rollback indisponível.')
@@ -46,7 +47,7 @@ export class BuildRollbackService {
       const restored: string[] = []
       for (const change of this.database.changeSets.listChanges(value.changeSet.id)) {
         if (!status.files.includes(change.relativePath)) continue
-        await decisions.decide(value.execution.id, change.id, 'rejected', workspace, true, rootIdentity)
+        await decisions.decide(value.execution.id, change.id, 'rejected', workspace, true, rootIdentity, admissionEpoch)
         restored.push(change.relativePath)
       }
       return { restored }
