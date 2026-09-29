@@ -429,7 +429,7 @@ function createUpdater(configPath, baseUrl, versionOverride) {
   updater.disableDifferentialDownload = true
   // The harness itself runs under the development Electron binary.  Override
   // only the adapter's identity so the real updater evaluates the packaged
-  // published 1.0.0 fixture, rather than Electron's own version (43.1.1).
+  // published base fixture, rather than Electron's own version (43.1.1).
   const baseVersion = new updater.currentVersion.constructor(versionOverride)
   Object.defineProperty(updater.app, 'version', { configurable: true, value: versionOverride })
   updater.currentVersion = baseVersion
