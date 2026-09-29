@@ -62,9 +62,12 @@ the selected SHA; absence of evidence means `NOT VERIFIED`, not PASS.
 | Dogfooding | Actual product flows with isolated user data; no fabricated suggestion/decision state |
 | Release metadata | `npm run verify:release-metadata`; candidate/version/updater identity consistent |
 
-CodeQL default setup currently analyzes Actions and JavaScript/TypeScript, **not
-the C++ worker**. C++ static analysis is a recommended follow-up, not a claimed
-green gate. `.gitignore` indexing, global retention/GC and generic editor selection
+CodeQL default setup now includes Actions, JavaScript/TypeScript and C/C++.
+[Run 36515332891](https://github.com/gustavomfg/nocturne-studio/actions/runs/36515332891)
+analyzed `82d2577`; C++ used build mode `none` and reported 1 of 2 source/header
+files scanned. This is Linux-hosted static analysis, **not coverage certification
+of every Windows/macOS conditional branch**. The final run and outstanding alert
+triage belong in the exact-SHA execution ledger. `.gitignore` indexing, global retention/GC and generic editor selection
 remain outside this candidate's implemented contract. Retained rollback artifacts
 must not be automatically deleted when ownership is uncertain.
 
