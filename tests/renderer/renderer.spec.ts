@@ -562,6 +562,32 @@ test.describe('renderer do produto', () => {
     await expect(page.getByText('Resposta recuperada do processo principal.')).toBeVisible()
   })
 
+  test('eventos descartados não substituem a identidade da execução ativa', async ({ page }) => {
+    await ready(page)
+    await page.evaluate(() => {
+      const requested: string[] = []
+      window.nocturne.changeControl.get = async (_conversation, executionId) => { requested.push(executionId); return null }
+      Object.defineProperty(window, '__identityRequests', { configurable: true, value: requested })
+      const bridge = (window as unknown as { __nocturneTest: { emitEvent(value: unknown): void } }).__nocturneTest
+      bridge.emitEvent({ method: 'warning', executionId: 'current-execution', runId: 'current-run', sequence: 10, params: { message: 'Current run' } })
+    })
+    // Reloads may repeat legitimately; no request may acquire a discarded identity.
+    const requests = () => page.evaluate(() => [...new Set((window as unknown as { __identityRequests: string[] }).__identityRequests)])
+    await expect.poll(requests).toEqual(['current-execution'])
+    await page.evaluate(async () => {
+      const bridge = (window as unknown as { __nocturneTest: { emitEvent(value: unknown): void } }).__nocturneTest
+      bridge.emitEvent({ method: 'warning', executionId: 'foreign-execution', runId: 'foreign-run', sequence: 1, params: { conversationId: 'other-conversation', message: 'Foreign run' } })
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    })
+    expect(await requests()).toEqual(['current-execution'])
+    await page.evaluate(async () => {
+      const bridge = (window as unknown as { __nocturneTest: { emitEvent(value: unknown): void } }).__nocturneTest
+      bridge.emitEvent({ method: 'warning', executionId: 'duplicate-execution', runId: 'current-run', sequence: 10, params: { message: 'Duplicate sequence' } })
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    })
+    expect(await requests()).toEqual(['current-execution'])
+  })
+
   test('mantém o acionador do inspector fora do painel quando a conversa passa a rolar', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 760 })
     await ready(page)

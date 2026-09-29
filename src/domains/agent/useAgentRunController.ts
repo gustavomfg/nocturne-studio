@@ -172,7 +172,6 @@ export function useAgentRunController({ hasNewerMessages, composerRef, isInterac
 
   const handleAgentEvent = useCallback((event: AgentEvent) => {
     const store = useAppStore.getState()
-    if (event.executionId) store.setExecutionId(event.executionId)
     const conversationId = typeof event.params.conversationId === 'string' ? event.params.conversationId : undefined
     const runId = typeof event.runId === 'string'
       ? event.runId
@@ -195,6 +194,7 @@ export function useAgentRunController({ hasNewerMessages, composerRef, isInterac
       if (runId && event.method === 'turn/completed') retiredRunIdsRef.current.add(runId)
       const recovered = event.method === 'turn/completed' ? persistedAssistantMessage(event.params.persistedMessage, conversationId) : null
       if (recovered && store.activeId === conversationId && !store.messages.some((message) => message.id === recovered.id)) {
+        if (event.executionId) store.setExecutionId(event.executionId)
         store.addMessage(recovered)
         useAppStore.setState({ streaming: '' })
         void dependenciesRef.current.onRefreshCollections(conversationId)
@@ -202,6 +202,8 @@ export function useAgentRunController({ hasNewerMessages, composerRef, isInterac
       }
       return
     }
+    // Identity is state too: rejected/late events must not mutate it before guards.
+    if (event.executionId) store.setExecutionId(event.executionId)
     routeAgentEvent(event, {
       stream: queueStreamDelta,
       activityDetail: appendActivityDetail,
