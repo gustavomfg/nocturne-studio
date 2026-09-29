@@ -194,7 +194,7 @@ public:
       // No delete-on-close or name-based cleanup; artifacts remain on conflict.
       static unsigned serial=0;const auto name=".nocturne-rollback-stage-"+std::to_string(GetCurrentProcessId())+"-"+std::to_string(++serial);
       staged.reset(checked(relativeOpen(parent.value,name,false,true,true,true)));writeAll(staged.value,stagedBytes);flush(staged.value);
-      require(readBytes(staged.value)==stagedBytes,"Stage changed");prepared=true;return "STAGED\t"+hex(identity(staged.value));
+      require(readBytes(staged.value)==stagedBytes,"Stage changed");prepared=true;return "STAGED\t"+hex(identity(staged.value))+"\t"+hex(name);
     }
     if(cmd=="DISPLACE"){
       require(args.size()==2&&opened&&!moved&&!published,"Invalid displacement state");verifyObserved();displacedName=unhex(args[1]);

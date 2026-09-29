@@ -21,7 +21,7 @@ export function nativeRollbackWorkerPath() {
   return path.resolve(directory, path.basename(directory) === 'dist-electron' ? '..' : '../..', 'dist-native', name)
 }
 
-export function protectedRollbackSupported() { return process.platform === 'linux' || process.platform === 'win32' }
+export function protectedRollbackSupported() { return ['linux', 'win32', 'darwin'].includes(process.platform) }
 
 /** Read-only root custody spanning async preparation or several file decisions. */
 export async function withRollbackRootBinding<T>(workspace: string, expectedIdentity: string | undefined, action: (identity: string | undefined) => Promise<T>): Promise<T> {
@@ -113,7 +113,8 @@ export class NativeRollbackOperation {
   async stage(content: Buffer, mode: number) {
     const response = await this.request('STAGE', encode(content), String(mode & 0o7777))
     if (response[0] !== 'STAGED') throw new NativeBoundaryError('UNKNOWN', 'Invalid native stage confirmation.')
-    return { identity: Buffer.from(response[1] ?? '', 'hex').toString() }
+    // An artifact label is recovery evidence, never authority for publication or cleanup.
+    return { identity: Buffer.from(response[1] ?? '', 'hex').toString(), artifact: Buffer.from(response[2] ?? '', 'hex').toString() || null }
   }
   async next() { return this.request('NEXT') }
   async displace(retentionEntry: string) { return this.request('DISPLACE', encode(retentionEntry)) }

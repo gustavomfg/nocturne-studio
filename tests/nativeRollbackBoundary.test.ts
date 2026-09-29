@@ -30,7 +30,7 @@ function peer(source: string, paths: string[]) {
 }
 
 describe.runIf(protectedRollbackSupported())('native rollback capabilities (real filesystem)', () => {
-  it.runIf(process.platform === 'win32')('publishes the retained source HANDLE after a same-user peer rebinds its actual staging name', async () => {
+  it.runIf(process.platform === 'win32' || process.platform === 'darwin')('publishes/derives from retained S after a same-user peer rebinds its actual staging name to X', async () => {
     const value = await fixture()
     await value.operation.inspect('parent/target.txt')
     await value.operation.stage(Buffer.from('AUTHORIZED-S'), 0o666)
@@ -42,7 +42,8 @@ describe.runIf(protectedRollbackSupported())('native rollback capabilities (real
     await value.operation.displace('.nocturne-rollback-test.after')
     await value.operation.publish()
     expect(fs.readFileSync(value.target, 'utf8')).toBe('AUTHORIZED-S')
-    expect(fs.statSync(value.target, { bigint: true }).ino).toBe(originalIdentity)
+    if (process.platform === 'win32') expect(fs.statSync(value.target, { bigint: true }).ino).toBe(originalIdentity)
+    else expect(fs.statSync(value.target, { bigint: true }).ino).not.toBe(originalIdentity)
     expect(fs.readFileSync(stage, 'utf8')).toBe('SUBSTITUTE-X')
     expect(fs.readFileSync(path.join(path.dirname(value.target), '.nocturne-rollback-test.after'), 'utf8')).toBe('AFTER')
   })
@@ -79,7 +80,7 @@ describe.runIf(protectedRollbackSupported())('native rollback capabilities (real
     expect(fs.readFileSync(`${value.target}.tmp`, 'utf8')).toBe('SUBSTITUTE-X')
   })
 
-  it('revokes after a separate process replaces the acquired parent with an external symlink', async () => {
+  it.runIf(process.platform !== 'win32')('revokes after a separate process replaces the acquired parent with an external symlink', async () => {
     const value = await fixture()
     await value.operation.inspect('parent/target.txt')
     await value.operation.stage(Buffer.from('BEFORE'), 0o644)
@@ -89,6 +90,38 @@ describe.runIf(protectedRollbackSupported())('native rollback capabilities (real
     expect(fs.readFileSync(path.join(value.outside, 'target.txt'), 'utf8')).toBe('OUTSIDE')
     expect(fs.readdirSync(value.outside)).toEqual(['target.txt'])
     expect(fs.readFileSync(path.join(value.workspace, 'parent-retained', 'target.txt'), 'utf8')).toBe('AFTER')
+  })
+
+  it.runIf(process.platform === 'win32')('revokes after a peer redirects an acquired parent with no open leaf handle', async () => {
+    const value = await fixture()
+    fs.unlinkSync(value.target)
+    await value.operation.inspect('parent/target.txt')
+    peer('const fs=require("node:fs");const [p,o]=process.argv.slice(1);fs.renameSync(p,p+"-retained");fs.symlinkSync(o,p,"junction")', [path.dirname(value.target), value.outside])
+    await expect(value.operation.stage(Buffer.from('BEFORE'), 0o666)).rejects.toMatchObject({ outcome: 'REVOKED' })
+    await expect(value.operation.publish()).rejects.toMatchObject({ outcome: 'REVOKED' })
+    expect(fs.readFileSync(path.join(value.outside, 'target.txt'), 'utf8')).toBe('OUTSIDE')
+    expect(fs.readdirSync(value.outside)).toEqual(['target.txt'])
+    expect(fs.readdirSync(path.join(value.workspace, 'parent-retained'))).toEqual([])
+  })
+
+  it.runIf(process.platform === 'win32')('observes NTFS refusal of parent rename while data handles are open, without claiming universal pinning', async () => {
+    const value = await fixture()
+    await value.operation.inspect('parent/target.txt')
+    await value.operation.stage(Buffer.from('BEFORE'), 0o666)
+    peer('const fs=require("node:fs");try{fs.renameSync(process.argv[1],process.argv[1]+"-retained");process.exit(2)}catch(e){if(e.code!=="EPERM"&&e.code!=="EBUSY")throw e}', [path.dirname(value.target)])
+    await value.operation.displace('.nocturne-rollback-test.after')
+    await value.operation.publish()
+    expect(fs.readFileSync(value.target, 'utf8')).toBe('BEFORE')
+    expect(fs.readdirSync(value.outside)).toEqual(['target.txt'])
+  })
+
+  it.runIf(process.platform === 'win32')('rejects a junction leaf rather than following it', async () => {
+    const value = await fixture()
+    fs.unlinkSync(value.target)
+    fs.symlinkSync(value.outside, value.target, 'junction')
+    await expect(value.operation.inspect('parent/target.txt')).rejects.toMatchObject({ outcome: 'CONFLICT' })
+    expect(fs.readFileSync(path.join(value.outside, 'target.txt'), 'utf8')).toBe('OUTSIDE')
+    expect(fs.readdirSync(value.outside)).toEqual(['target.txt'])
   })
 
   it('preserves a concurrent destination and displaced AFTER; does not compensate', async () => {
@@ -159,7 +192,13 @@ describe.runIf(protectedRollbackSupported())('native rollback capabilities (real
     await value.operation.publish()
     await value.operation.close()
     expect(fs.readFileSync(value.target)).toEqual(Buffer.alloc(0))
-    expect(fs.readdirSync(path.dirname(value.target)).sort()).toEqual(['.nocturne-rollback-test.after', 'target.txt'])
+    if (process.platform !== 'darwin') expect(fs.readdirSync(path.dirname(value.target)).sort()).toEqual(['.nocturne-rollback-test.after', 'target.txt'])
+    else {
+      const stages = fs.readdirSync(path.dirname(value.target)).filter((name) => name.startsWith('.nocturne-rollback-stage-'))
+      expect(stages).toHaveLength(1)
+      expect(fs.readFileSync(path.join(path.dirname(value.target), stages[0]))).toEqual(Buffer.alloc(0))
+      expect(fs.readFileSync(path.join(path.dirname(value.target), '.nocturne-rollback-test.after'), 'utf8')).toBe('AFTER')
+    }
   })
 
   it('rejects traversal and preserves journal intent even after revocation', async () => {

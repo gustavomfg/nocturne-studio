@@ -95,7 +95,7 @@ export class SnapshotRollbackService {
       status: 'running', restored, paths: restorations.map((item) => item.relativePath),
       step: 'acquire', retained: [] as string[], outcome: null as BoundaryOutcome | null,
       rootIdentity: '', recoveryIdentity: '',
-      observations: [] as Array<{ path: string; parentIdentity: string; afterIdentity: string; stagedIdentity: string | null; beforeHash: string | null; afterHash: string | null }>,
+      observations: [] as Array<{ path: string; parentIdentity: string; afterIdentity: string; stagedIdentity: string | null; stagedEntry: string | null; beforeHash: string | null; afterHash: string | null }>,
     }
     let operation: NativeRollbackOperation | undefined
     let currentPath = restorations[0].relativePath
@@ -120,12 +120,14 @@ export class SnapshotRollbackService {
           : { exists: false, kind: 'missing', mode: null, size: null, hash: null }
         if (!sameState(current, restoration.after)) throw new NativeBoundaryError('CONFLICT', 'O arquivo não corresponde ao AFTER.')
         if ((restoration.before.exists && restoration.before.kind !== 'file') || (restoration.after.exists && restoration.after.kind !== 'file')) throw new NativeBoundaryError('UNSUPPORTED', 'Tipo de arquivo não restaurável.')
-        const observation = { path: currentPath, parentIdentity: observed.parentIdentity, afterIdentity: observed.identity, stagedIdentity: null as string | null, beforeHash: restoration.before.hash, afterHash: restoration.after.hash }
+        const observation = { path: currentPath, parentIdentity: observed.parentIdentity, afterIdentity: observed.identity, stagedIdentity: null as string | null, stagedEntry: null as string | null, beforeHash: restoration.before.hash, afterHash: restoration.after.hash }
         journal.observations.push(observation)
         if (restoration.before.exists) {
           const content = await this.checkpoints.readContent(restoration.before)
           if (createHash('sha256').update(content).digest('hex') !== restoration.before.hash) throw new NativeBoundaryError('CONFLICT', 'Checkpoint corrompido.')
-          observation.stagedIdentity = (await operation.stage(content, restoration.before.mode ?? 0o600)).identity
+          const staged = await operation.stage(content, restoration.before.mode ?? 0o600)
+          observation.stagedIdentity = staged.identity
+          observation.stagedEntry = staged.artifact ? path.posix.join(path.posix.dirname(currentPath.replace(/\\/g, '/')), staged.artifact) : null
         }
         const retentionEntry = `.nocturne-rollback-${operationId}-${index}.after`
         journal.step = `displace-intent:${currentPath}`

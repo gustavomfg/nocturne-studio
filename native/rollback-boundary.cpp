@@ -6,14 +6,20 @@
 #include <stdexcept>
 #include <cstdint>
 
-#if defined(__linux__)
+#if defined(__linux__) || defined(__APPLE__)
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#if defined(__linux__)
 #include <sys/statfs.h>
 #include <sys/syscall.h>
 #include <linux/openat2.h>
 #include <linux/magic.h>
+#else
+#include <sys/mount.h>
+#include <sys/clonefile.h>
+#include <cstring>
+#endif
 #include <cerrno>
 
 static constexpr size_t MAX_BYTES = 32 * 1024 * 1024;
@@ -67,10 +73,29 @@ static std::string identity(int fd) {
   return std::to_string(static_cast<uint64_t>(s.st_dev))+":"+std::to_string(static_cast<uint64_t>(s.st_ino));
 }
 static int constrained(int parent,const std::string& name,bool directory,bool crossing=false) {
+#if defined(__linux__)
   open_how how{};
   how.flags=O_RDONLY|O_CLOEXEC|O_NOFOLLOW|(directory?O_DIRECTORY:O_NONBLOCK);
   how.resolve=RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS|RESOLVE_NO_MAGICLINKS|(crossing?0:RESOLVE_NO_XDEV);
   return static_cast<int>(syscall(SYS_openat2,parent,name.c_str(),&how,sizeof(how)));
+#else
+  require(!name.empty()&&name[0]!='/'&&name.find('\0')==std::string::npos,"Invalid relative acquisition");
+  FD current(checked(fcntl(parent,F_DUPFD_CLOEXEC,0)));
+  const auto device=metadata(parent).st_dev;
+  if(name==".")return checked(fcntl(current.value,F_DUPFD_CLOEXEC,0));
+  std::istringstream components(name);std::string component;
+  while(std::getline(components,component,'/')) {
+    require(!component.empty()&&component!="."&&component!="..","Invalid component");
+    const bool final=components.peek()==std::char_traits<char>::eof();
+    const int flags=O_RDONLY|O_CLOEXEC|O_NOFOLLOW|((!final||directory)?O_DIRECTORY:O_NONBLOCK);
+    int fd=openat(current.value,component.c_str(),flags);
+    if(fd<0)return -1;
+    FD next(fd);
+    if(!crossing&&metadata(next.value).st_dev!=device){errno=EXDEV;return -1;}
+    current.reset(checked(fcntl(next.value,F_DUPFD_CLOEXEC,0)));
+  }
+  return checked(fcntl(current.value,F_DUPFD_CLOEXEC,0));
+#endif
 }
 static int acquireRoot(const std::string& path) {
   require(path.size()>1 && path[0]=='/' && path.find('\0')==std::string::npos,"Invalid root");
@@ -111,7 +136,7 @@ static void validRelative(const std::string& value) {
 
 class Operation {
   FD root, recovery, parent, observed, staged, displaced, log, snapshot;
-  std::string rootPath,rootId,recoveryPath,recoveryId,parentPath,parentId,leaf,observedId,observedBytes,stagedBytes,displacedName;
+  std::string rootPath,rootId,recoveryPath,recoveryId,parentPath,parentId,leaf,observedId,observedBytes,stagedBytes,displacedName,stagedName;
   mode_t observedMode=0,stagedMode=0;
   bool active=false,opened=false,prepared=false,moved=false,published=false;
   void admit() {
@@ -146,8 +171,13 @@ public:
       require(identity(root.value)==rootId && identity(recovery.value)==recoveryId,"Root identity changed");
       struct statfs filesystem{};
       require(fstatfs(root.value,&filesystem)==0,"Filesystem unavailable");
+#if defined(__linux__)
       if(filesystem.f_type!=TMPFS_MAGIC && filesystem.f_type!=EXT4_SUPER_MAGIC && filesystem.f_type!=BTRFS_SUPER_MAGIC)
         throw Failure("UNSUPPORTED","V1 requires local tmpfs, ext4 or Btrfs");
+#else
+      if(std::strcmp(filesystem.f_fstypename,"apfs")!=0 || !(filesystem.f_flags&MNT_LOCAL))
+        throw Failure("UNSUPPORTED","V1 requires local APFS");
+#endif
       log.reset(checked(openat(recovery.value,"steps.jsonl",O_WRONLY|O_CREAT|O_EXCL|O_CLOEXEC|O_NOFOLLOW,0600)));
       snapshot.reset(checked(openat(recovery.value,"operation.json",O_RDWR|O_CREAT|O_EXCL|O_CLOEXEC|O_NOFOLLOW,0600)));
       flush(recovery.value);active=true;return "OK";
@@ -166,7 +196,7 @@ public:
       require(published,"Previous file not verified");
       observed.reset();staged.reset();displaced.reset();parent.reset();
       opened=false;prepared=false;moved=false;published=false;
-      observedBytes.clear();observedId.clear();stagedBytes.clear();return "OK";
+      observedBytes.clear();observedId.clear();stagedBytes.clear();stagedName.clear();return "OK";
     }
     if(cmd=="OPEN") {
       require(args.size()==2 && !opened,"File already acquired");
@@ -185,12 +215,20 @@ public:
       require(args.size()==3 && opened && !prepared,"Invalid staging state");
       stagedBytes=unhex(args[1]);stagedMode=static_cast<mode_t>(std::stoul(args[2]));
       require((stagedMode & 07000)==0,"Special permission bits unsupported");
+#if defined(__linux__)
       // No basename ever identifies this source. Missing primitive fails closed.
       staged.reset(checked(openat(parent.value,".",O_TMPFILE|O_RDWR|O_CLOEXEC,0600)));
+#else
+      // A named artifact exists, but ONLY the retained FD selects the source.
+      // Never unlink/rename/reopen this name, including during failure cleanup.
+      static unsigned serial=0;
+      const auto name=".nocturne-rollback-stage-"+std::to_string(getpid())+"-"+std::to_string(++serial);
+      staged.reset(checked(openat(parent.value,name.c_str(),O_RDWR|O_CREAT|O_EXCL|O_CLOEXEC|O_NOFOLLOW,0600)));stagedName=name;
+#endif
       writeAll(staged.value,stagedBytes);
       require(fchmod(staged.value,stagedMode & 0777)==0,"Stage mode failed");flush(staged.value);
       require(readBytes(staged.value)==stagedBytes,"Staged bytes changed");prepared=true;
-      return "STAGED\t"+hex(identity(staged.value));
+      return "STAGED\t"+hex(identity(staged.value))+"\t"+hex(stagedName);
     }
     if(cmd=="DISPLACE") {
       require(args.size()==2 && opened && !moved && !published,"Invalid displacement state");
@@ -199,7 +237,11 @@ public:
         && displacedName.find('\0')==std::string::npos,"Invalid retention entry");
       if(observed.value<0) return "OK";
       // No source-inode CAS is claimed. Preserve the actual entry selected by rename.
+#if defined(__linux__)
       checked(static_cast<int>(syscall(SYS_renameat2,parent.value,leaf.c_str(),parent.value,displacedName.c_str(),1)));
+#else
+      checked(renameatx_np(parent.value,leaf.c_str(),parent.value,displacedName.c_str(),RENAME_EXCL));
+#endif
       moved=true;flush(parent.value);
       displaced.reset(checked(openLeaf(displacedName)));
       require(identity(displaced.value)==observedId && metadata(displaced.value).st_mode==observedMode
@@ -210,13 +252,22 @@ public:
       require(args.size()==1 && opened && !published && (observed.value<0 || moved),"Invalid publication state");
       if(prepared) {
         require(readBytes(staged.value)==stagedBytes,"Staged bytes changed");
+#if defined(__linux__)
         const auto source="/proc/self/fd/"+std::to_string(staged.value);
         // This retained proc/self FD reference selects the anonymous source;
         // never fall back to a temporary filename or AT_EMPTY_PATH privilege.
         checked(linkat(AT_FDCWD,source.c_str(),parent.value,leaf.c_str(),AT_SYMLINK_FOLLOW));published=true;
+#else
+        // Controlled derivation, NOT same-inode publication. The source is the
+        // held FD even when an attacker replaces its diagnostic staging name.
+        checked(fclonefileat(staged.value,parent.value,leaf.c_str(),CLONE_NOOWNERCOPY));published=true;
+#endif
         flush(parent.value);
         FD produced(checked(openLeaf(leaf)));
-        require(identity(produced.value)==identity(staged.value) && readBytes(produced.value)==stagedBytes
+#if defined(__linux__)
+        require(identity(produced.value)==identity(staged.value),"Published source identity diverged");
+#endif
+        require(readBytes(produced.value)==stagedBytes
           && (metadata(produced.value).st_mode & 0777)==(stagedMode & 0777),"Produced state diverged");
       } else {
         int fd=openLeaf(leaf);if(fd>=0) { FD unexpected(fd);throw Failure("CONFLICT","Deleted entry recreated"); }

@@ -93,7 +93,7 @@ describe.runIf(protectedRollbackSupported())('SnapshotRollbackService protected 
     expect(fs.readFileSync(path.join(`${value.workspace}-retained`, 'target.txt'), 'utf8')).toBe('AFTER')
   })
 
-  it('revokes the real rollback after an external parent swap; preserves external bytes and journal truth', async () => {
+  it.runIf(process.platform !== 'win32')('revokes the real rollback after an external parent swap; preserves external bytes and journal truth', async () => {
     const value = await fixture()
     const parent = path.join(value.workspace, 'parent')
     const outside = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-rollback-outside-')))
@@ -118,6 +118,32 @@ describe.runIf(protectedRollbackSupported())('SnapshotRollbackService protected 
     expect(fs.statSync(path.join(outside, 'target.txt')).ino).toBe(outsideIdentity)
     expect(fs.readdirSync(outside)).toEqual(['target.txt'])
     expect(fs.readFileSync(path.join(value.workspace, 'parent-retained', 'target.txt'), 'utf8')).toBe('AFTER')
+    expect(JSON.parse(fs.readFileSync(path.join(result.recoveryDirectory!, 'operation.json'), 'utf8'))).toMatchObject({ status: 'conflicted', outcome: 'REVOKED', restored: [] })
+  })
+  it.runIf(process.platform === 'win32')('revokes restoration of a deleted leaf after a real junction swap, before staging', async () => {
+    const value = await fixture()
+    const parent = path.join(value.workspace, 'parent')
+    const outside = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-rollback-outside-')))
+    directories.push(outside)
+    fs.mkdirSync(parent)
+    const target = path.join(parent, 'target.txt')
+    fs.writeFileSync(target, 'BEFORE')
+    fs.writeFileSync(path.join(outside, 'target.txt'), 'PROTECTED')
+    const before = await value.checkpoints.capture(value.executionId, value.workspace, 'before')
+    fs.unlinkSync(target)
+    const after = await value.checkpoints.capture(value.executionId, value.workspace, 'after')
+    const inspect = NativeRollbackOperation.prototype.inspect
+    vi.spyOn(NativeRollbackOperation.prototype, 'inspect').mockImplementation(async function (this: NativeRollbackOperation, relative) {
+      const result = await inspect.call(this, relative)
+      const peer = spawnSync(process.execPath, ['-e', 'const fs=require("node:fs");const [p,o]=process.argv.slice(1);fs.renameSync(p,p+"-retained");fs.symlinkSync(o,p,"junction")', parent, outside], { shell: false, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } })
+      expect(peer.status).toBe(0)
+      return result
+    })
+    const result = await value.rollback.rollback(value.executionId, value.workspace, before.checkpoint.id, after.checkpoint.id)
+    expect(result).toMatchObject({ status: 'conflicted', restored: [], boundaryOutcome: 'REVOKED' })
+    expect(fs.readFileSync(path.join(outside, 'target.txt'), 'utf8')).toBe('PROTECTED')
+    expect(fs.readdirSync(outside)).toEqual(['target.txt'])
+    expect(fs.readdirSync(`${parent}-retained`)).toEqual([])
     expect(JSON.parse(fs.readFileSync(path.join(result.recoveryDirectory!, 'operation.json'), 'utf8'))).toMatchObject({ status: 'conflicted', outcome: 'REVOKED', restored: [] })
   })
   it('reverte delete e rename como operações de bytes sem depender de Git', async () => {
