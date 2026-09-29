@@ -2,7 +2,7 @@ name: CI · native rollback capabilities
 on:
   workflow_dispatch:
   push:
-    branches: [stabilization/native-rollback-v1]
+    branches: [main, stabilization/native-rollback-v1]
     paths:
       - native/**
       - electron/change-control/NativeRollbackOperation.ts
@@ -35,8 +35,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture
-          Get-Volume | Select-Object DriveLetter,FileSystemType
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture | Format-Table | Out-String
+          Get-Volume | Select-Object DriveLetter,FileSystemType | Format-Table | Out-String
           & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationVersion
       - run: npm ci
       - run: npm run typecheck
