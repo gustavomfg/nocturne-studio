@@ -46,6 +46,15 @@ and dev-inclusive audits both reported zero vulnerabilities after compatible
 lockfile remediation. Renderer/package/updater/final hosted results must be
 recorded separately at the final candidate, not inferred from these results.
 
+A subsequent security audit identified advisories in the bundled Electron
+`43.1.1` runtime. The candidate now pins patched Electron `43.5.0` without
+changing the adopted major line; the development `allowScripts` entry and lockfile
+match. Local pre-candidate validation passed 591 unit/integration tests with
+12 skips across 94 files, 63 renderer tests, Electron/SQLite ABI, Linux packaged
+smoke and recovery, and production plus dev-inclusive audits with zero reported
+vulnerabilities. Cross-platform packages and all gates still require evidence
+at the final clean candidate SHA.
+
 ## Final-candidate gates
 
 The final stabilization report and CI artifacts are the execution ledger for

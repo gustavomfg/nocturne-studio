@@ -11,12 +11,15 @@
   execution, and failed or invalid Reviews cannot silently resolve earlier findings.
 - Concurrent Codex startup requests wait for the pending compatibility handshake
   instead of treating a live but uninitialized App Server as ready.
+- Disposing a window permanently revokes pending Codex reconnects so delayed
+  compatibility probes cannot restart its App Server during shutdown.
 - Validation rechecks authorization after asynchronous preparation. Project index
   relations are invalidated when new targets change import resolution, and older
   same-session refreshes cannot overwrite newer renderer state.
 - Linux terminal launch discovers supported installed applications without requiring
   `x-terminal-emulator`; Windows workspace paths are not interpolated into a shell command.
-- Build/test dependency advisories were remediated without changing adopted major lines.
+- Build/test dependency advisories and the bundled Electron runtime advisories
+  were remediated without changing adopted major lines.
 - Unsigned macOS builds explicitly refuse automatic installer handoff and explain
   manual DMG upgrades; rehearsal cleanup/deadlines no longer hang indefinitely.
 
