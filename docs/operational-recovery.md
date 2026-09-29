@@ -28,6 +28,11 @@ this process. Source records and recovery entries remain workspace-scoped in SQL
 
 ## Owned process shutdown
 
+Closing a window detaches its IPC resource owner synchronously. Reopening can
+install a new owner while the old cleanup drains, without the old completion
+clearing the new owner. Application shutdown waits for both generations before
+closing SQLite, including when one disposer reports a failure.
+
 Validation and Codex transport cleanup have bounded deadlines. Codex retains
 cleanup ownership after its direct child exits, closes its streams, sends TERM
 and escalates the owned POSIX process group to KILL after three seconds, even if

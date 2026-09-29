@@ -20,6 +20,7 @@ import packageMetadata from '../package.json'
 import { FatalShutdownController, type FatalShutdownEvent } from './runtime/FatalShutdown'
 import { createNormalShutdownHandler } from './runtime/NormalShutdown'
 import { runPackageSmoke } from './runtime/PackageSmoke'
+import { WindowIpcLifecycle } from './runtime/WindowIpcLifecycle'
 import { createPackagedRecoveryHarness } from './runtime/PackagedRecoveryHarness'
 import { isMainProcessOperational, markMainProcessFatal, markMainProcessTerminated } from './runtime/MainProcessState'
 
@@ -46,7 +47,7 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock()
 let win: BrowserWindow | null = null
 let database: LocalDatabase | null = null
 let logger: Logger | null = null
-let disposeIpc: (() => void | Promise<void>) | null = null
+const windowIpc = new WindowIpcLifecycle()
 let packageSmokeScheduled = false
 let packagedRecoveryScheduled = false
 let packagedRecoveryStage = 'bootstrap'
@@ -59,8 +60,7 @@ let modelCatalog: ModelCatalogService | null = null
 let shutdownResourcesPromise: Promise<void> | null = null
 
 async function disposeWindowIpc() {
-  await disposeIpc?.()
-  disposeIpc = null
+  await windowIpc.dispose()
 }
 
 async function shutdownResources() {
@@ -241,7 +241,7 @@ function createWindow() {
   })
 
   logger.info('app', 'Janela principal iniciada', { packaged: app.isPackaged, renderer: softwareRendering ? 'software' : 'hardware' })
-  disposeIpc = registerIpc(
+  windowIpc.install(registerIpc(
     currentWindow,
     database,
     logger,
@@ -256,7 +256,7 @@ function createWindow() {
     modelRegistry,
     providerRegistry,
     updateService ?? undefined,
-  )
+  ))
   if (
     app.isPackaged &&
     process.env.NOCTURNE_PACKAGE_SMOKE_OUTPUT &&
