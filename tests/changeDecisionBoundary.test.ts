@@ -11,6 +11,7 @@ import { ChangeDecisionService } from '../electron/change-control/ChangeDecision
 import { ChangeDiffService } from '../electron/change-control/ChangeDiffService'
 import { ChangeHunkService } from '../electron/change-control/ChangeHunkService'
 import { SnapshotRollbackService } from '../electron/change-control/SnapshotRollbackService'
+import { protectedRollbackSupported } from '../electron/change-control/NativeRollbackOperation'
 import { registerChangeControlIpc } from '../electron/ipc/registerChangeControlIpc'
 import type { SafeIpcMain } from '../electron/ipc/safeIpc'
 import { IPC_CHANNELS } from '../shared/ipc/channels'
@@ -81,7 +82,7 @@ it('rejeição de decisão terminal nunca modifica bytes pelo IPC', async () => 
   expect(value.database.changeSets.getChange(value.captured.changes[0].id)?.status).toBe('accepted')
 })
 
-it.runIf(process.platform === 'linux')('serializa decisões concorrentes e mantém execução, ChangeSet e bytes concordantes', async () => {
+it.runIf(protectedRollbackSupported())('serializa decisões concorrentes e mantém execução, ChangeSet e bytes concordantes', async () => {
   const value = await fixture()
   const outcomes = await Promise.allSettled([value.decide('rejected'), value.decide('accepted')])
   expect(outcomes.map((item) => item.status)).toEqual(['fulfilled', 'rejected'])
@@ -98,7 +99,7 @@ it('não aceita bytes que mudaram desde AFTER', async () => {
   expect(value.database.getExecution(value.executionId)?.decision).toBe('conflicted')
 })
 
-it.runIf(process.platform === 'linux')('preserva conflito explícito quando persistir a decisão falha depois da mutação', async () => {
+it.runIf(protectedRollbackSupported())('preserva conflito explícito quando persistir a decisão falha depois da mutação', async () => {
   const value = await fixture()
   const reserve = vi.spyOn(value.database.changeSets, 'reserveDecision')
   const save = value.database.changeSets.saveDecision.bind(value.database.changeSets)
@@ -116,7 +117,7 @@ it.runIf(process.platform === 'linux')('preserva conflito explícito quando pers
   expect(steps.every((step) => step.decisionContext?.decisionOperationId === reserve.mock.results[0].value)).toBe(true)
 })
 
-it.runIf(process.platform !== 'linux')('IPC cannot persist rejection success for an unsupported rollback backend', async () => {
+it.runIf(!protectedRollbackSupported())('IPC cannot persist rejection success for an unsupported rollback backend', async () => {
   const value = await fixture()
   await expect(value.decide('rejected')).rejects.toThrow(/UNSUPPORTED/)
   expect(fs.readFileSync(value.target, 'utf8')).toBe('after')

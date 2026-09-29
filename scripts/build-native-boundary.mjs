@@ -17,7 +17,7 @@ if (process.platform === 'win32') {
   const setup = path.join(installation, 'Common7', 'Tools', 'VsDevCmd.bat')
   // Build-time compiler setup only, never a renderer/project execution path.
   for (const value of [setup, source, binary, output]) if (/["%\r\n]/.test(value)) throw new Error('Unsupported compiler path.')
-  result = spawnSync('cmd.exe', ['/d', '/s', '/c', `call "${setup}" -arch=x64 && cl /nologo /EHsc /std:c++17 /W4 /WX /O2 "${source}" /Fe:"${binary}" /Fo:"${path.join(output, 'rollback-boundary.obj')}"`], { stdio: 'inherit', shell: false, windowsVerbatimArguments: true })
+  result = spawnSync('cmd.exe', ['/d', '/s', '/c', `call "${setup}" -arch=x64 && cl /Bv /nologo /EHsc /std:c++17 /W4 /WX /O2 "${source}" /Fe:"${binary}" /Fo:"${path.join(output, 'rollback-boundary.obj')}"`], { stdio: 'inherit', shell: false, windowsVerbatimArguments: true })
 } else {
   result = spawnSync(process.platform === 'darwin' ? 'clang++' : 'g++', ['-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror', source, '-o', binary], { stdio: 'inherit', shell: false })
 }

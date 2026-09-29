@@ -8,6 +8,7 @@ import { CheckpointService } from '../electron/change-control/CheckpointService'
 import { WorkspaceCheckpointStore } from '../electron/change-control/WorkspaceCheckpointStore'
 import { ChangeCaptureService } from '../electron/change-control/ChangeCaptureService'
 import { SnapshotRollbackService } from '../electron/change-control/SnapshotRollbackService'
+import { protectedRollbackSupported } from '../electron/change-control/NativeRollbackOperation'
 import { WorkspaceChangeGate } from '../electron/change-control/WorkspaceChangeGate'
 import { ExecutionChangeControlService } from '../electron/change-control/ExecutionChangeControlService'
 import { registerAiIpc } from '../electron/ipc/registerAiIpc'
@@ -42,7 +43,7 @@ it('whole Build rollback crosses IPC: protected success or explicit unsupported 
       approvalDetails: new Map(), readWorkspaceContext: async () => ({ content: '', rules: '', updatedAt: '' }),
     }, { handle: (channel, handler) => { handlers.set(channel, handler) }, dispose: () => undefined })
     expect(gate.isHeld(workspace)).toBe(true)
-    if (process.platform !== 'linux') {
+    if (!protectedRollbackSupported()) {
       await expect(Promise.resolve().then(() => handlers.get(IPC_CHANNELS.ai.rollback)!({} as never, conversation.id))).rejects.toThrow(/UNSUPPORTED/)
       expect(fs.readFileSync(target, 'utf8')).toBe('after')
       expect(db.getExecution(executionId)?.decision).toBe('pending')

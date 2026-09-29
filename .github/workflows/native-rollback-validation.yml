@@ -1,0 +1,45 @@
+name: CI · native rollback capabilities
+on:
+  workflow_dispatch:
+  push:
+    branches: [stabilization/native-rollback-v1]
+    paths:
+      - native/**
+      - electron/change-control/NativeRollbackOperation.ts
+      - tests/**
+      - scripts/build-native-boundary.mjs
+      - .github/workflows/native-rollback-validation.yml
+permissions:
+  contents: read
+jobs:
+  native:
+    name: Native rollback (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Record native environment (POSIX)
+        if: runner.os != 'Windows'
+        run: |
+          uname -a
+          if [ "${{ runner.os }}" = macOS ]; then sw_vers; clang++ --version; diskutil info /; else g++ --version; stat -f -c '%T' /tmp; fi
+      - name: Record native environment (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture
+          Get-Volume | Select-Object DriveLetter,FileSystemType
+          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationVersion
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - name: Real filesystem / SQLite / worker regressions
+        run: npm test -- tests/nativeRollbackBoundary.test.ts tests/snapshotRollbackService.test.ts tests/changeDecisionBoundary.test.ts tests/buildRollbackService.test.ts tests/buildRollbackBoundary.test.ts tests/startupRecovery.test.ts

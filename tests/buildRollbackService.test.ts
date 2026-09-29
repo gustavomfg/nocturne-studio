@@ -9,7 +9,7 @@ import { CheckpointService } from '../electron/change-control/CheckpointService'
 import { WorkspaceCheckpointStore } from '../electron/change-control/WorkspaceCheckpointStore'
 import { ChangeCaptureService } from '../electron/change-control/ChangeCaptureService'
 import { SnapshotRollbackService } from '../electron/change-control/SnapshotRollbackService'
-import { closeNativeRollbackOperations } from '../electron/change-control/NativeRollbackOperation'
+import { closeNativeRollbackOperations, protectedRollbackSupported } from '../electron/change-control/NativeRollbackOperation'
 import { canonicalTestPath, removeTestDirectoryAsync } from './helpers/platform'
 
 const cleanup: Array<() => void | Promise<void>> = []
@@ -18,7 +18,7 @@ afterEach(async () => {
   for (const fn of cleanup.splice(0).reverse()) await fn()
 })
 
-it.runIf(process.platform === 'linux').each(['root', 'shutdown'])('retains root authority and admission epoch across whole-Build decisions: %s', async (interference) => {
+it.runIf(protectedRollbackSupported()).each(['root', 'shutdown'])('retains root authority and admission epoch across whole-Build decisions: %s', async (interference) => {
   const base = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-build-root-')))
   cleanup.push(() => removeTestDirectoryAsync(base))
   const workspace = path.join(base, 'project')
@@ -61,7 +61,7 @@ it.runIf(process.platform === 'linux').each(['root', 'shutdown'])('retains root 
   expect(database.getExecution(executionId)?.decision).toBe('conflicted')
 })
 
-it.runIf(process.platform === 'linux')('usa BEFORE imutável com HEAD alterado e recusa edição posterior ao AFTER', async () => {
+it.runIf(protectedRollbackSupported())('usa BEFORE imutável com HEAD alterado e recusa edição posterior ao AFTER', async () => {
   const root = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-build-invariant-')))
   cleanup.push(() => removeTestDirectoryAsync(root))
   const workspace = path.join(root, 'project')

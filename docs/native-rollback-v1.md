@@ -12,7 +12,7 @@ observed. Once structural loss is known, no further workspace mutation is admitt
 | --- | --- |
 | Linux, local tmpfs/ext4/Btrfs | Native capability-based operations; missing kernel/filesystem primitives fail closed |
 | macOS | `UNSUPPORTED`; no named-source staging or pathname fallback |
-| Windows | `UNSUPPORTED`; experimental handle research is not an implemented backend |
+| Windows, local fixed NTFS | Handle-relative backend implemented on the stabilization branch; real-platform verification pending |
 | Other filesystems/platforms | `UNSUPPORTED`; no copy/delete fallback |
 
 These are feature restrictions, not certification of all Linux filesystems.
@@ -28,7 +28,7 @@ special permission bits and files larger than 32 MiB is not supported.
 A small C++17 executable is built locally (`npm run build:boundary`) and packaged
 as `resources/native-boundary/rollback-boundary[.exe]`, outside ASAR. No Node ABI
 binding or new package dependency is used. Development requires g++ on Linux,
-Apple clang on macOS or MSVC Build Tools on Windows. Non-Linux workers implement
+Apple clang on macOS or MSVC Build Tools on Windows. Darwin currently implements
 only the fail-closed response. Production never compiles or downloads a worker.
 
 Only the main process starts this trusted executable, with `shell: false` and a
@@ -62,6 +62,19 @@ that race, it is retained and the operation conflicts rather than publishing
 BEFORE or deleting the competitor. Nothing is restored/truncated/chmodded in place.
 
 ## Retention, outcomes and recovery
+
+Windows uses component-by-component `NtCreateFile` rooted at a retained drive/
+directory handle, rejects reparse traversal and publishes/displaces through
+`NtSetInformationFile(FileRenameInformation)` with replacement disabled. These
+Native API entry points are resolved from the system ntdll, with no pathname
+fallback. Separate read-only custody workers keep roots alive through async
+preparation; IDs alone are not custody. Handles allow delete sharing: no universal
+pinning is claimed. Staging has an exclusive diagnostic name, but rename selects
+the retained source HANDLE, never that name. Unpublished artifacts are retained;
+there is no delete-on-close/name-based compensation. Windows mode support is
+limited to writable regular content (Node's emulated 0666); unsupported permissions
+fail before displacement. File flush acknowledgment is not namespace/power-loss
+certification.
 
 Displaced entries stay in their acquired parent as
 `.nocturne-rollback-<operation>-<file>.after`. This avoids cross-volume copy/delete

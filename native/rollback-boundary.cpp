@@ -244,6 +244,8 @@ int main() {
     }
   }
 }
+#elif defined(_WIN32)
+#include "rollback-windows.h"
 #else
 // Deliberate V1 fail-closed backend. No pathname fallback on Darwin/Windows.
 int main() {

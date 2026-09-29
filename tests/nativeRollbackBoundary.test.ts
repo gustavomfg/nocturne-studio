@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { afterEach, describe, expect, it } from 'vitest'
-import { NativeRollbackOperation } from '../electron/change-control/NativeRollbackOperation'
+import { NativeRollbackOperation, protectedRollbackSupported } from '../electron/change-control/NativeRollbackOperation'
 import { canonicalTestPath, removeTestDirectory } from './helpers/platform'
 
 const cleanup: Array<() => Promise<void> | void> = []
@@ -29,7 +29,39 @@ function peer(source: string, paths: string[]) {
   expect(result.status, result.stderr).toBe(0)
 }
 
-describe.runIf(process.platform === 'linux')('native Linux rollback capabilities (real filesystem)', () => {
+describe.runIf(protectedRollbackSupported())('native rollback capabilities (real filesystem)', () => {
+  it.runIf(process.platform === 'win32')('publishes the retained source HANDLE after a same-user peer rebinds its actual staging name', async () => {
+    const value = await fixture()
+    await value.operation.inspect('parent/target.txt')
+    await value.operation.stage(Buffer.from('AUTHORIZED-S'), 0o666)
+    const names = fs.readdirSync(path.dirname(value.target)).filter((name) => name.startsWith('.nocturne-rollback-stage-'))
+    expect(names).toHaveLength(1)
+    const stage = path.join(path.dirname(value.target), names[0])
+    const originalIdentity = fs.statSync(stage, { bigint: true }).ino
+    peer('const fs=require("node:fs");const p=process.argv[1];fs.renameSync(p,p+".authorized-retained");fs.writeFileSync(p,"SUBSTITUTE-X")', [stage])
+    await value.operation.displace('.nocturne-rollback-test.after')
+    await value.operation.publish()
+    expect(fs.readFileSync(value.target, 'utf8')).toBe('AUTHORIZED-S')
+    expect(fs.statSync(value.target, { bigint: true }).ino).toBe(originalIdentity)
+    expect(fs.readFileSync(stage, 'utf8')).toBe('SUBSTITUTE-X')
+    expect(fs.readFileSync(path.join(path.dirname(value.target), '.nocturne-rollback-test.after'), 'utf8')).toBe('AFTER')
+  })
+
+  it.runIf(process.platform === 'win32')('refuses alternate streams and device-name authority', async () => {
+    const value = await fixture()
+    await expect(value.operation.inspect('parent/target.txt:stream')).rejects.toMatchObject({ outcome: 'CONFLICT' })
+    await expect(value.operation.inspect('parent/NUL')).rejects.toMatchObject({ outcome: 'REVOKED' })
+    expect(fs.readFileSync(value.target, 'utf8')).toBe('AFTER')
+  })
+
+  it('refuses a directory leaf before preparing or displacing bytes', async () => {
+    const value = await fixture()
+    fs.unlinkSync(value.target); fs.mkdirSync(value.target)
+    await expect(value.operation.inspect('parent/target.txt')).rejects.toMatchObject({ outcome: 'CONFLICT' })
+    expect(fs.statSync(value.target).isDirectory()).toBe(true)
+    expect(fs.readdirSync(value.outside)).toEqual(['target.txt'])
+  })
+
   it('publishes the anonymous staged object, never a substituted source pathname', async () => {
     const value = await fixture()
     const observation = await value.operation.inspect('parent/target.txt')
@@ -51,7 +83,7 @@ describe.runIf(process.platform === 'linux')('native Linux rollback capabilities
     const value = await fixture()
     await value.operation.inspect('parent/target.txt')
     await value.operation.stage(Buffer.from('BEFORE'), 0o644)
-    peer('const fs=require("node:fs");const [p,o]=process.argv.slice(1);fs.renameSync(p,p+"-retained");fs.symlinkSync(o,p,"dir")', [path.join(value.workspace, 'parent'), value.outside])
+    peer('const fs=require("node:fs");const [p,o]=process.argv.slice(1);fs.renameSync(p,p+"-retained");fs.symlinkSync(o,p,process.platform==="win32"?"junction":"dir")', [path.join(value.workspace, 'parent'), value.outside])
     await expect(value.operation.displace('.nocturne-rollback-test.after')).rejects.toMatchObject({ outcome: 'REVOKED' })
     await expect(value.operation.publish()).rejects.toMatchObject({ outcome: 'REVOKED' })
     expect(fs.readFileSync(path.join(value.outside, 'target.txt'), 'utf8')).toBe('OUTSIDE')
@@ -99,7 +131,7 @@ describe.runIf(process.platform === 'linux')('native Linux rollback capabilities
     expect(fs.existsSync(path.join(value.workspace, 'missing'))).toBe(false)
   })
 
-  it('rejects a symbolic leaf without touching the external object', async () => {
+  it.runIf(process.platform !== 'win32')('rejects a symbolic leaf without touching the external object', async () => {
     const value = await fixture()
     fs.unlinkSync(value.target)
     fs.symlinkSync(path.join(value.outside, 'target.txt'), value.target)
@@ -181,7 +213,7 @@ describe.runIf(process.platform === 'linux')('native Linux rollback capabilities
   })
 })
 
-it.runIf(process.platform !== 'linux')('unverified backend fails closed before workspace mutation', async () => {
+it.runIf(!protectedRollbackSupported())('unverified backend fails closed before workspace mutation', async () => {
   const base = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-unsupported-boundary-')))
   cleanup.push(() => removeTestDirectory(base))
   const workspace = path.join(base, 'project'), recovery = path.join(base, 'recovery')

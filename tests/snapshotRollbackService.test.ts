@@ -7,7 +7,7 @@ import { CheckpointService } from '../electron/change-control/CheckpointService'
 import { SnapshotRollbackService } from '../electron/change-control/SnapshotRollbackService'
 import { WorkspaceCheckpointStore } from '../electron/change-control/WorkspaceCheckpointStore'
 import { LocalDatabase } from '../electron/database/Database'
-import { NativeRollbackOperation, closeNativeRollbackOperations } from '../electron/change-control/NativeRollbackOperation'
+import { NativeRollbackOperation, closeNativeRollbackOperations, protectedRollbackSupported } from '../electron/change-control/NativeRollbackOperation'
 import { canonicalTestPath, removeTestDirectory } from './helpers/platform'
 
 const directories: string[] = []
@@ -45,7 +45,7 @@ it('disposed rollback owners reject late requests without starting filesystem wo
   expect(fs.readFileSync(target, 'utf8')).toBe('AFTER')
 })
 
-describe.runIf(process.platform === 'linux')('SnapshotRollbackService protected mutations', () => {
+describe.runIf(protectedRollbackSupported())('SnapshotRollbackService protected mutations', () => {
   it('does not admit a helper after shutdown overtakes asynchronous rollback preparation', async () => {
     const value = await fixture()
     const target = path.join(value.workspace, 'target.txt')
@@ -108,7 +108,7 @@ describe.runIf(process.platform === 'linux')('SnapshotRollbackService protected 
     const stage = NativeRollbackOperation.prototype.stage
     vi.spyOn(NativeRollbackOperation.prototype, 'stage').mockImplementation(async function (this: NativeRollbackOperation, bytes, mode) {
       const result = await stage.call(this, bytes, mode)
-      const peer = spawnSync(process.execPath, ['-e', 'const fs=require("node:fs");const [p,o]=process.argv.slice(1);fs.renameSync(p,p+"-retained");fs.symlinkSync(o,p,"dir")', parent, outside], { shell: false, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } })
+      const peer = spawnSync(process.execPath, ['-e', 'const fs=require("node:fs");const [p,o]=process.argv.slice(1);fs.renameSync(p,p+"-retained");fs.symlinkSync(o,p,process.platform==="win32"?"junction":"dir")', parent, outside], { shell: false, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } })
       expect(peer.status).toBe(0)
       return result
     })
@@ -238,7 +238,7 @@ describe.runIf(process.platform === 'linux')('SnapshotRollbackService protected 
   })
 })
 
-it.runIf(process.platform !== 'linux')('unimplemented protected rollback is explicit and leaves BEFORE/AFTER and current bytes intact', async () => {
+it.runIf(!protectedRollbackSupported())('unimplemented protected rollback is explicit and leaves BEFORE/AFTER and current bytes intact', async () => {
   const value = await fixture()
   const target = path.join(value.workspace, 'target.txt')
   fs.writeFileSync(target, 'BEFORE')

@@ -21,10 +21,11 @@ export function nativeRollbackWorkerPath() {
   return path.resolve(directory, path.basename(directory) === 'dist-electron' ? '..' : '../..', 'dist-native', name)
 }
 
-export function protectedRollbackSupported() { return process.platform === 'linux' }
+export function protectedRollbackSupported() { return process.platform === 'linux' || process.platform === 'win32' }
 
 /** Read-only root custody spanning async preparation or several file decisions. */
 export async function withRollbackRootBinding<T>(workspace: string, expectedIdentity: string | undefined, action: (identity: string | undefined) => Promise<T>): Promise<T> {
+  if (process.platform === 'win32') return NativeRollbackOperation.withRootBinding(workspace, expectedIdentity, action)
   if (!protectedRollbackSupported()) return action(undefined)
   const root = await fs.promises.open(workspace, fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW)
   try {
@@ -77,6 +78,7 @@ export class NativeRollbackOperation {
   }
 
   static async create(workspace: string, recoveryDirectory: string, expectedRootIdentity?: string, expectedEpoch = admissionEpoch) {
+    if (expectedEpoch !== admissionEpoch) throw new NativeBoundaryError('REVOKED', 'Rollback preparation crossed a shutdown boundary.')
     return withRollbackRootBinding(workspace, expectedRootIdentity, (rootIdentity) =>
       withRollbackRootBinding(recoveryDirectory, undefined, async (recoveryIdentity) => {
         if (expectedEpoch !== admissionEpoch) throw new NativeBoundaryError('REVOKED', 'Rollback preparation crossed a shutdown boundary.')
@@ -87,6 +89,18 @@ export class NativeRollbackOperation {
         } catch (error) { await operation.close(); throw error }
       }),
     )
+  }
+
+  /** Windows directory custody cannot be represented by node:fs directory FDs. */
+  static async withRootBinding<T>(workspace: string, expectedIdentity: string | undefined, action: (identity: string) => Promise<T>) {
+    const holder = new NativeRollbackOperation('', '', admissionEpoch)
+    try {
+      const response = await holder.request('BIND', encode(workspace))
+      if (response[0] !== 'BOUND' || !response[1]) throw new NativeBoundaryError('UNKNOWN', 'Invalid root custody response.')
+      const identity = Buffer.from(response[1], 'hex').toString('utf8')
+      if (expectedIdentity && identity !== expectedIdentity) throw new NativeBoundaryError('REVOKED', 'Workspace root changed during preparation.')
+      return await action(identity)
+    } finally { await holder.close() }
   }
 
   async inspect(relativePath: string) {

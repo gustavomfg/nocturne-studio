@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { LocalDatabase } from '../database/Database'
-import { NativeBoundaryError, NativeRollbackOperation } from '../change-control/NativeRollbackOperation'
+import { NativeBoundaryError, NativeRollbackOperation, protectedRollbackSupported } from '../change-control/NativeRollbackOperation'
 
 interface PackageSmokeDependencies {
   getWindow(): BrowserWindow | null
@@ -64,7 +64,7 @@ async function runNativeBoundarySmoke() {
     const target = path.join(workspace, 'target.txt')
     await fs.promises.writeFile(target, 'AFTER')
     try { operation = await NativeRollbackOperation.create(workspace, recovery) } catch (error) {
-      if (process.platform !== 'linux' && error instanceof NativeBoundaryError && error.outcome === 'UNSUPPORTED') {
+      if (!protectedRollbackSupported() && error instanceof NativeBoundaryError && error.outcome === 'UNSUPPORTED') {
         return { checked: await fs.promises.readFile(target, 'utf8') === 'AFTER', supported: false, outcome: 'UNSUPPORTED' }
       }
       throw error
