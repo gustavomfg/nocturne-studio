@@ -55,6 +55,40 @@ describe.runIf(protectedRollbackSupported())('native rollback capabilities (real
     expect(fs.readFileSync(value.target, 'utf8')).toBe('AFTER')
   })
 
+  it.runIf(process.platform === 'win32')('refuses unsupported read-only restoration before displacement', async () => {
+    const value = await fixture()
+    await value.operation.inspect('parent/target.txt')
+    await expect(value.operation.stage(Buffer.from('BEFORE'), 0o444)).rejects.toMatchObject({ outcome: 'UNSUPPORTED' })
+    expect(fs.readFileSync(value.target, 'utf8')).toBe('AFTER')
+    expect(fs.readdirSync(path.dirname(value.target))).toEqual(['target.txt'])
+  })
+
+  it('retains a peer-held data handle without changing that object in place', async () => {
+    const value = await fixture()
+    const fd = fs.openSync(value.target, 'r')
+    cleanup.push(() => fs.closeSync(fd))
+    await value.operation.inspect('parent/target.txt')
+    await value.operation.stage(Buffer.from('BEFORE'), 0o644)
+    await value.operation.displace('.nocturne-rollback-test.after')
+    await value.operation.publish()
+    expect(fs.readFileSync(fd, 'utf8')).toBe('AFTER')
+    expect(fs.readFileSync(value.target, 'utf8')).toBe('BEFORE')
+  })
+
+  it.runIf(process.platform === 'win32' || process.platform === 'darwin')('reports retained staging evidence and refuses altered source bytes without publishing them', async () => {
+    const value = await fixture()
+    await value.operation.inspect('parent/target.txt')
+    const stage = await value.operation.stage(Buffer.from('BEFORE'), 0o666)
+    expect(stage.artifact).toMatch(/^\.nocturne-rollback-stage-/)
+    const stagedPath = path.join(path.dirname(value.target), stage.artifact!)
+    peer('require("node:fs").writeFileSync(process.argv[1],"TAMPERED")', [stagedPath])
+    await value.operation.displace('.nocturne-rollback-test.after')
+    await expect(value.operation.publish()).rejects.toMatchObject({ outcome: 'CONFLICT' })
+    expect(fs.existsSync(value.target)).toBe(false)
+    expect(fs.readFileSync(stagedPath, 'utf8')).toBe('TAMPERED')
+    expect(fs.readFileSync(path.join(path.dirname(value.target), '.nocturne-rollback-test.after'), 'utf8')).toBe('AFTER')
+  })
+
   it('refuses a directory leaf before preparing or displacing bytes', async () => {
     const value = await fixture()
     fs.unlinkSync(value.target); fs.mkdirSync(value.target)
