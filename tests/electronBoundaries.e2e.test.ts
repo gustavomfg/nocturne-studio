@@ -182,6 +182,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
   let disposeIpc: (() => void | Promise<void>) | null = null
   let reinstallIpc: (() => (() => void | Promise<void>)) | null = null
   let root: string
+  let workspace: string
   let flushLogger: (() => Promise<void>) | null = null
   const electronMock = electron
   let updateState: UpdateState = { status: 'up-to-date', currentVersion: '1.0.1', platform: 'linux', lastCheckedAt: '2026-09-07T10:00:00.000Z' }
@@ -205,6 +206,7 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
 
   beforeAll(async () => {
     root = canonicalTestPath(fs.mkdtempSync(path.join(os.tmpdir(), 'nocturne-boundary-')))
+    workspace = path.join(root, 'workspace')
     database = await createDatabase(root)
     fs.mkdirSync(workspace, { recursive: true })
     const { registerIpc } = await import('../electron/ipc/registerIpc')
@@ -897,5 +899,3 @@ describe('limites entre processos Electron (IPC, preload, SQLite)', () => {
     expect(execution).toMatchObject({ status: 'failed', error: 'Falha ao preparar a execução de IA.', finishedAt: expect.any(String) })
   })
 })
-
-const workspace = canonicalTestPath('/tmp/test-workspace-nocturne')
