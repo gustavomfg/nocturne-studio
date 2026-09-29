@@ -23,10 +23,20 @@ jobs:
     runs-on: [self-hosted, nocturne-studio]
     timeout-minutes: 10
     steps:
+      - name: Validate the requested SHA before checkout
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.commit_sha }}
+        run: |
+          if [[ ! "$EXPECTED_SHA" =~ ^[0-9a-fA-F]{40}$ ||
+                "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]]; then
+            echo "::error::Dispatch this workflow from the exact candidate SHA."
+            exit 1
+          fi
       - name: Check out the requested commit
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.commit_sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
       - name: Set up the supported Node.js version
         uses: actions/setup-node@v6

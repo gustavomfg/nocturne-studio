@@ -100,6 +100,10 @@ describe('políticas de execução', () => {
     expect(workflow).toContain('runs-on: [self-hosted, nocturne-studio]')
     expect(workflow).not.toContain('environment:')
     expect(workflow).not.toContain('schedule:')
+    expect(workflow).toContain('ref: ${{ github.sha }}')
+    expect(workflow).not.toContain('ref: ${{ inputs.commit_sha }}')
+    expect(workflow.indexOf('Validate the requested SHA before checkout')).toBeLessThan(workflow.indexOf('uses: actions/checkout'))
+    expect(workflow).toContain('package-manager-cache: false')
   })
   it('mantém o atalho de editor integrado ao WebStorm', () => {
     const workspaceIpc = fs.readFileSync(path.join(process.cwd(), 'electron/ipc/registerWorkspaceIpc.ts'), 'utf8')
