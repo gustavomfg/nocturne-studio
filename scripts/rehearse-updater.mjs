@@ -10,6 +10,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { resolveBaseVersion, validateRehearsalVersions } from './updater-rehearsal-contract.mjs'
+import { closeRehearsalServer, runRehearsalPhase } from './updater-rehearsal-runtime.mjs'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3')
@@ -29,6 +30,7 @@ let cacheRoot
 let targetUserData
 const report = {
   ok: false,
+  phase: 'setup',
   platform: process.platform,
   architecture: process.arch,
   currentVersion: packageMetadata.version,
@@ -107,7 +109,7 @@ async function main() {
   report.baseVersion = versions.baseVersion
   report.candidateVersion = versions.candidateVersion
 
-  const baseResult = await launchPackagedApp(paths.baseApp, 'base')
+  const baseResult = await phase('base-startup', () => launchPackagedApp(paths.baseApp, 'base'))
   report.baseStartup = baseResult.report
   const before = snapshotUserData()
   if (!before.messages.some((message) => message.content === 'package-smoke')) {
@@ -137,7 +139,7 @@ async function main() {
   if (updater.autoDownload !== false || updater.autoInstallOnAppQuit !== true) {
     throw new Error('A configuração do rehearsal não preservou autoDownload=false e autoInstallOnAppQuit=true.')
   }
-  const check = await updater.checkForUpdates()
+  const check = await phase('update-check', () => updater.checkForUpdates())
   report.allowPrerelease = updater.allowPrerelease
   report.channel = updater.channel || ''
   report.updateDetected = Boolean(check?.isUpdateAvailable && check.updateInfo?.version === stableVersion)
@@ -150,7 +152,7 @@ async function main() {
   }
   const stableProbe = createUpdater(configPath, server.baseUrl, stableVersion)
   try {
-    const stableCheck = await stableProbe.checkForUpdates()
+    const stableCheck = await phase('stable-check', () => stableProbe.checkForUpdates())
     if (stableProbe.allowPrerelease || stableCheck?.isUpdateAvailable || stableCheck?.updateInfo?.version !== stableVersion) {
       throw new Error(`A política stable retornou um resultado inesperado: ${JSON.stringify(stableCheck?.updateInfo ?? null)}`)
     }
@@ -159,7 +161,7 @@ async function main() {
     disposeUpdaterInstance(stableProbe)
   }
 
-  await exerciseInterruptedDownload(updater, artifactInfo)
+  await phase('interruption-and-retry', () => exerciseInterruptedDownload(updater, artifactInfo))
   report.artifactRequests = server.state.artifactRequests
   const downloadedPath = updater.downloadedUpdateHelper?.file
   if (!downloadedPath || !(await pathExists(downloadedPath))) {
@@ -173,7 +175,7 @@ async function main() {
   report.retrySucceeded = true
 
   await disposeUpdater()
-  const candidateResult = await launchPackagedApp(paths.candidateApp, 'candidate')
+  const candidateResult = await phase('candidate-startup', () => launchPackagedApp(paths.candidateApp, 'candidate'))
   report.candidateStartup = candidateResult.report
   if (!candidateResult.report.preload?.updates || candidateResult.report.preload?.updateState?.status !== 'unsupported') {
     throw new Error('O pacote candidato não expôs o estado unsupported do updater pelo preload.')
@@ -185,6 +187,7 @@ async function main() {
   if (report.credentialsCopied) throw new Error('O rehearsal encontrou arquivo de credencial no userData transferido.')
 
   report.ok = true
+  report.phase = 'verified'
   await writeReport()
   process.stdout.write(`Updater rehearsal concluído: ${JSON.stringify(summarizeReport())}\n`)
 } catch (error) {
@@ -193,7 +196,7 @@ async function main() {
   process.stderr.write(`Updater rehearsal falhou: ${report.failure}\n`)
 } finally {
   await disposeUpdater()
-  if (server) await closeServer(server.server)
+  if (server) await closeRehearsalServer(server.server)
   if (previousAppImage === undefined) delete process.env.APPIMAGE
   else process.env.APPIMAGE = previousAppImage
   await fsp.rm(fixtureRoot, { recursive: true, force: true }).catch(() => undefined)
@@ -554,8 +557,11 @@ function disposeUpdaterInstance(currentUpdater) {
   } catch { /* diagnostic harness cleanup is best effort */ }
 }
 
-function closeServer(serverToClose) {
-  return new Promise((resolve) => serverToClose.close(() => resolve()))
+async function phase(label, action) {
+  report.phase = label
+  process.stdout.write(`Updater rehearsal phase: ${label}\n`)
+  await writeReport()
+  return runRehearsalPhase(label, action)
 }
 
 async function pathExists(filePath) {
