@@ -45,6 +45,8 @@ export class CodexClient extends EventEmitter {
   private earlyTurnEvents = new Map<string, RpcMessage[]>()
   private earlyTurnOverflow = new Set<string>()
   private intentionalStop = false
+  private disposed = false
+  private disposal: Promise<void> | null = null
   private executable = 'codex'
   private machine = new AgentStateMachine(
     'disconnected',
@@ -97,6 +99,7 @@ export class CodexClient extends EventEmitter {
   }
 
   async start(executable = this.executable) {
+    this.assertActive()
     if (this.starting) return this.starting
     if (this.process.isRunning() && this.status !== 'failed' && this.status !== 'disconnected') return
     this.intentionalStop = false
@@ -106,7 +109,7 @@ export class CodexClient extends EventEmitter {
       await this.starting
     } catch (error) {
       const reason = error instanceof Error ? error : new Error(String(error))
-      this.setStatus('failed', `Não foi possível iniciar o Codex: ${reason.message}`)
+      if (!this.disposed) this.setStatus('failed', `Não foi possível iniciar o Codex: ${reason.message}`)
       throw reason
     } finally {
       this.starting = null
@@ -297,6 +300,7 @@ export class CodexClient extends EventEmitter {
   }
 
   async resolveApproval(key: string, accepted: boolean, forSession = false) {
+    this.assertActive()
     const id = this.approvalRequests.get(key)
     if (id === undefined) throw new Error('Solicitação de aprovação não encontrada.')
     this.process.send({
@@ -318,7 +322,21 @@ export class CodexClient extends EventEmitter {
     return this.process.stop()
   }
 
+  /** Permanent revocation; unlike stop, suspended reconnects may never restart. */
+  dispose() {
+    if (this.disposal) return this.disposal
+    this.disposed = true
+    this.intentionalStop = true
+    this.rejectPending(new Error('O cliente Codex já foi encerrado.'))
+    const starting = this.starting
+    this.disposal = Promise.resolve().then(async () => {
+      try { await this.stop() } finally { await starting?.catch(() => undefined) }
+    })
+    return this.disposal
+  }
+
   async restart() {
+    this.assertActive()
     if (this.starting) {
       await this.starting.catch(() => undefined)
     }
@@ -326,7 +344,12 @@ export class CodexClient extends EventEmitter {
     await this.start()
   }
 
+  private assertActive() {
+    if (this.disposed) throw new Error('O cliente Codex já foi encerrado.')
+  }
+
   private async initialize() {
+    this.assertActive()
     this.setStatus('starting')
     this.process.start(this.executable)
     const initialized = initializeResponseSchema.parse(await this.call('initialize', {
@@ -340,6 +363,7 @@ export class CodexClient extends EventEmitter {
         requestAttestation: false,
       },
     }))
+    this.assertActive()
     this.serverVersion = initialized.userAgent
     this.notify('initialized')
     this.setStatus('ready')
@@ -347,6 +371,7 @@ export class CodexClient extends EventEmitter {
 
   private async reconnectAndInitialize() {
     if (this.process.isRunning()) await this.stopTransport()
+    this.assertActive()
     this.intentionalStop = false
     await this.initialize()
   }
@@ -380,6 +405,7 @@ export class CodexClient extends EventEmitter {
   }
 
   private call(method: string, params?: unknown) {
+    if (this.disposed) return Promise.reject(new Error('O cliente Codex já foi encerrado.'))
     const id = this.nextId++
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -398,10 +424,12 @@ export class CodexClient extends EventEmitter {
   }
 
   private notify(method: string, params?: unknown) {
+    this.assertActive()
     this.process.send({ method, params } as RpcMessage)
   }
 
   private handleMessage(message: RpcMessage) {
+    if (this.disposed) return
     if ('id' in message && !('method' in message)) {
       const response = message as RpcResponse
       const pending = this.pending.get(response.id)

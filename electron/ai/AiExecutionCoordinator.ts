@@ -55,6 +55,7 @@ interface CodexTurnInput {
 export class AiExecutionCoordinator {
   private active: ActiveExecution | null = null
   private disposed = false
+  private disposal: Promise<void> | undefined
 
   constructor(
     private readonly win: BrowserWindow,
@@ -218,7 +219,7 @@ export class AiExecutionCoordinator {
   }
 
   dispose() {
-    if (this.disposed) return
+    if (this.disposed) return this.disposal
     this.disposed = true
     this.codex.off('event', this.onCodexEvent)
     this.codex.off('status', this.onCodexStatus)
@@ -232,7 +233,8 @@ export class AiExecutionCoordinator {
       })
     }
     this.approvalDetails.clear()
-    return this.codex.stop()
+    this.disposal = this.codex.dispose()
+    return this.disposal
   }
 
   private reserve(conversationId: string, workspace: string, mode: AgentMode, kind: ActiveExecution['kind'], executionId?: string) {

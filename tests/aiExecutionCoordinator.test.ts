@@ -87,15 +87,16 @@ describe('AiExecutionCoordinator', () => {
     const codex = new CodexClient()
     let release!: () => void
     const cleanup = new Promise<void>((resolve) => { release = resolve })
-    vi.spyOn(codex, 'stop').mockReturnValue(cleanup)
+    vi.spyOn(codex, 'dispose').mockReturnValue(cleanup)
     const { win } = testWindow()
     const coordinator = new AiExecutionCoordinator(win as never, new ModelRegistry(), new ProviderRegistry(), testLogger() as never, new Map(), vi.fn(), undefined, undefined, undefined, undefined, codex)
     const disposed = coordinator.dispose()
     expect(disposed).toBe(cleanup)
+    expect(coordinator.dispose()).toBe(cleanup)
     expect(codex.listenerCount('event')).toBe(0)
     release()
     await disposed
-    expect(codex.stop).toHaveBeenCalledOnce()
+    expect(codex.dispose).toHaveBeenCalledOnce()
   })
 
   it('persiste a resposta antes de publicar a conclusão ao renderer', async () => {

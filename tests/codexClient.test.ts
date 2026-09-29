@@ -102,6 +102,39 @@ async function createThread(client: CodexClient, process: FakeCodexProcess) {
 }
 
 describe('CodexClient', () => {
+  it.each(['models', 'protocol'] as const)('revoga um probe %s suspenso em reconnect quando a janela é descartada', async (kind) => {
+    const process = new FakeCodexProcess()
+    process.running = true
+    const client = new CodexClient(process)
+    let release!: () => void
+    const cleanup = new Promise<void>((resolve) => { release = resolve })
+    const stop = process.stop.bind(process)
+    vi.spyOn(process, 'stop').mockImplementation(() => { stop(); return cleanup })
+    const coordinator = new AiExecutionCoordinator(
+      { isDestroyed: () => false, webContents: { send: vi.fn() } } as never,
+      new ModelRegistry(), new ProviderRegistry(), { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() } as never,
+      new Map(), vi.fn(), undefined, undefined, undefined, undefined, client,
+    )
+    const probe = kind === 'models' ? coordinator.listCodexModels() : coordinator.checkCodexProtocol()
+    const outcome = probe.then(() => null, (error: unknown) => error)
+    const disposal = coordinator.dispose()
+    try {
+      expect(process.starts).toBe(0)
+      release()
+      await disposal
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      expect(process.starts).toBe(0)
+      expect(process.running).toBe(false)
+      expect(await outcome).toEqual(expect.objectContaining({ message: expect.stringMatching(/encerrado/i) }))
+      await expect(client.start()).rejects.toThrow(/encerrado/i)
+      await expect(client.restart()).rejects.toThrow(/encerrado/i)
+    } finally {
+      release()
+      await client.stop()
+      await outcome
+    }
+  })
+
   it('aguarda initialize pendente antes de admitir uma checagem concorrente de protocolo', async () => {
     const process = new FakeCodexProcess()
     const client = new CodexClient(process)

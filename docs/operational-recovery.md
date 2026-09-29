@@ -33,6 +33,9 @@ install a new owner while the old cleanup drains, without the old completion
 clearing the new owner. Application shutdown waits for both generations before
 closing SQLite, including when one disposer reports a failure.
 Late model/protocol probes cannot reopen a disposed coordinator's Codex transport.
+Client disposal permanently revokes suspended reconnects and future RPC admission;
+restartable transport stop is not used as permanent window-resource disposal.
+The disposal promise also drains startup already admitted before revocation.
 
 Validation and Codex transport cleanup have bounded deadlines. Codex retains
 cleanup ownership after its direct child exits, closes its streams, sends TERM
