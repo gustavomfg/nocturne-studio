@@ -25,8 +25,9 @@ Use `npm run test:abi` to check that native module compatibility before running
 the full suite.
 
 Protected filesystem rollback has a narrower platform contract than application
-startup: [V1](native-rollback-v1.md) supports Linux local tmpfs/ext4/Btrfs only. macOS
-and Windows currently refuse restoration with `UNSUPPORTED`; checkpoint capture,
+startup: [V1](native-rollback-v1.md) supports local Linux tmpfs/ext4/Btrfs, macOS
+APFS and Windows fixed NTFS, with conservative object/permission/size restrictions.
+Other environments refuse restoration with `UNSUPPORTED`; checkpoint capture,
 diff inspection and acceptance remain available. Native worker compilation also
 requires the platform's C++17 toolchain; it does not change the Electron SQLite ABI.
 
