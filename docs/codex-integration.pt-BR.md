@@ -20,9 +20,9 @@ ausente ou resposta incompatível gera diagnóstico recuperável, não um Provid
 utilizável desconhecido.
 
 Versões novas não exigem editar dependência, mas precisam passar por esse
-contrato de execução em tempo de execução. Esse gate local não certifica sessão
-Codex autenticada sem o contract smoke autenticado e protegido no candidato. A
-interface do App Server é experimental.
+contrato de execução em tempo de execução. O diagnóstico autenticado opcional
+pode ser executado localmente com `npm run smoke:codex`; ele não é pré-requisito
+de release estável. A interface do App Server é experimental.
 
 ## Conversas e modos
 

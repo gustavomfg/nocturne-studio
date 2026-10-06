@@ -44,12 +44,11 @@ The [model strategy](model-strategy.md) is a design guideline. It does not
 describe automatic model routing or a reasoning-effort control available in
 the current release.
 
-The [1.0.2 release-readiness document](release-readiness-1.0.2.md) is the
-current source for the unreleased candidate's local gates. Do not treat a plan
-or historical release note as evidence that a feature is present in the current
-build.
+The [GitHub Actions release guide](github-actions.md) describes the current
+single-maintainer release procedure. The [1.0.2 readiness document](release-readiness-1.0.2.md)
+records historical candidate validation; do not treat it as the current runbook.
 
-The [1.0.2 candidate notes](releases/v1.0.2.md) record the future release body;
+The [1.0.2 release notes](releases/v1.0.2.md) record the release body;
 the [1.0.1 release notes](releases/v1.0.1.md) and the
 [release-candidate checklist](release-rc-checklist.md) remain historical
 records for the published stable line.

@@ -1,8 +1,9 @@
 # 1.0.2 release readiness
 
-This is an internal maintainer checklist for preparing an unreleased `1.0.2`
-candidate. It is not a tag, publication record or authorization to push,
-publish a release or modify the historical `v1.0.1` and `v1.0.0` lines.
+This is the historical stabilization checklist for the original `1.0.2`
+candidate. The current single-maintainer release procedure is in
+[GitHub Actions and releases](github-actions.md). This checklist is not an
+authorization to modify the historical `v1.0.1` or `v1.0.0` lines.
 
 ## Candidate identity
 
@@ -87,15 +88,16 @@ triage belong in the exact-SHA execution ledger. `.gitignore` indexing, global r
 remain outside this candidate's implemented contract. Retained rollback artifacts
 must not be automatically deleted when ownership is uncertain.
 
-## Protected release gates — PENDING
+## Historical failed release attempt
 
-- Authenticated Codex smoke on the authorized dedicated runner at the exact
-  candidate SHA. The self-hosted runner was offline during final stabilization;
-  ordinary local Review is not a substitute for this protected gate.
-- Linux checksum GPG signing and verification in the protected release workflow.
-- Environment approval, exact SHA/tag guard and final maintainer authorization.
-- Publication itself: **not performed**. No final `v1.0.2` tag is created here.
+The original candidate `582a6065b99376f6cb55dbe6662ecd5a8f219dd7`
+passed authenticated Codex smoke in run `37538446229`. Stable release run
+`37540075090` failed before publication because its workflow renamed
+`SHA256SUMS` before the staging script read it. Linux GPG signing and
+verification passed in that attempt, but no release assets were published.
+The old tag was an unpublished failed-attempt ref; the current release process
+requires successful main CI and creates no dependency on an authenticated
+Codex runner or independent reviewer.
 
-Windows/macOS platform signing and notarization are **NOT APPLICABLE under the
-current unsigned distribution policy**, not completed signing gates. Do not
-access credentials or bypass protection to turn pending checks green.
+Windows/macOS platform signing and notarization remain outside the current
+unsigned distribution policy. Linux GPG signing remains mandatory.

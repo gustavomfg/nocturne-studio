@@ -31,10 +31,8 @@ boundaries, IPC validation, workspace authorization and containment, persistence
 and recovery, provider integrations, credential storage and packaged updates.
 Third-party providers and the Codex CLI have their own security policies.
 
-The repository is prepared as the `1.0.1` release candidate. Stable support for
-that version begins only after the `v1.0.1` tag and protected publication; the
-candidate has not been published yet. Historical release notes are not a promise
-of support for old versions.
+The current stable release line is `1.0.2`. Historical release notes are not a
+promise of support for old versions.
 
 ## Security design
 

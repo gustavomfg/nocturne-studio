@@ -5,6 +5,5 @@
   "currentUserDataDirectory": "Nocturne Studio",
   "legacyUserDataDirectory": "Nocturne Codex",
   "repository": "nocturne-studio",
-  "codexClientName": "nocturne-studio",
-  "runnerLabel": "nocturne-studio"
+  "codexClientName": "nocturne-studio"
 }

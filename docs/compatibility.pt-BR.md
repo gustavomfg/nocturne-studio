@@ -17,8 +17,8 @@ toolchain C++17 de desenvolvimento, sem alterar o ABI SQLite/Electron.
 | Linux desktop | AppImage ou `tar.gz` da arquitetura publicada |
 | macOS | DMG e ZIP do atualizador da arquitetura publicada |
 
-Somente artefatos produzidos e aprovados pelo workflow protegido de release são
-releases oficiais. Pacotes locais e builds de outra arquitetura são artefatos
+Somente artefatos publicados pelo workflow automatizado de release após seus
+gates de validação são releases oficiais. Pacotes locais e builds de outra arquitetura são artefatos
 de desenvolvimento até passarem pelos mesmos smoke checks e gates.
 
 ## Compatibilidade de desenvolvimento

@@ -10,8 +10,8 @@
 | Linux desktop | AppImage or `tar.gz` for the published build architecture |
 | macOS | DMG and updater ZIP for the published build architecture |
 
-Only artifacts produced and approved by the protected stable-release workflow
-are official releases. Local packages and builds for another architecture are
+Only artifacts published by the automated stable-release workflow after its
+validation gates are official releases. Local packages and builds for another architecture are
 development artifacts until they pass the same smoke and release gates.
 
 ## Development compatibility

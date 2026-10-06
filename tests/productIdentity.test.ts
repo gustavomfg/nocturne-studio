@@ -25,9 +25,4 @@ describe('stable product identity', () => {
     expect(productIdentity.repository).toBe('nocturne-studio')
     expect(builder).not.toContain('"repo": "Nocturne-Codex"')
   })
-
-  it('keeps the authenticated runner label synchronized', () => {
-    const workflow = fs.readFileSync(path.join(process.cwd(), '.github/workflows/codex-contract-smoke.yml'), 'utf8')
-    expect(workflow).toContain(`runs-on: [self-hosted, ${productIdentity.runnerLabel}]`)
-  })
 })

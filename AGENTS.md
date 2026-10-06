@@ -23,8 +23,8 @@ implicit step when the existing product flow keeps them separate.
 
 ## Current release line
 
-Current release candidate: `1.0.2` (not tagged or published yet). The published
-stable baseline is `v1.0.1`; do not move or modify its tag or release assets.
+Current release line: `1.0.2`. The historical `v1.0.1` tag and release assets
+must not be moved or modified.
 
 Current priorities:
 

@@ -102,12 +102,11 @@ The full command list is in [development](docs/development.md).
 
 ## Current status
 
-The repository contains local preparation for the unreleased `v1.0.2` candidate.
-The published `v1.0.1` stable line remains pinned to its exact approved tag
-commit and uses `gustavomfg/nocturne-studio` as its canonical publication and
-updater repository. The protected release workflow validates all platform
-inventories; the current Windows/macOS signing policy is explicitly
-unsigned/not notarized.
+The `v1.0.2` release uses `gustavomfg/nocturne-studio` as its publication and
+updater repository. A version tag starts the GitHub-hosted release workflow,
+which validates the source, all platform inventories and published assets.
+Linux checksums are GPG-signed; Windows and macOS remain unsigned, and macOS
+remains unnotarized under the current policy.
 The Codex App Server contract is experimental; the minimum supported CLI is
 `0.145.0` and the recommended version is `0.146.0`. Newer versions must pass
 the runtime compatibility handshake.
@@ -136,8 +135,9 @@ contract.
 - [Troubleshooting](docs/troubleshooting.md) · [Português](docs/troubleshooting.pt-BR.md)
 - [Development](docs/development.md) · [Português](docs/development.pt-BR.md)
 - [Architecture](docs/architecture.md) · [Português](docs/architecture.pt-BR.md)
-- [1.0.2 candidate release notes](docs/releases/v1.0.2.md) · [Português](docs/releases/v1.0.2.pt-BR.md)
-- [1.0.2 release readiness](docs/release-readiness-1.0.2.md)
+- [1.0.2 release notes](docs/releases/v1.0.2.md) · [Português](docs/releases/v1.0.2.pt-BR.md)
+- [GitHub Actions and releases](docs/github-actions.md)
+- [1.0.2 historical release readiness](docs/release-readiness-1.0.2.md)
 - [1.0.1 historical release notes](docs/releases/v1.0.1.md) · [Português](docs/releases/v1.0.1.pt-BR.md)
 - [Release-candidate checklist](docs/release-rc-checklist.md) · [Português](docs/release-rc-checklist.pt-BR.md)
 - [1.0.1 historical release readiness](docs/release-readiness-1.0.md)

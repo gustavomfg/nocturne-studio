@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 const directories: string[] = []
 const verifier = path.join(process.cwd(), 'scripts/verify-release-assets.mjs')
+const stager = path.join(process.cwd(), 'scripts/stage-release-assets.mjs')
 const version = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')).version as string
 
 afterEach(() => {
@@ -14,6 +15,29 @@ afterEach(() => {
 })
 
 describe('verificador de assets de release', () => {
+  it.each([
+    ['linux', 'Linux', [`Nocturne.Studio-Linux-${version}.AppImage`, `Nocturne.Studio-Linux-${version}.tar.gz`], 'latest-linux.yml'],
+    ['windows', 'Windows', [`Nocturne-Studio-Windows-${version}-Setup.exe`], 'latest.yml'],
+    ['macos', 'macOS', [`Nocturne-Studio-Mac-${version}-Installer.zip`, `Nocturne-Studio-Mac-${version}-Installer.dmg`], 'latest-mac.yml'],
+  ] as const)('stages and verifies the unchanged raw checksum for %s', (platform, suffix, artifacts, metadataName) => {
+    const source = createDirectory()
+    for (const artifact of artifacts) {
+      write(source, artifact, `${platform}:${artifact}`)
+      if (platform === 'windows' || platform === 'macos') write(source, `${artifact}.blockmap`, `blockmap:${artifact}`)
+    }
+    if (platform === 'linux') write(source, 'builder-debug.yml', 'debug: linux')
+    write(source, metadataName, metadata(version, platform === 'linux' ? [artifacts[0]] : [...artifacts]))
+    write(source, 'SHA256SUMS', checksum(source, [...artifacts]))
+    if (platform === 'linux') write(source, 'SHA256SUMS.sig', 'detached-signature-fixture')
+
+    const output = createDirectory()
+    execFileSync(process.execPath, [stager, '--platform', platform, '--release-directory', source, '--output', output], { stdio: 'pipe' })
+    expect(fs.existsSync(path.join(source, 'SHA256SUMS'))).toBe(true)
+    expect(fs.existsSync(path.join(output, 'SHA256SUMS'))).toBe(false)
+    expect(fs.readFileSync(path.join(output, `SHA256SUMS-${suffix}`))).toEqual(fs.readFileSync(path.join(source, 'SHA256SUMS')))
+    expect(() => execFileSync(process.execPath, [verifier, '--platform', platform, output], { stdio: 'pipe' })).not.toThrow()
+  })
+
   it('valida artefato, blockmap, metadata e checksum Windows', () => {
     const directory = createDirectory()
     const artifact = `Nocturne-Studio-Windows-${version}-Setup.exe`

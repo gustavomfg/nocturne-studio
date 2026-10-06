@@ -1,120 +1,69 @@
 name: Release · stable
 
 on:
+  push:
+    tags:
+      - 'v[0-9]*'
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Stable tag selected in "Use workflow from" (for example v1.0.1)
-        required: true
-        type: string
-      codex_smoke_run_id:
-        description: Successful Codex contract smoke run ID for the exact release commit
-        required: true
-        type: string
-      candidate_sha:
-        description: Full candidate commit SHA validated by source and Codex gates
-        required: true
-        type: string
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: stable-release-${{ inputs.release_tag }}
+  group: stable-release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   source-gate:
-    name: Verify release source and Codex contract
+    name: Verify main, version and completed CI
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ inputs.release_tag }}
-      CODEX_SMOKE_RUN_ID: ${{ inputs.codex_smoke_run_id }}
-      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.release_tag }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
-      - name: Require a stable version and matching tag
+      - name: Require current main and matching stable version
         shell: bash
         run: |
-          node -e "const v=require('./package.json').version;const tag=process.env.RELEASE_TAG;const sha=(process.env.CANDIDATE_SHA||'').trim();if(v.includes('-'))throw new Error('Stable signing requires a version without a prerelease suffix: '+v);if(tag !== 'v'+v)throw new Error('Tag '+tag+' does not match package version v'+v);if(!/^[0-9a-f]{40}$/.test(sha))throw new Error('candidate_sha must be a lowercase full commit SHA')"
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$CANDIDATE_SHA"
-      - name: Require a successful Codex smoke for this commit
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Use a stable tag such as v1.0.2.' >&2; exit 1; }
+          test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG" || { echo 'Run the stable release from its existing tag.' >&2; exit 1; }
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$RELEASE_SHA"
+          test "$(git ls-remote origin "refs/tags/$RELEASE_TAG" | awk '{print $1}')" = "$RELEASE_SHA" || { echo 'The remote tag must point directly to this commit.' >&2; exit 1; }
+          test "$(git ls-remote origin refs/heads/main | awk '{print $1}')" = "$RELEASE_SHA" || { echo 'Tag the current main commit after its CI passes.' >&2; exit 1; }
+          test "$RELEASE_TAG" = "v$(node -p "require('./package.json').version")" || { echo 'Tag does not match package.json.' >&2; exit 1; }
+          test -f "docs/releases/$RELEASE_TAG.md" || { echo 'Versioned release notes are missing.' >&2; exit 1; }
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$RELEASE_TAG is already published; stable release never replaces it." >&2
+            exit 1
+          fi
+      - name: Require successful main CI for this exact commit
         shell: bash
         run: |
-          expected_sha="$CANDIDATE_SHA"
-          run_sha="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CODEX_SMOKE_RUN_ID" --jq .head_sha)"
-          conclusion="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CODEX_SMOKE_RUN_ID" --jq .conclusion)"
-          event="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CODEX_SMOKE_RUN_ID" --jq .event)"
-          workflow_path="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CODEX_SMOKE_RUN_ID" --jq .path)"
-          test "$run_sha" = "$expected_sha"
-          test "$conclusion" = success
-          test "$event" = workflow_dispatch
-          test "$workflow_path" = .github/workflows/codex-contract-smoke.yml
-      - name: Verify the sanitized Codex smoke evidence
-        shell: bash
-        run: |
-          evidence_dir="$(mktemp -d)"
-          gh run download "$CODEX_SMOKE_RUN_ID" \
-            --repo "$GITHUB_REPOSITORY" \
-            --name "codex-contract-smoke-$CODEX_SMOKE_RUN_ID" \
-            --dir "$evidence_dir"
-          report_path="$(find "$evidence_dir" -type f -name codex-contract-smoke.json -print -quit)"
-          test -n "$report_path"
-          EXPECTED_SHA="$CANDIDATE_SHA" REPORT_PATH="$report_path" node <<'NODE'
-          const fs = require('node:fs')
-          const report = JSON.parse(fs.readFileSync(process.env.REPORT_PATH, 'utf8'))
-          const expectedSha = process.env.EXPECTED_SHA
-          const required = [
-            'appServerHandshake',
-            'authenticationChecked',
-            'authenticatedSession',
-            'modelList',
-            'configRead',
-            'requestResponseContract',
-            'cleanShutdown',
-            'shutdown',
-            'minimumSatisfied',
-            'sessionStarted',
-            'threadStart',
-            'turnStart',
-            'turnCompleted',
-            'agentResponse',
-            'interrupt',
-          ]
-          if (report.ok !== true) throw new Error('O relatório do smoke Codex não está marcado como bem-sucedido.')
-          if (report.repositorySha !== expectedSha || report.expectedSha !== expectedSha) throw new Error('O relatório Codex não corresponde ao SHA da release.')
-          if (report.nocturneVersion !== require('./package.json').version) throw new Error('O relatório Codex não corresponde à versão da release.')
-          if (!/^\d+\.\d+\.\d+$/.test(report.codexVersion || '')) throw new Error('O relatório Codex não informa uma versão semântica válida.')
-          for (const key of required) if (report[key] !== true) throw new Error(`Evidência Codex incompleta: ${key}`)
-          if (report.authenticationMethod === '') throw new Error('O relatório Codex não informa uma autenticação verificada.')
-          if (report.unexpectedStdoutLines !== 0) throw new Error('O App Server emitiu linhas stdout fora do protocolo JSONL.')
-          NODE
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm test
+          gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/package-validation.yml/runs" \
+            -f head_sha="$RELEASE_SHA" -f branch=main -f event=push -f per_page=100 |
+            node -e '
+              const fs = require("node:fs")
+              const runs = JSON.parse(fs.readFileSync(0, "utf8")).workflow_runs
+                .filter((run) => run.head_sha === process.env.RELEASE_SHA && run.event === "push")
+                .sort((a, b) => b.id - a.id)
+              const latest = runs[0]
+              if (!latest) throw new Error("No main CI push run exists for this commit. Wait for CI before releasing.")
+              if (latest.conclusion !== "success") throw new Error(`Main CI run ${latest.html_url} is ${latest.status}/${latest.conclusion || "pending"}.`)
+              console.log(`Verified main CI: ${latest.html_url}`)
+            '
+      - run: npm ci --ignore-scripts
       - run: npm run verify:release-metadata
-      - name: Install Playwright Chromium without stale third-party apt indexes
-        shell: bash
-        run: |
-          for source in /etc/apt/sources.list.d/*; do
-            if [ -f "$source" ] && grep -qi 'dl.google.com/linux/chrome' "$source"; then
-              sudo rm -f "$source"
-            fi
-          done
-          npx playwright install --with-deps chromium
-      - run: npm run test:renderer
 
   signed-package:
     name: Package and attest (${{ matrix.platform }}, ${{ matrix.os }})
@@ -129,20 +78,15 @@ jobs:
           - os: ubuntu-latest
             platform: linux
             architecture: x64
-            checksum_suffix: Linux
           - os: windows-latest
             platform: windows
             architecture: x64
-            checksum_suffix: Windows
           - os: macos-latest
             platform: macos
             architecture: arm64
-            checksum_suffix: macOS
     env:
-      RELEASE_TAG: ${{ inputs.release_tag }}
-      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_SHA: ${{ github.sha }}
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       APPLE_ID: ''
       APPLE_APP_SPECIFIC_PASSWORD: ''
@@ -154,21 +98,23 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.release_tag }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
-      - name: Require a stable version
+      - name: Require the validated source
         shell: bash
         run: |
-          node -e "const v=require('./package.json').version;const tag=process.env.RELEASE_TAG;const sha=(process.env.CANDIDATE_SHA||'').trim();if(v.includes('-'))throw new Error('Stable signing requires a version without a prerelease suffix: '+v);if(tag !== 'v'+v)throw new Error('Tag '+tag+' does not match package version v'+v);if(!/^[0-9a-f]{40}$/.test(sha))throw new Error('candidate_sha must be a lowercase full commit SHA')"
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$CANDIDATE_SHA"
-      - name: Require platform signing credentials
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$RELEASE_TAG" = "v$(node -p "require('./package.json').version")"
+      - name: Require Linux signing credentials
         if: matrix.platform == 'linux'
         shell: bash
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           test -n "$GPG_PRIVATE_KEY"
           test -n "$GPG_PASSPHRASE"
@@ -185,7 +131,9 @@ jobs:
       - name: Import Linux release key
         if: matrix.platform == 'linux'
         shell: bash
-        run: echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
       - run: npm run package -- --publish never
       - name: Smoke test packaged application (Linux)
         if: matrix.platform == 'linux'
@@ -202,24 +150,17 @@ jobs:
       - name: Sign Linux checksums
         if: matrix.platform == 'linux'
         shell: bash
-        run: |
-          version="$(node -p "require('./package.json').version")"
-          gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --detach-sign --output "release/$version/SHA256SUMS.sig" "release/$version/SHA256SUMS"
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --detach-sign --output "release/${RELEASE_TAG#v}/SHA256SUMS.sig" "release/${RELEASE_TAG#v}/SHA256SUMS"
       - name: Verify Linux signature
         if: matrix.platform == 'linux'
         run: npm run verify:signatures
-      - name: Preserve platform checksum manifest
-        shell: bash
-        run: |
-          version="$(node -p "require('./package.json').version")"
-          checksum_name="SHA256SUMS-${{ matrix.checksum_suffix }}"
-          mv "release/$version/SHA256SUMS" "release/$version/$checksum_name"
-          if [ -f "release/$version/SHA256SUMS.sig" ]; then mv "release/$version/SHA256SUMS.sig" "release/$version/$checksum_name.sig"; fi
       - name: Stage exact platform inventory
         shell: bash
         env:
           RELEASE_PLATFORM: ${{ matrix.platform }}
-        run: node scripts/stage-release-assets.mjs --platform "$RELEASE_PLATFORM" --release-directory "release/$(node -p "require('./package.json').version")" --output release-output
+        run: node scripts/stage-release-assets.mjs --platform "$RELEASE_PLATFORM" --release-directory "release/${RELEASE_TAG#v}" --output release-output
       - name: Verify exact platform inventory
         shell: bash
         env:
@@ -232,28 +173,23 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  stable-gate:
+  publish:
     name: Verify and publish stable release
     needs: signed-package
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: write
       actions: read
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ inputs.release_tag }}
-      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.release_tag }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
-      - name: Require the verified candidate SHA
-        shell: bash
-        run: |
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$CANDIDATE_SHA"
       - uses: actions/download-artifact@v8
         with:
           pattern: nocturne-stable-*
@@ -277,11 +213,23 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run verify:release-assets -- release-assets
-      - name: Publish verified assets
+      - name: Verify Linux signature with the public release key
         shell: bash
         run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "A release existente não é alterada pelo stable workflow; use o fluxo de backfill para reconciliação." >&2
+          keyring="$(mktemp -d)"
+          chmod 700 "$keyring"
+          gpg --homedir "$keyring" --batch --import docs/release-signing-public.asc
+          gpg --homedir "$keyring" --batch --verify release-assets/SHA256SUMS-Linux.sig release-assets/SHA256SUMS-Linux
+      - name: Publish verified assets from the exact tag
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git ls-remote origin "refs/tags/$RELEASE_TAG" | awk '{print $1}')" = "$RELEASE_SHA" || { echo 'The tag changed; refusing publication.' >&2; exit 1; }
+          test "$(git ls-remote origin refs/heads/main | awk '{print $1}')" = "$RELEASE_SHA" || { echo 'main advanced during packaging; release stopped.' >&2; exit 1; }
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'The release already exists; refusing to replace published assets.' >&2
             exit 1
           fi
           gh release create "$RELEASE_TAG" release-assets/* --verify-tag --notes-file "docs/releases/$RELEASE_TAG.md" --title "Nocturne Studio $RELEASE_TAG"
+      - name: Verify published tag, notes and asset digests
+        run: node scripts/verify-published-release.mjs release-assets

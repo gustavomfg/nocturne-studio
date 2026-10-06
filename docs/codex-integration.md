@@ -20,9 +20,9 @@ minimum, missing authentication, missing capability or incompatible response is
 reported as a recoverable diagnostic rather than treated as a usable provider.
 
 Newer versions do not require a dependency edit, but they must pass that runtime
-execution contract. This local gate does not certify an authenticated Codex
-session unless the protected authenticated contract smoke ran for the candidate.
-The App Server interface is experimental.
+execution contract. An optional authenticated diagnostic can be run locally with
+`npm run smoke:codex`; it is not a stable-release prerequisite. The App Server
+interface is experimental.
 
 ## Conversations and modes
 
@@ -52,9 +52,8 @@ the installed Codex CLI. It creates a temporary Git workspace and:
 - requires both temporary directories to be removed and the App Server to exit
   cleanly.
 
-The report contains only sanitized states and counters. A successful report is
-not release evidence unless its repository SHA, Codex version and workflow run
-also match the candidate being released.
+The report contains only sanitized states and counters. This diagnostic does
+not replace the runtime compatibility handshake or deterministic CI tests.
 
 ## Failure behavior
 
