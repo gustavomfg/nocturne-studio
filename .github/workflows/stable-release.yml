@@ -59,8 +59,8 @@ jobs:
                 .sort((a, b) => b.id - a.id)
               const latest = runs[0]
               if (!latest) throw new Error("No main CI push run exists for this commit. Wait for CI before releasing.")
-              if (latest.conclusion !== "success") throw new Error(`Main CI run ${latest.html_url} is ${latest.status}/${latest.conclusion || "pending"}.`)
-              console.log(`Verified main CI: ${latest.html_url}`)
+              if (latest.conclusion !== "success") throw new Error("Main CI run " + latest.html_url + " is " + latest.status + "/" + (latest.conclusion || "pending") + ".")
+              console.log("Verified main CI: " + latest.html_url)
             '
       - run: npm ci --ignore-scripts
       - run: npm run verify:release-metadata
